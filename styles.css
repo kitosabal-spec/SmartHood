@@ -1,8 +1,4 @@
-/* ═══════════════════════════════════════════════
-   SAN ALFONSO HOMES — MANAGEMENT SYSTEM
-   Theme: Teal & Gold (matching subdivision signage)
-   Font: Playfair Display (display) + DM Sans (body)
-═══════════════════════════════════════════════ */
+/*  SAN ALFONSO HOMES — MANAGEMENT SYSTEM   Theme: Teal & Gold (matching subdivision signage)  Font: Playfair Display (display) + DM Sans (body) */
 
 @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600;700&display=swap');
 
@@ -1542,6 +1538,52 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 }
 .complaint-status-step:last-child::after { display: none; }
 .complaint-status-step.done::after { background: var(--green-600); }
+
+/* ══════════════════════════════════════════
+   SH MONOGRAM LOGO
+══════════════════════════════════════════ */
+.sh-monogram {
+  font-family: 'Playfair Display', Georgia, serif;
+  font-weight: 1000;
+  font-style: italic;
+  letter-spacing: -0.04em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+/* Nav version — used in public top navbar */
+.sh-monogram-nav {
+  width: 34px;
+  height: 34px;
+  font-size: 2rem;
+  background: white
+  color #0a2e30;
+ /* box-shadow: 0 2px 8px rgba(240,180,41,0.35); */
+}
+
+/* Login modal version */
+.sh-monogram-login {
+  width: 32px;
+  height: 32px;
+  font-size: 1rem;
+  background: linear-gradient(135deg, var(--teal-500) 0%, var(--teal-700) 100%);
+  color: #fff;
+ /* box-shadow: 0 2px 8px rgba(26,157,166,0.3); */
+}
+
+/* Sidebar version */
+.sh-monogram-sidebar {
+  width: 32px;
+  height: 32px;
+  font-size: 1.5rem;
+  background: white
+  color #0a2e30;
+ /* box-shadow: 0 2px 10px rgba(240,180,41,0.25); */
+}
 
 @media print {
   .sidebar, .topbar, .page-header-actions, .btn, .filters-row { display: none !important; }
