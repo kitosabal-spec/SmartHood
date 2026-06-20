@@ -16,6 +16,16 @@ if exist ".server.pid" (
   del ".server.pid" >NUL 2>&1
 )
 
+for /f "tokens=5" %%P in ('netstat -ano ^| findstr /R /C:":3000 .*LISTENING"') do (
+  set "PORT_PID=%%P"
+)
+if defined PORT_PID (
+  echo Server is already listening on http://localhost:3000 with PID !PORT_PID!.
+  echo !PORT_PID!>".server.pid"
+  pause
+  exit /b 0
+)
+
 if not exist "node_modules" (
   echo node_modules was not found. Install dependencies first with:
   echo npm install

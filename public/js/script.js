@@ -8,6 +8,7 @@ let notifications = [];
 let pendingPostLoginView = null;
 let pendingPaymentSubmission = null;
 let notificationRefreshTimer = null;
+let sidebarBadgeRefreshPending = false;
 
 const ROLES = { ADMIN: 'admin', HOMEOWNER: 'homeowner' };
 const COMPLAINT_STATUSES = ['Reviewed', 'In Progress', 'Resolved', 'Rejected'];
@@ -79,7 +80,7 @@ async function seedData() {
   return;
   if (!localStorage.getItem('sah_seeded')) {
     const users = [
-      { id: 'u001', username: 'admin', password: 'admin123', role: 'admin', name: 'Maria Santos', email: 'admin@sanalfonsohomes.com' },
+      { id: 'u001', username: 'admin', password: 'admin123', role: 'admin', name: 'Amy Antipolo', email: 'admin@sanalfonsohomes.com' },
       { id: 'u002', username: 'juandelacruz', password: 'home123', role: 'homeowner', name: 'Juan Dela Cruz', email: 'juan@email.com', block: 'Block 3', lot: 'Lot 7', contact: '09171234567', balance: 3500 },
       { id: 'u003', username: 'annamaria', password: 'home123', role: 'homeowner', name: 'Anna Maria Reyes', email: 'anna@email.com', block: 'Block 1', lot: 'Lot 2', contact: '09281234567', balance: 0 },
       { id: 'u004', username: 'carlosmagno', password: 'home123', role: 'homeowner', name: 'Carlos Magno', email: 'carlos@email.com', block: 'Block 2', lot: 'Lot 5', contact: '09351234567', balance: 7000 },
@@ -139,7 +140,7 @@ async function seedData() {
 }
 
 
-// SECTION 3: DATABASE (Express + SQLite API cache)
+// SECTION 3: DATABASE (Express + MySQL API cache)
 
 
 let dbCache = {};
@@ -209,6 +210,7 @@ const db = {
   },
   set(key, val) {
     dbCache[key] = Array.isArray(val) ? val : [];
+    scheduleSidebarBadgeRefresh();
     api.replace(key, dbCache[key]).catch(reportSyncError);
   },
   getOne(key, id) {
@@ -219,10 +221,12 @@ const db = {
     const idx = arr.findIndex(x => x.id === item.id);
     if (idx >= 0) arr[idx] = item; else arr.push(item);
     dbCache[key] = arr;
+    scheduleSidebarBadgeRefresh();
     api.save(key, item).catch(reportSyncError);
   },
   delete(key, id) {
     dbCache[key] = this.get(key).filter(x => x.id !== id);
+    scheduleSidebarBadgeRefresh();
     api.delete(key, id).catch(reportSyncError);
   },
   newId(prefix) {
@@ -237,7 +241,8 @@ const db = {
 function selectRole(role) {
   currentRole = role;
   document.querySelectorAll('.role-tab').forEach(t => t.classList.remove('active'));
-  document.querySelector(`[data-role="${role}"]`).classList.add('active');
+  const tab = document.querySelector(`[data-role="${role}"]`);
+  if (tab) tab.classList.add('active');
 }
 
 async function handleLogin() {
@@ -347,6 +352,139 @@ function canAccessView(viewId) {
   return getNavForRole(currentUser?.role).some(item => item.id === viewId);
 }
 
+function hasPaymentForBilling(payments, billingId, statuses) {
+  return payments.some(payment => payment.billingId === billingId && statuses.includes(payment.status));
+}
+
+function getSidebarSeenKey() {
+  return currentUser ? `sah_sidebar_seen_${currentUser.id}_${currentUser.role}` : '';
+}
+
+function loadSidebarSeen() {
+  const key = getSidebarSeenKey();
+  if (!key) return {};
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || '{}');
+    return value && typeof value === 'object' ? value : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveSidebarSeen(seen) {
+  const key = getSidebarSeenKey();
+  if (key) localStorage.setItem(key, JSON.stringify(seen));
+}
+
+function normalizeSidebarBadgeIds(items) {
+  return items.map(item => String(item?.id || item)).filter(Boolean);
+}
+
+function getSidebarBadgeItems(viewId) {
+  if (!currentUser) return [];
+
+  const role = currentUser.role;
+  const users = db.get('users');
+  const billings = db.get('billings');
+  const payments = db.get('payments');
+  const complaints = db.get('complaints');
+  const amenityBookings = db.get('amenityBookings');
+  const vehicles = db.get('vehicleRegistrations');
+  const lostFound = db.get('lostFound');
+
+  const homeownerBillings = () => billings.filter(billing => getAssignedHomeownerIds(billing).includes(currentUser.id));
+  const homeownerPayments = () => payments.filter(payment => payment.homeownerId === currentUser.id);
+  const unpaidHomeownerBillings = () => {
+    const myPayments = homeownerPayments();
+    return homeownerBillings().filter(billing =>
+      !hasPaymentForBilling(myPayments, billing.id, ['approved', 'pending'])
+    );
+  };
+
+  const itemMap = {
+    homeowners: () => users.filter(user => user.role === 'homeowner'),
+    billing: () => billings.filter(billing => ['active', 'pending', 'overdue'].includes(getBillingCollectionStatus(billing))),
+    payments: () => payments.filter(payment => payment.status === 'pending'),
+    amenities: () => amenityBookings.filter(booking => booking.status === 'Pending'),
+    vehicles: () => vehicles.filter(vehicle =>
+      vehicle.registrationStatus === 'Pending' ||
+      (vehicle.registrationStatus === 'Approved' && vehicle.paymentStatus !== 'Paid')
+    ),
+    lostfound: () => lostFound.filter(report => report.status === 'Pending'),
+    complaints: () => complaints.filter(complaint => normalizeComplaintStatus(complaint.status) === 'Reviewed'),
+    announcements: () => db.get('announcements'),
+    auditlog: () => db.get('auditLog'),
+    'ho-billing': () => unpaidHomeownerBillings(),
+    'ho-payments': () => unpaidHomeownerBillings(),
+    'ho-history': () => homeownerPayments().filter(payment => payment.status === 'pending'),
+    'ho-amenities': () => amenityBookings.filter(booking => booking.homeownerId === currentUser.id && booking.status === 'Pending'),
+    'ho-vehicles': () => vehicles.filter(vehicle =>
+      vehicle.homeownerId === currentUser.id &&
+      (vehicle.registrationStatus === 'Pending' ||
+        (vehicle.registrationStatus === 'Approved' && vehicle.paymentStatus !== 'Paid'))
+    ),
+    'ho-complaints': () => complaints.filter(complaint =>
+      complaint.homeownerId === currentUser.id &&
+      ['Reviewed', 'In Progress'].includes(normalizeComplaintStatus(complaint.status))
+    ),
+    'ho-announcements': () => db.get('announcements'),
+  };
+
+  if (role === 'treasurer' && viewId === 'reports') {
+    return normalizeSidebarBadgeIds(payments.filter(payment => payment.status === 'pending'));
+  }
+  if (role === 'auditor' && viewId === 'reports') {
+    return normalizeSidebarBadgeIds(billings.filter(billing => getBillingCollectionStatus(billing) !== 'paid'));
+  }
+  if (!itemMap[viewId]) return [];
+  return normalizeSidebarBadgeIds(itemMap[viewId]());
+}
+
+function getSidebarBadgeCount(viewId) {
+  const storedIds = loadSidebarSeen()[viewId];
+  const seenIds = new Set(Array.isArray(storedIds) ? storedIds : []);
+  return getSidebarBadgeItems(viewId).filter(id => !seenIds.has(id)).length;
+}
+
+function markSidebarViewSeen(viewId) {
+  if (!currentUser || !viewId) return;
+  const seen = loadSidebarSeen();
+  seen[viewId] = getSidebarBadgeItems(viewId);
+  saveSidebarSeen(seen);
+}
+
+function updateSidebarBadges() {
+  const navEl = document.getElementById('sidebarNav');
+  if (!navEl || !currentUser) return;
+
+  navEl.querySelectorAll('.nav-item').forEach(item => {
+    if (item.dataset.view === currentView) markSidebarViewSeen(item.dataset.view);
+    const count = getSidebarBadgeCount(item.dataset.view);
+    let badge = item.querySelector('.nav-badge');
+
+    if (count > 0) {
+      if (!badge) {
+        badge = document.createElement('span');
+        badge.className = 'nav-badge';
+        item.appendChild(badge);
+      }
+      badge.textContent = count > 99 ? '99+' : String(count);
+    } else if (badge) {
+      badge.remove();
+    }
+  });
+}
+
+function scheduleSidebarBadgeRefresh() {
+  if (!currentUser || sidebarBadgeRefreshPending) return;
+  sidebarBadgeRefreshPending = true;
+  const schedule = typeof requestAnimationFrame === 'function' ? requestAnimationFrame : setTimeout;
+  schedule(() => {
+    sidebarBadgeRefreshPending = false;
+    updateSidebarBadges();
+  });
+}
+
 function buildSidebar() {
   const nav = getNavForRole(currentUser.role);
   const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
@@ -358,13 +496,6 @@ function buildSidebar() {
   let lastSection = '';
   const navEl = document.getElementById('sidebarNav');
   navEl.innerHTML = '';
-
-  const annCount = db.get('announcements').length;
-  const openComplaints = db.get('complaints').filter(c =>
-    canViewAdminComplaints()
-      ? normalizeComplaintStatus(c.status) === 'Reviewed'
-      : c.homeownerId === currentUser.id && normalizeComplaintStatus(c.status) === 'Reviewed'
-  ).length;
 
   nav.forEach(item => {
     if (item.section !== lastSection) {
@@ -378,13 +509,8 @@ function buildSidebar() {
     el.className = 'nav-item';
     el.dataset.view = item.id;
 
-    let badgeHtml = '';
-    if (item.id === 'ho-announcements' && currentUser.role === 'homeowner' && annCount > 0) {
-      badgeHtml = `<span class="nav-badge">${annCount}</span>`;
-    }
-    if ((item.id === 'complaints' || item.id === 'ho-complaints') && openComplaints > 0) {
-      badgeHtml = `<span class="nav-badge">${openComplaints}</span>`;
-    }
+    const badgeCount = getSidebarBadgeCount(item.id);
+    const badgeHtml = badgeCount > 0 ? `<span class="nav-badge">${badgeCount > 99 ? '99+' : badgeCount}</span>` : '';
 
     el.innerHTML = `<span class="nav-icon"><svg width="17" height="17"><use href="#${item.icon}"/></svg></span><span>${item.label}</span>${badgeHtml}`;
     el.addEventListener('click', () => navigate(item.id));
@@ -404,6 +530,8 @@ function navigate(viewId) {
   const navItem = allNav.find(n => n.id === viewId);
   document.getElementById('topbarTitle').textContent = navItem ? navItem.label : 'Dashboard';
   renderView(viewId);
+  markSidebarViewSeen(viewId);
+  updateSidebarBadges();
   if (window.innerWidth <= 900) closeSidebar();
   document.getElementById('notifPanel').classList.add('hidden');
 }
@@ -466,6 +594,15 @@ function formatBillingMonth(value) {
   return date.toLocaleString('default', { month: 'long', year: 'numeric' });
 }
 
+function getLocalDateValue(date = new Date()) {
+  const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
+  return localDate.toISOString().slice(0, 10);
+}
+
+function getLocalMonthValue(date = new Date()) {
+  return getLocalDateValue(date).slice(0, 7);
+}
+
 function getAssignedHomeownerIds(billing) {
   if (Array.isArray(billing?.assignedTo)) return billing.assignedTo;
   if (typeof billing?.assignedTo !== 'string') return [];
@@ -500,7 +637,7 @@ function getBillingCollectionStatus(billing) {
 
   if (assignedIds.every(id => approvedHomeowners.has(id))) return 'paid';
   if (assignedIds.some(id => pendingHomeowners.has(id))) return 'pending';
-  if (billing.dueDate && billing.dueDate < new Date().toISOString().split('T')[0]) return 'overdue';
+  if (billing.dueDate && billing.dueDate < getLocalDateValue()) return 'overdue';
   return billing.status === 'inactive' ? 'inactive' : 'active';
 }
 
@@ -1267,7 +1404,7 @@ function saveAddBilling() {
     title: finalTitle, amount, dueDate: due,
     description: description ? `Billing month: ${billingMonth}. ${description}` : `Billing month: ${billingMonth}.`,
     assignedTo: checked, status: 'active',
-    createdAt: new Date().toISOString().split('T')[0],
+    createdAt: getLocalDateValue(),
   };
   db.save('billings', bill);
   checked.forEach(id => {
@@ -1326,8 +1463,8 @@ function autoGenerateMonthlyDues() {
   const homeowners = db.get('users').filter(u => u.role === 'homeowner');
   const existing = db.get('billings').find(b => b.title === title);
   if (existing) { showToast('warning', 'Already Exists', `Dues for ${month} already created.`); return; }
-  const lastDay = new Date(year, new Date().getMonth() + 1, 0).toISOString().split('T')[0];
-  const bill = { id: db.newId('b'), title, amount: 1500, dueDate: lastDay, description: 'Auto-generated monthly dues.', assignedTo: homeowners.map(u => u.id), status: 'active', createdAt: new Date().toISOString().split('T')[0] };
+  const lastDay = getLocalDateValue(new Date(year, new Date().getMonth() + 1, 0));
+  const bill = { id: db.newId('b'), title, amount: 1500, dueDate: lastDay, description: 'Auto-generated monthly dues.', assignedTo: homeowners.map(u => u.id), status: 'active', createdAt: getLocalDateValue() };
   db.save('billings', bill);
   logAction(`Auto-generated monthly dues: ${title}`);
   showToast('success', 'Generated', `${title} created for ${homeowners.length} homeowners.`);
@@ -1343,8 +1480,8 @@ function autoGenerateLotAreaMonthlyDues() {
   const existing = db.get('billings').filter(b => b.title === title);
   const alreadyAssigned = new Set(existing.flatMap(b => b.assignedTo || []));
   const rate = getDuesRatePerSqm();
-  const lastDay = new Date(year, new Date().getMonth() + 1, 0).toISOString().split('T')[0];
-  const createdAt = new Date().toISOString().split('T')[0];
+  const lastDay = getLocalDateValue(new Date(year, new Date().getMonth() + 1, 0));
+  const createdAt = getLocalDateValue();
   let created = 0;
 
   homeowners.forEach((u, index) => {
@@ -1457,7 +1594,7 @@ function renderAmenityCalendar() {
   const container = document.getElementById('amenityCalendar');
   if (!container) return;
   const amenity = document.getElementById('ab_amenity')?.value || AMENITIES[0];
-  const monthValue = document.getElementById('ab_month')?.value || new Date().toISOString().slice(0, 7);
+  const monthValue = document.getElementById('ab_month')?.value || getLocalMonthValue();
   const [year, month] = monthValue.split('-').map(Number);
   const first = new Date(year, month - 1, 1);
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -1490,7 +1627,7 @@ function renderAdminAmenityCalendar() {
   const container = document.getElementById('adminAmenityCalendar');
   if (!container) return;
   const amenity = document.getElementById('admin_ab_amenity')?.value || AMENITIES[0];
-  const monthValue = document.getElementById('admin_ab_month')?.value || new Date().toISOString().slice(0, 7);
+  const monthValue = document.getElementById('admin_ab_month')?.value || getLocalMonthValue();
   const [year, month] = monthValue.split('-').map(Number);
   const first = new Date(year, month - 1, 1);
   const daysInMonth = new Date(year, month, 0).getDate();
@@ -1539,7 +1676,7 @@ function updateAmenityAvailabilityNote() {
 }
 
 function renderHOAmenityBooking() {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateValue();
   const currentMonth = today.slice(0, 7);
   const myBookings = db.get('amenityBookings')
     .filter(booking => booking.homeownerId === currentUser.id)
@@ -1648,7 +1785,7 @@ function submitAmenityBooking({ amenity, bookingDate, startTime, endTime, purpos
     purpose,
     status: 'Pending',
     adminRemarks: '',
-    createdAt: new Date().toISOString().split('T')[0],
+    createdAt: getLocalDateValue(),
     reviewedAt: '',
   };
   db.save('amenityBookings', booking);
@@ -1661,7 +1798,7 @@ function submitAmenityBooking({ amenity, bookingDate, startTime, endTime, purpos
 
 function renderAmenityBookingsAdmin() {
   const bookings = [...db.get('amenityBookings')].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateValue();
   const currentMonth = today.slice(0, 7);
   const unavailable = getAmenityUnavailableSettings();
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
@@ -1827,7 +1964,7 @@ function approveAmenityBooking(id) {
   const booking = db.getOne('amenityBookings', id);
   if (!booking) return;
   booking.status = 'Approved';
-  booking.reviewedAt = new Date().toISOString().split('T')[0];
+  booking.reviewedAt = getLocalDateValue();
   db.save('amenityBookings', booking);
   const homeowner = db.getOne('users', booking.homeownerId);
   logAction(`Approved amenity booking: ${booking.amenity} for ${homeowner ? homeowner.name : 'Unknown'}`);
@@ -1857,7 +1994,7 @@ function rejectAmenityBooking(id, remarks) {
   if (!booking) return;
   booking.status = 'Rejected';
   booking.adminRemarks = remarks;
-  booking.reviewedAt = new Date().toISOString().split('T')[0];
+  booking.reviewedAt = getLocalDateValue();
   db.save('amenityBookings', booking);
   const homeowner = db.getOne('users', booking.homeownerId);
   logAction(`Rejected amenity booking: ${booking.amenity} for ${homeowner ? homeowner.name : 'Unknown'} - ${remarks}`);
@@ -2036,7 +2173,7 @@ function confirmSubmitVehicleRegistration() {
 }
 
 function submitVehicleRegistration({ registrantType, ownerName, block, lot, plateNumber, vehicleType }) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateValue();
   const vehicle = {
     id: db.newId('vr'),
     homeownerId: currentUser.id,
@@ -2210,7 +2347,7 @@ function saveVehicleAdminChanges(id) {
     return;
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateValue();
   vehicle.paymentStatus = paymentStatus;
   vehicle.registrationStatus = registrationStatus;
   vehicle.stickerNumber = stickerNumber || null;
@@ -2274,7 +2411,7 @@ function renderPublicLostFound() {
 }
 
 function openLostFoundReportModal(reportType) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateValue();
   const actionLabel = reportType === 'Found' ? 'Report Found Item' : 'Report Lost Item';
   openModal(actionLabel, `
     <div class="lostfound-form-note">
@@ -2361,7 +2498,7 @@ async function submitLostFoundReport(reportType) {
   }
 
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = getLocalDateValue();
     const image = await readImageInput(document.getElementById('lf_image'));
     const report = {
       id: db.newId('lf'),
@@ -2515,7 +2652,7 @@ function saveLostFoundAdminChanges(id) {
     return;
   }
 
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateValue();
   const newStatus = document.getElementById('lf_admin_status').value;
   report.reportType = document.getElementById('lf_admin_reportType').value;
   report.itemType = document.getElementById('lf_admin_itemType').value.trim();
@@ -2666,7 +2803,7 @@ function applyApprovePayment(id) {
   const p = db.getOne('payments', id);
   if (!p) return;
   p.status = 'approved';
-  p.reviewedAt = new Date().toISOString().split('T')[0];
+  p.reviewedAt = getLocalDateValue();
   db.save('payments', p);
   const ho = db.getOne('users', p.homeownerId);
   syncHomeownerBalances();
@@ -2706,7 +2843,7 @@ function rejectPayment(id, remarks) {
   if (!p) return;
   p.status = 'rejected';
   p.remarks = remarks;
-  p.reviewedAt = new Date().toISOString().split('T')[0];
+  p.reviewedAt = getLocalDateValue();
   db.save('payments', p);
   const ho = db.getOne('users', p.homeownerId);
   logAction(`Rejected payment from ${ho ? ho.name : 'Unknown'}: ${p.remarks}`);
@@ -2938,9 +3075,9 @@ function saveComplaintManagement(id) {
   const oldStatus = normalizeComplaintStatus(c.status);
   c.status        = newStatus;
   c.adminResponse = newResponse || c.adminResponse;
-  c.updatedAt     = new Date().toISOString().split('T')[0];
+  c.updatedAt     = getLocalDateValue();
   if (newStatus === 'Resolved' && !c.resolvedAt) {
-    c.resolvedAt = new Date().toISOString().split('T')[0];
+    c.resolvedAt = getLocalDateValue();
   } else if (newStatus !== 'Resolved') {
     c.resolvedAt = null;
   }
@@ -2974,7 +3111,7 @@ function renderAnnouncements() {
 function renderAnnouncementCards() {
   const list = document.getElementById('announcementsList');
   if (!list) return;
-  const announcements = db.get('announcements').reverse();
+  const announcements = [...db.get('announcements')].reverse();
   if (!announcements.length) { list.innerHTML = `<div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-megaphone"/></svg>No announcements yet.</div>`; return; }
   const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#8795a8' };
   list.innerHTML = announcements.map(a => `
@@ -3005,7 +3142,7 @@ function openAddAnnouncementModal() {
           <option>General</option><option>Maintenance</option><option>Emergency</option><option>Events</option><option>Security</option>
         </select>
       </div>
-      <div class="form-group"><label>Date</label><input id="af_date" type="date" value="${new Date().toISOString().split('T')[0]}"/></div>
+      <div class="form-group"><label>Date</label><input id="af_date" type="date" value="${getLocalDateValue()}"/></div>
     </div>
     <div class="form-group"><label>Description *</label><textarea id="af_desc" placeholder="Announcement details..." style="min-height:100px"></textarea></div>
     <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
@@ -3194,7 +3331,7 @@ function renderReports() {
 
 
 function renderAuditLog() {
-  const logs = db.get('auditLog').reverse();
+  const logs = [...db.get('auditLog')].reverse();
   const area = document.getElementById('contentArea');
   area.innerHTML = `
   <div class="page-header">
@@ -3310,7 +3447,7 @@ function renderSettings() {
     <div class="settings-section-header"><h4>Danger Zone</h4></div>
     <div class="settings-section-body">
       <div class="settings-row">
-        <div><div class="settings-label" style="color:var(--red-600)">Reset All Data</div><div style="font-size:0.78rem;color:var(--text-3)">Clears the SQLite database and restores demo data</div></div>
+        <div><div class="settings-label" style="color:var(--red-600)">Reset All Data</div><div style="font-size:0.78rem;color:var(--text-3)">Clears the MySQL database and restores demo data</div></div>
         <button class="btn btn-danger btn-sm" onclick="confirmResetData()">Reset Data</button>
       </div>
     </div>
@@ -3363,7 +3500,7 @@ function confirmResetData() {
       localStorage.removeItem('sah_session');
       await api.reset();
       closeModal();
-      handleLogout();
+      performLogout();
       showToast('success', 'Reset', 'Data has been reset.');
     }},
   ]);
@@ -3380,7 +3517,7 @@ function renderHODashboard() {
   const myComplaints = db.get('complaints').filter(c => c.homeownerId === currentUser.id);
   const approved = myPayments.filter(p => p.status === 'approved');
   const pending  = myPayments.filter(p => p.status === 'pending');
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateValue();
   const upcoming = myBillings.filter(b => b.dueDate >= today).sort((a,b) => a.dueDate.localeCompare(b.dueDate)).slice(0,3);
   const announcements = db.get('announcements').slice(-3).reverse();
   const openComplaints = myComplaints.filter(c => ['Reviewed', 'In Progress'].includes(normalizeComplaintStatus(c.status)));
@@ -3462,7 +3599,7 @@ function renderHOBilling() {
   syncHomeownerBalances();
   const myBillings = db.get('billings').filter(b => b.assignedTo.includes(currentUser.id));
   const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser.id);
-  const today = new Date().toISOString().split('T')[0];
+  const today = getLocalDateValue();
   const area = document.getElementById('contentArea');
   area.innerHTML = `
   <div class="page-header"><div class="page-header-left"><h2>My Bills</h2><p>View your assigned billing records.</p></div></div>
@@ -3546,7 +3683,7 @@ function submitPayment() {
     homeownerId: currentUser.id,
     billingId, amount, refNum,
     status: 'pending', receipt: null,
-    submittedAt: new Date().toISOString().split('T')[0],
+    submittedAt: getLocalDateValue(),
     remarks: '', reviewedAt: null,
   };
   db.save('payments', payment);
@@ -3567,7 +3704,7 @@ function savePaymentSubmission(billingId, amount, refNum) {
     homeownerId: currentUser.id,
     billingId, amount, refNum,
     status: 'pending', receipt: null,
-    submittedAt: new Date().toISOString().split('T')[0],
+    submittedAt: getLocalDateValue(),
     remarks: '', reviewedAt: null,
   };
   db.save('payments', payment);
@@ -3721,7 +3858,7 @@ function openFileComplaintForm() {
     </div>
     <div class="form-group">
       <label>Date Filed</label>
-      <input type="text" value="${new Date().toLocaleDateString('en-CA')}" disabled style="background:var(--surface-2);color:var(--text-3);cursor:not-allowed"/>
+      <input type="text" value="${getLocalDateValue()}" disabled style="background:var(--surface-2);color:var(--text-3);cursor:not-allowed"/>
     </div>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
@@ -3774,7 +3911,7 @@ function submitHOComplaint(category, description) {
     description,
     status:        'Reviewed',
     adminResponse: '',
-    dateFiled:     new Date().toISOString().split('T')[0],
+    dateFiled:     getLocalDateValue(),
     updatedAt:     null,
     resolvedAt:    null,
   };
@@ -3793,7 +3930,7 @@ function submitHOComplaint(category, description) {
 }
 
 function renderHOAnnouncements() {
-  const announcements = db.get('announcements').reverse();
+  const announcements = [...db.get('announcements')].reverse();
   const area = document.getElementById('contentArea');
   const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#8795a8' };
   area.innerHTML = `
@@ -3977,6 +4114,26 @@ function normalizeNotificationList(value) {
   return Array.isArray(value) ? value.filter(Boolean) : [];
 }
 
+function getNotificationSeenKey() {
+  return currentUser ? `sah_notifications_seen_${currentUser.id}_${currentUser.role}` : '';
+}
+
+function loadSeenNotificationIds() {
+  const key = getNotificationSeenKey();
+  if (!key) return [];
+  try {
+    const value = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(value) ? value.filter(Boolean) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveSeenNotificationIds(ids) {
+  const key = getNotificationSeenKey();
+  if (key) localStorage.setItem(key, JSON.stringify([...new Set(ids.filter(Boolean))]));
+}
+
 function addNotification(title, message, options = {}) {
   const stored = db.get('notifications');
   const hasAudience = Boolean(options.audience || options.roles || options.userIds);
@@ -3995,6 +4152,11 @@ function addNotification(title, message, options = {}) {
 
   stored.unshift(notification);
   db.save('notifications', notification);
+  const panel = document.getElementById('notifPanel');
+  if (panel && !panel.classList.contains('hidden')) {
+    renderNotificationList();
+    markVisibleNotificationsSeen();
+  }
   updateNotifBadge();
 }
 
@@ -4016,6 +4178,18 @@ function getVisibleNotifications() {
   return db.get('notifications').filter(canSeeNotification).slice(0, 20);
 }
 
+function getUnreadNotifications() {
+  const seenIds = new Set(loadSeenNotificationIds());
+  return getVisibleNotifications().filter(notification => !seenIds.has(notification.id));
+}
+
+function markVisibleNotificationsSeen() {
+  if (!currentUser) return;
+  const seenIds = loadSeenNotificationIds();
+  const visibleIds = getVisibleNotifications().map(notification => notification.id);
+  saveSeenNotificationIds([...seenIds, ...visibleIds]);
+}
+
 function renderNotificationList() {
   const list = document.getElementById('notifList');
   if (!list) return;
@@ -4029,7 +4203,7 @@ function renderNotificationList() {
 }
 
 function updateNotifBadge() {
-  const notifs = getVisibleNotifications();
+  const notifs = getUnreadNotifications();
   const badge = document.getElementById('notifBadge');
   if (badge) badge.textContent = notifs.length > 0 ? notifs.length : '0';
 }
@@ -4038,9 +4212,12 @@ async function refreshNotifications() {
   if (!currentUser) return;
   try {
     dbCache.notifications = await api.request('/api/notifications');
-    updateNotifBadge();
     const panel = document.getElementById('notifPanel');
-    if (panel && !panel.classList.contains('hidden')) renderNotificationList();
+    if (panel && !panel.classList.contains('hidden')) {
+      renderNotificationList();
+      markVisibleNotificationsSeen();
+    }
+    updateNotifBadge();
   } catch (error) {
     console.warn('Could not refresh notifications', error);
   }
@@ -4061,8 +4238,10 @@ function toggleNotifPanel() {
   const panel = document.getElementById('notifPanel');
   panel.classList.toggle('hidden');
   if (!panel.classList.contains('hidden')) {
-    refreshNotifications();
     renderNotificationList();
+    markVisibleNotificationsSeen();
+    updateNotifBadge();
+    refreshNotifications();
   }
 }
 
@@ -4259,13 +4438,17 @@ function showLandingPage() {
   applyStoredTheme();
 }
 
-function handleLogout() {
+function performLogout() {
   localStorage.removeItem('sah_session');
   stopNotificationRefresh();
   currentUser = null;
   document.getElementById('appShell').classList.add('hidden');
   showLandingPage();
   window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function handleLogout() {
+  openConfirm('Sign Out', 'Are you sure you want to sign out?', performLogout);
 }
 
 
@@ -4281,7 +4464,7 @@ function handleLogout() {
     document.body.innerHTML = `
       <div style="font-family:Arial,sans-serif;max-width:720px;margin:80px auto;padding:24px;line-height:1.6">
         <h1>Start the Node.js server first</h1>
-        <p>This app now uses SQLite through an Express backend. Open this folder in VS Code, run <strong>npm install</strong>, then run <strong>npm start</strong>.</p>
+        <p>This app now uses MySQL through an Express backend. Open this folder in VS Code, run <strong>npm install</strong>, then run <strong>npm start</strong>.</p>
         <p>After the server starts, open <strong>http://localhost:3000</strong>.</p>
       </div>`;
     console.error(error);

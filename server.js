@@ -1,16 +1,22 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const sqlite3 = require('sqlite3').verbose();
+const mysql = require('mysql2/promise');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const DB_PATH = path.join(__dirname, 'database.sqlite');
+const DB_CONFIG = {
+  host: process.env.MYSQL_HOST || 'localhost',
+  port: Number(process.env.MYSQL_PORT || 3306),
+  user: process.env.MYSQL_USER || 'root',
+  password: process.env.MYSQL_PASSWORD || '',
+  database: process.env.MYSQL_DATABASE || 'san_alfonso_homes',
+};
 
-const db = new sqlite3.Database(DB_PATH);
+let db;
 
 app.use(express.json({ limit: '15mb' }));
-app.use(express.static(__dirname));
+app.use('/public', express.static(path.join(__dirname, 'public')));
 
 const tableConfig = {
   users: {
@@ -75,7 +81,7 @@ const adminUser = {
   username: 'admin',
   password: 'admin123',
   role: 'admin',
-  name: 'Maria Santos',
+  name: 'Amy Antipolo',
   email: 'admin@sanalfonsohomes.com',
   block: null,
   lot: null,
@@ -170,31 +176,50 @@ const seed = {
   appSettings: [{ id: 'duesRatePerSqm', value: '5.725' }],
 };
 
-function run(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function onRun(err) {
-      if (err) reject(err);
-      else resolve(this);
-    });
+function quoteIdentifier(identifier) {
+  return `\`${String(identifier).replace(/`/g, '``')}\``;
+}
+
+function tableName(table) {
+  if (!tableConfig[table]) throw new Error(`Unknown table: ${table}`);
+  return quoteIdentifier(table);
+}
+
+async function ensureDatabase() {
+  const setupPool = mysql.createPool({
+    host: DB_CONFIG.host,
+    port: DB_CONFIG.port,
+    user: DB_CONFIG.user,
+    password: DB_CONFIG.password,
+    waitForConnections: true,
+    connectionLimit: 2,
+  });
+
+  await setupPool.query(
+    `CREATE DATABASE IF NOT EXISTS ${quoteIdentifier(DB_CONFIG.database)} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+  );
+  await setupPool.end();
+
+  db = mysql.createPool({
+    ...DB_CONFIG,
+    waitForConnections: true,
+    connectionLimit: 10,
   });
 }
 
-function all(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.all(sql, params, (err, rows) => {
-      if (err) reject(err);
-      else resolve(rows);
-    });
-  });
+async function run(sql, params = []) {
+  const [result] = await db.execute(sql, params);
+  return result;
 }
 
-function get(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (err, row) => {
-      if (err) reject(err);
-      else resolve(row);
-    });
-  });
+async function all(sql, params = []) {
+  const [rows] = await db.execute(sql, params);
+  return rows;
+}
+
+async function get(sql, params = []) {
+  const rows = await all(sql, params);
+  return rows[0];
 }
 
 function serializeValue(table, column, value) {
@@ -220,6 +245,17 @@ function deserializeRow(table, row) {
     output[column] = Boolean(row[column]);
   }
 
+  if (table === 'users') {
+    delete output.password;
+  }
+
+  return output;
+}
+
+function sanitizeRecord(table, item) {
+  if (table !== 'users') return item;
+  const output = { ...item };
+  delete output.password;
   return output;
 }
 
@@ -232,25 +268,35 @@ function validateTable(req, res) {
   return table;
 }
 
+function asyncHandler(handler) {
+  return (req, res, next) => {
+    Promise.resolve(handler(req, res, next)).catch(next);
+  };
+}
+
 async function saveRecord(table, item) {
   if (!item.id) throw new Error('Record id is required.');
 
   const columns = tableConfig[table].columns;
-  const existing = await get(`SELECT id FROM ${table} WHERE id = ?`, [item.id]);
+  const sqlTable = tableName(table);
+  const existing = await get(`SELECT \`id\` FROM ${sqlTable} WHERE \`id\` = ?`, [item.id]);
   const values = columns.map((column) => serializeValue(table, column, item[column]));
 
   if (existing) {
-    const setClause = columns.filter((column) => column !== 'id').map((column) => `${column} = ?`).join(', ');
-    const updateValues = columns.filter((column) => column !== 'id').map((column) => serializeValue(table, column, item[column]));
-    await run(`UPDATE ${table} SET ${setClause} WHERE id = ?`, [...updateValues, item.id]);
+    const updateColumns = columns.filter((column) => column !== 'id' && item[column] !== undefined);
+    if (!updateColumns.length) return;
+    const setClause = updateColumns.map((column) => `${quoteIdentifier(column)} = ?`).join(', ');
+    const updateValues = updateColumns.map((column) => serializeValue(table, column, item[column]));
+    await run(`UPDATE ${sqlTable} SET ${setClause} WHERE \`id\` = ?`, [...updateValues, item.id]);
   } else {
     const placeholders = columns.map(() => '?').join(', ');
-    await run(`INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`, values);
+    const columnList = columns.map(quoteIdentifier).join(', ');
+    await run(`INSERT INTO ${sqlTable} (${columnList}) VALUES (${placeholders})`, values);
   }
 }
 
 async function getTableData(table) {
-  const rows = await all(`SELECT * FROM ${table}`);
+  const rows = await all(`SELECT * FROM ${tableName(table)}`);
   return rows.map((row) => deserializeRow(table, row));
 }
 
@@ -264,68 +310,68 @@ async function loadAllData() {
 
 async function createTables() {
   await run(`CREATE TABLE IF NOT EXISTS users (
-    id TEXT PRIMARY KEY,
-    username TEXT UNIQUE,
+    id VARCHAR(64) PRIMARY KEY,
+    username VARCHAR(255) UNIQUE,
     password TEXT,
-    role TEXT,
+    role VARCHAR(64),
     name TEXT,
     email TEXT,
     block TEXT,
     lot TEXT,
-    lotArea REAL,
+    lotArea DOUBLE,
     contact TEXT,
-    balance REAL DEFAULT 0
+    balance DOUBLE DEFAULT 0
   )`);
-  await run('ALTER TABLE users ADD COLUMN lotArea REAL').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN lotArea DOUBLE').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS billings (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     title TEXT,
-    amount REAL,
+    amount DOUBLE,
     dueDate TEXT,
     description TEXT,
-    assignedTo TEXT,
+    assignedTo LONGTEXT,
     status TEXT,
     createdAt TEXT
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS payments (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     homeownerId TEXT,
     billingId TEXT,
-    amount REAL,
+    amount DOUBLE,
     refNum TEXT,
     status TEXT,
-    receipt TEXT,
+    receipt LONGTEXT,
     submittedAt TEXT,
     remarks TEXT,
     reviewedAt TEXT
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS announcements (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     title TEXT,
-    description TEXT,
+    description LONGTEXT,
     category TEXT,
     date TEXT,
-    urgent INTEGER DEFAULT 0,
+    urgent TINYINT(1) DEFAULT 0,
     createdBy TEXT
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS complaints (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     homeownerId TEXT,
     category TEXT,
-    description TEXT,
+    description LONGTEXT,
     status TEXT,
-    adminResponse TEXT,
+    adminResponse LONGTEXT,
     dateFiled TEXT,
     updatedAt TEXT,
     resolvedAt TEXT
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS amenityBookings (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     homeownerId TEXT,
     amenity TEXT,
     bookingDate TEXT,
@@ -339,18 +385,18 @@ async function createTables() {
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS vehicleRegistrations (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     homeownerId TEXT,
     ownerName TEXT,
     block TEXT,
     lot TEXT,
-    plateNumber TEXT,
+    plateNumber VARCHAR(255),
     vehicleType TEXT,
     registrantType TEXT,
-    fee REAL,
+    fee DOUBLE,
     registrationStatus TEXT,
     paymentStatus TEXT,
-    stickerNumber TEXT UNIQUE,
+    stickerNumber VARCHAR(255) UNIQUE,
     remarks TEXT,
     createdAt TEXT,
     updatedAt TEXT,
@@ -358,16 +404,16 @@ async function createTables() {
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS lostFound (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     reportType TEXT,
     itemType TEXT,
     itemName TEXT,
-    description TEXT,
+    description LONGTEXT,
     location TEXT,
     eventDate TEXT,
     contactName TEXT,
     contactNumber TEXT,
-    image TEXT,
+    image LONGTEXT,
     status TEXT,
     remarks TEXT,
     createdAt TEXT,
@@ -376,34 +422,34 @@ async function createTables() {
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS auditLog (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     action TEXT,
     adminId TEXT,
     timestamp TEXT
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS notifications (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     title TEXT,
-    message TEXT,
+    message LONGTEXT,
     time TEXT,
     audience TEXT DEFAULT 'all',
-    targetIds TEXT,
-    dismissedBy TEXT
+    targetIds LONGTEXT,
+    dismissedBy LONGTEXT
   )`);
   await run(`ALTER TABLE notifications ADD COLUMN audience TEXT DEFAULT 'all'`).catch(() => {});
-  await run(`ALTER TABLE notifications ADD COLUMN targetIds TEXT`).catch(() => {});
-  await run(`ALTER TABLE notifications ADD COLUMN dismissedBy TEXT`).catch(() => {});
+  await run(`ALTER TABLE notifications ADD COLUMN targetIds LONGTEXT`).catch(() => {});
+  await run(`ALTER TABLE notifications ADD COLUMN dismissedBy LONGTEXT`).catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS appSettings (
-    id TEXT PRIMARY KEY,
+    id VARCHAR(64) PRIMARY KEY,
     value TEXT
   )`);
 }
 
 async function seedIfEmpty() {
   const row = await get('SELECT COUNT(*) AS count FROM users');
-  if (row.count > 0) return;
+  if (Number(row.count) > 0) return;
 
   for (const [table, records] of Object.entries(seed)) {
     for (const record of records) {
@@ -423,7 +469,7 @@ async function ensureStaffUsers() {
 
 async function resetDatabase() {
   for (const table of Object.keys(tableConfig)) {
-    await run(`DELETE FROM ${table}`);
+    await run(`DELETE FROM ${tableName(table)}`);
   }
 
   for (const [table, records] of Object.entries(seed)) {
@@ -433,16 +479,22 @@ async function resetDatabase() {
   }
 }
 
-app.get('/api/health', async (req, res) => {
+app.get('/api/health', asyncHandler(async (req, res) => {
   const row = await get('SELECT COUNT(*) AS users FROM users');
-  res.json({ ok: true, database: DB_PATH, users: row.users });
-});
+  res.json({
+    ok: true,
+    database: DB_CONFIG.database,
+    host: DB_CONFIG.host,
+    port: DB_CONFIG.port,
+    users: Number(row.users),
+  });
+}));
 
-app.get('/api/data', async (req, res) => {
+app.get('/api/data', asyncHandler(async (req, res) => {
   res.json(await loadAllData());
-});
+}));
 
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', asyncHandler(async (req, res) => {
   const { username, password } = req.body;
   const user = await get('SELECT * FROM users WHERE username = ? AND password = ?', [username, password]);
   if (!user) {
@@ -450,15 +502,15 @@ app.post('/api/login', async (req, res) => {
     return;
   }
   res.json(deserializeRow('users', user));
-});
+}));
 
-app.get('/api/:table', async (req, res) => {
+app.get('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
   res.json(await getTableData(table));
-});
+}));
 
-app.put('/api/:table', async (req, res) => {
+app.put('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
   if (!Array.isArray(req.body)) {
@@ -466,38 +518,42 @@ app.put('/api/:table', async (req, res) => {
     return;
   }
 
-  await run(`DELETE FROM ${table}`);
+  await run(`DELETE FROM ${tableName(table)}`);
   for (const item of req.body) {
     await saveRecord(table, item);
   }
   res.json(await getTableData(table));
-});
+}));
 
-app.post('/api/:table', async (req, res) => {
+app.post('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
   await saveRecord(table, req.body);
-  res.status(201).json(req.body);
-});
+  res.status(201).json(sanitizeRecord(table, req.body));
+}));
 
-app.put('/api/:table/:id', async (req, res) => {
+app.put('/api/:table/:id', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
   const item = { ...req.body, id: req.params.id };
   await saveRecord(table, item);
-  res.json(item);
-});
+  res.json(sanitizeRecord(table, item));
+}));
 
-app.delete('/api/:table/:id', async (req, res) => {
+app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
-  await run(`DELETE FROM ${table} WHERE id = ?`, [req.params.id]);
+  await run(`DELETE FROM ${tableName(table)} WHERE \`id\` = ?`, [req.params.id]);
   res.json({ ok: true });
-});
+}));
 
-app.post('/api/reset', async (req, res) => {
+app.post('/api/reset', asyncHandler(async (req, res) => {
   await resetDatabase();
   res.json(await loadAllData());
+}));
+
+app.get(['/', '/index.html'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'index.html'));
 });
 
 app.use((err, req, res, next) => {
@@ -505,13 +561,14 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Server error. Check the VS Code terminal.' });
 });
 
-createTables()
+ensureDatabase()
+  .then(createTables)
   .then(seedIfEmpty)
   .then(ensureStaffUsers)
   .then(() => {
     app.listen(PORT, () => {
       console.log(`SmartHood is running at http://localhost:${PORT}`);
-      console.log(`SQLite database: ${DB_PATH}`);
+      console.log(`MySQL database: ${DB_CONFIG.host}:${DB_CONFIG.port}/${DB_CONFIG.database}`);
     });
   })
   .catch((err) => {

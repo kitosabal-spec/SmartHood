@@ -1,6 +1,6 @@
 # SmartHood Backend Setup Guide
 
-This project now uses Node.js, Express.js, and SQLite. You do not need XAMPP.
+This project now uses Node.js, Express.js, and MySQL.
 
 ## 1. Open the Folder in VS Code
 
@@ -20,15 +20,14 @@ These backend files were added:
 ```text
 package.json
 server.js
-database.sqlite
 ```
 
 What each file does:
 
 ```text
 package.json     Lists the Node.js packages and start commands.
-server.js        Runs the Express backend and creates the SQLite database.
-database.sqlite  Stores your homeowners, bills, payments, complaints, announcements, logs, and notifications.
+server.js        Runs the Express backend and connects to MySQL.
+MySQL database   Stores your homeowners, bills, payments, complaints, announcements, logs, and notifications.
 ```
 
 Your existing frontend files are still used:
@@ -39,7 +38,31 @@ styles.css
 script.js
 ```
 
-## 3. Install the Backend Packages
+## 3. Make Sure MySQL is Running
+
+Start MySQL first. If you use XAMPP, start the MySQL service from the XAMPP Control Panel.
+
+The app uses these default MySQL settings:
+
+```text
+host: localhost
+port: 3306
+user: root
+password: empty
+database: san_alfonso_homes
+```
+
+If your MySQL password or database name is different, set these before starting the app:
+
+```bash
+set MYSQL_HOST=localhost
+set MYSQL_PORT=3306
+set MYSQL_USER=root
+set MYSQL_PASSWORD=your_password
+set MYSQL_DATABASE=san_alfonso_homes
+```
+
+## 4. Install the Backend Packages
 
 In VS Code, open the terminal:
 
@@ -61,7 +84,7 @@ npm.cmd install
 
 Use `npm.cmd` on your computer because PowerShell may block `npm.ps1`.
 
-## 4. Start the System
+## 5. Start the System
 
 Run:
 
@@ -73,12 +96,12 @@ You should see:
 
 ```text
 SmartHood is running at http://localhost:3000
-SQLite database: C:\Users\96656\Music\San\database.sqlite
+MySQL database: localhost:3306/san_alfonso_homes
 ```
 
 Keep this terminal open while using the system.
 
-## 5. Open the App
+## 6. Open the App
 
 Open your browser and go to:
 
@@ -86,9 +109,9 @@ Open your browser and go to:
 http://localhost:3000
 ```
 
-Do not open `index.html` directly anymore. The page must be opened through the Node.js server so it can talk to SQLite.
+Do not open `index.html` directly anymore. The page must be opened through the Node.js server so it can talk to MySQL.
 
-## 6. Login Accounts
+## 7. Login Accounts
 
 Admin:
 
@@ -104,7 +127,7 @@ username: juandelacruz
 password: home123
 ```
 
-## 7. Test if the Database is Working
+## 8. Test if the Database is Working
 
 Open a second VS Code terminal and run:
 
@@ -115,7 +138,7 @@ curl http://localhost:3000/api/health
 You should see something like:
 
 ```json
-{"ok":true,"database":"C:\\Users\\96656\\Music\\San\\database.sqlite","users":6}
+{"ok":true,"database":"san_alfonso_homes","host":"localhost","port":3306,"users":723}
 ```
 
 You can also test login:
@@ -124,7 +147,7 @@ You can also test login:
 curl -X POST http://localhost:3000/api/login -H "Content-Type: application/json" -d "{\"username\":\"admin\",\"password\":\"admin123\"}"
 ```
 
-## 8. How Your Forms Save to SQLite
+## 9. How Your Forms Save to MySQL
 
 Your forms still use the same buttons in the frontend. The important change is in `script.js`.
 
@@ -139,7 +162,7 @@ Now:
 ```text
 The app sends data to server.js using fetch().
 server.js receives the request through /api routes.
-server.js saves the record into database.sqlite.
+server.js saves the record into MySQL.
 ```
 
 Examples:
@@ -154,7 +177,7 @@ Audit Log          -> saves to the auditLog table
 Notifications      -> saves to the notifications table
 ```
 
-## 9. Important API Routes
+## 10. Important API Routes
 
 ```text
 GET    /api/health          Check if backend and database are working
@@ -170,7 +193,7 @@ POST   /api/announcements   Add an announcement
 POST   /api/reset           Reset database to demo data
 ```
 
-## 10. Stop the Server
+## 11. Stop the Server
 
 In the terminal where the server is running, press:
 
@@ -184,7 +207,7 @@ Then type:
 Y
 ```
 
-## 11. Common Problem
+## 12. Common Problem
 
 If the browser shows a message saying to start the Node.js server, it means you opened the HTML file directly or the server is not running.
 

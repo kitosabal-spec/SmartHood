@@ -1,30 +1,37 @@
-const sqlite3 = require('sqlite3').verbose();
+const mysql = require('mysql2/promise');
 
-const db = new sqlite3.Database('database.sqlite');
 const tables = ['payments', 'notifications', 'complaints', 'billings', 'auditLog', 'announcements'];
+const dbConfig = {
+  host: process.env.MYSQL_HOST || 'localhost',
+  port: Number(process.env.MYSQL_PORT || 3306),
+  user: process.env.MYSQL_USER || 'root',
+  password: process.env.MYSQL_PASSWORD || '',
+  database: process.env.MYSQL_DATABASE || 'san_alfonso_homes',
+};
 
-db.serialize(() => {
+function quoteIdentifier(identifier) {
+  return `\`${String(identifier).replace(/`/g, '``')}\``;
+}
+
+(async () => {
+  const db = mysql.createPool({
+    ...dbConfig,
+    waitForConnections: true,
+    connectionLimit: 4,
+  });
+
   for (const table of tables) {
-    db.run(`DELETE FROM ${table}`);
+    await db.execute(`DELETE FROM ${quoteIdentifier(table)}`);
   }
 
-  const checks = tables.map((table) =>
-    new Promise((resolve, reject) => {
-      db.get(`SELECT COUNT(*) AS count FROM ${table}`, (error, row) => {
-        if (error) reject(error);
-        else resolve({ table, count: row.count });
-      });
-    })
-  );
+  const checks = await Promise.all(tables.map(async (table) => {
+    const [rows] = await db.execute(`SELECT COUNT(*) AS count FROM ${quoteIdentifier(table)}`);
+    return { table, count: Number(rows[0].count) };
+  }));
 
-  Promise.all(checks)
-    .then((rows) => {
-      console.log(JSON.stringify(rows, null, 2));
-      db.close();
-    })
-    .catch((error) => {
-      console.error(error);
-      db.close();
-      process.exitCode = 1;
-    });
+  console.log(JSON.stringify(checks, null, 2));
+  await db.end();
+})().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
 });

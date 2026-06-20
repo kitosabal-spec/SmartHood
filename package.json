@@ -1,7 +1,7 @@
 {
   "name": "san-alfonso-homes-system",
   "version": "1.0.0",
-  "description": "San Alfonso Homes subdivision management system with Node.js, Express, and SQLite.",
+  "description": "San Alfonso Homes subdivision management system with Node.js, Express, and MySQL.",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -9,7 +9,7 @@
   },
   "dependencies": {
     "express": "^4.19.2",
-    "sqlite3": "^5.1.7"
+    "mysql2": "^3.22.5"
   },
   "devDependencies": {
     "nodemon": "^3.1.4"

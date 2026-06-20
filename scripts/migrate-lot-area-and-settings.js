@@ -1,32 +1,59 @@
 const fs = require('fs');
-const sqlite3 = require('sqlite3').verbose();
+const mysql = require('mysql2/promise');
 
-const db = new sqlite3.Database('database.sqlite');
 const homeowners = JSON.parse(fs.readFileSync('data/homeowners.seed.json', 'utf8').replace(/^\uFEFF/, ''));
+const dbConfig = {
+  host: process.env.MYSQL_HOST || 'localhost',
+  port: Number(process.env.MYSQL_PORT || 3306),
+  user: process.env.MYSQL_USER || 'root',
+  password: process.env.MYSQL_PASSWORD || '',
+  database: process.env.MYSQL_DATABASE || 'san_alfonso_homes',
+};
 
-function run(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.run(sql, params, function onRun(error) {
-      if (error) reject(error);
-      else resolve(this);
-    });
+let db;
+
+function quoteIdentifier(identifier) {
+  return `\`${String(identifier).replace(/`/g, '``')}\``;
+}
+
+async function ensureDatabase() {
+  const setupPool = mysql.createPool({
+    host: dbConfig.host,
+    port: dbConfig.port,
+    user: dbConfig.user,
+    password: dbConfig.password,
+    waitForConnections: true,
+    connectionLimit: 2,
+  });
+
+  await setupPool.query(
+    `CREATE DATABASE IF NOT EXISTS ${quoteIdentifier(dbConfig.database)} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+  );
+  await setupPool.end();
+
+  db = mysql.createPool({
+    ...dbConfig,
+    waitForConnections: true,
+    connectionLimit: 4,
   });
 }
 
-function get(sql, params = []) {
-  return new Promise((resolve, reject) => {
-    db.get(sql, params, (error, row) => {
-      if (error) reject(error);
-      else resolve(row);
-    });
-  });
+async function run(sql, params = []) {
+  const [result] = await db.execute(sql, params);
+  return result;
+}
+
+async function get(sql, params = []) {
+  const [rows] = await db.execute(sql, params);
+  return rows[0];
 }
 
 (async () => {
-  await run('ALTER TABLE users ADD COLUMN lotArea REAL').catch(() => {});
-  await run('CREATE TABLE IF NOT EXISTS appSettings (id TEXT PRIMARY KEY, value TEXT)');
+  await ensureDatabase();
+  await run('ALTER TABLE users ADD COLUMN lotArea DOUBLE').catch(() => {});
+  await run('CREATE TABLE IF NOT EXISTS appSettings (id VARCHAR(64) PRIMARY KEY, value TEXT)');
   await run(
-    'INSERT INTO appSettings (id, value) VALUES (?, ?) ON CONFLICT(id) DO UPDATE SET value = excluded.value',
+    'INSERT INTO appSettings (id, value) VALUES (?, ?) ON DUPLICATE KEY UPDATE value = VALUES(value)',
     ['duesRatePerSqm', '5.725']
   );
 
@@ -42,4 +69,6 @@ function get(sql, params = []) {
     console.error(error);
     process.exitCode = 1;
   })
-  .finally(() => db.close());
+  .finally(async () => {
+    if (db) await db.end();
+  });
