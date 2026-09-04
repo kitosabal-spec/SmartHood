@@ -1,6 +1,8 @@
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
+const multer = require('multer');
 const mysql = require('mysql2/promise');
 
 const app = express();
@@ -18,9 +20,13 @@ let db;
 app.use(express.json({ limit: '15mb' }));
 app.use('/public', express.static(path.join(__dirname, 'public')));
 
+const PROFILE_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'profile');
+fs.mkdirSync(PROFILE_UPLOAD_DIR, { recursive: true });
+app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+
 const tableConfig = {
   users: {
-    columns: ['id', 'username', 'password', 'role', 'name', 'email', 'block', 'lot', 'lotArea', 'contact', 'balance'],
+    columns: ['id', 'username', 'password', 'role', 'name', 'email', 'block', 'lot', 'lotArea', 'contact', 'balance', 'profile_photo'],
     jsonColumns: [],
     booleanColumns: [],
   },
@@ -88,6 +94,7 @@ const adminUser = {
   lotArea: null,
   contact: null,
   balance: 0,
+  profile_photo: null,
 };
 
 const staffUsers = [
@@ -103,6 +110,7 @@ const staffUsers = [
     lotArea: null,
     contact: null,
     balance: 0,
+    profile_photo: null,
   },
   {
     id: 'staff-security',
@@ -116,6 +124,7 @@ const staffUsers = [
     lotArea: null,
     contact: null,
     balance: 0,
+    profile_photo: null,
   },
   {
     id: 'staff-treasurer',
@@ -129,6 +138,7 @@ const staffUsers = [
     lotArea: null,
     contact: null,
     balance: 0,
+    profile_photo: null,
   },
   {
     id: 'staff-auditor',
@@ -142,6 +152,7 @@ const staffUsers = [
     lotArea: null,
     contact: null,
     balance: 0,
+    profile_photo: null,
   },
 ];
 
@@ -153,11 +164,11 @@ function loadHomeownerSeed() {
   } catch (error) {
     console.warn(`Could not load homeowner seed from ${seedPath}. Falling back to demo homeowners.`);
     return [
-      { id: 'u002', username: 'juandelacruz', password: 'home123', role: 'homeowner', name: 'Juan Dela Cruz', email: 'juan@email.com', block: 'Block 3', lot: 'Lot 7', lotArea: 0, contact: '09171234567', balance: 3500 },
-      { id: 'u003', username: 'annamaria', password: 'home123', role: 'homeowner', name: 'Anna Maria Reyes', email: 'anna@email.com', block: 'Block 1', lot: 'Lot 2', lotArea: 0, contact: '09281234567', balance: 0 },
-      { id: 'u004', username: 'carlosmagno', password: 'home123', role: 'homeowner', name: 'Carlos Magno', email: 'carlos@email.com', block: 'Block 2', lot: 'Lot 5', lotArea: 0, contact: '09351234567', balance: 7000 },
-      { id: 'u005', username: 'ritaflores', password: 'home123', role: 'homeowner', name: 'Rita Flores', email: 'rita@email.com', block: 'Block 4', lot: 'Lot 1', lotArea: 0, contact: '09461234567', balance: 1500 },
-      { id: 'u006', username: 'pedroparcero', password: 'home123', role: 'homeowner', name: 'Pedro Parcero', email: 'pedro@email.com', block: 'Block 1', lot: 'Lot 8', lotArea: 0, contact: '09571234567', balance: 0 },
+      { id: 'u002', username: 'juandelacruz', password: 'home123', role: 'homeowner', name: 'Juan Dela Cruz', email: 'juan@email.com', block: 'Block 3', lot: 'Lot 7', lotArea: 0, contact: '09171234567', balance: 3500, profile_photo: null },
+      { id: 'u003', username: 'annamaria', password: 'home123', role: 'homeowner', name: 'Anna Maria Reyes', email: 'anna@email.com', block: 'Block 1', lot: 'Lot 2', lotArea: 0, contact: '09281234567', balance: 0, profile_photo: null },
+      { id: 'u004', username: 'carlosmagno', password: 'home123', role: 'homeowner', name: 'Carlos Magno', email: 'carlos@email.com', block: 'Block 2', lot: 'Lot 5', lotArea: 0, contact: '09351234567', balance: 7000, profile_photo: null },
+      { id: 'u005', username: 'ritaflores', password: 'home123', role: 'homeowner', name: 'Rita Flores', email: 'rita@email.com', block: 'Block 4', lot: 'Lot 1', lotArea: 0, contact: '09461234567', balance: 1500, profile_photo: null },
+      { id: 'u006', username: 'pedroparcero', password: 'home123', role: 'homeowner', name: 'Pedro Parcero', email: 'pedro@email.com', block: 'Block 1', lot: 'Lot 8', lotArea: 0, contact: '09571234567', balance: 0, profile_photo: null },
     ];
   }
 }
@@ -320,9 +331,11 @@ async function createTables() {
     lot TEXT,
     lotArea DOUBLE,
     contact TEXT,
-    balance DOUBLE DEFAULT 0
+    balance DOUBLE DEFAULT 0,
+    profile_photo TEXT
   )`);
   await run('ALTER TABLE users ADD COLUMN lotArea DOUBLE').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN profile_photo TEXT').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS billings (
     id VARCHAR(64) PRIMARY KEY,
@@ -479,6 +492,146 @@ async function resetDatabase() {
   }
 }
 
+const ALLOWED_PHOTO_MIMES = {
+  'image/jpeg': '.jpg',
+  'image/png': '.png',
+  'image/webp': '.webp',
+};
+const ALLOWED_PHOTO_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+
+const profileUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, PROFILE_UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || '.jpg';
+      const unique = `${Date.now().toString(36)}${crypto.randomBytes(12).toString('hex')}${ext}`;
+      cb(null, unique);
+    },
+  }),
+  limits: { fileSize: MAX_PHOTO_BYTES, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ALLOWED_PHOTO_MIMES[file.mimetype] || !ALLOWED_PHOTO_EXTS.has(ext)) {
+      cb(new Error('Only JPG, PNG, or WebP images are allowed.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+function isValidImageBuffer(buffer) {
+  if (!buffer || buffer.length < 12) return false;
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return true;
+  if (
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+    buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
+  ) return true;
+  if (
+    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+    buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+  ) return true;
+  return false;
+}
+
+function getRequestUserId(req) {
+  return req.get('x-user-id') || req.body.userId || req.query.userId || null;
+}
+
+function requireOwnPhotoAccess(req, res) {
+  const requesterId = getRequestUserId(req);
+  if (!requesterId) {
+    res.status(401).json({ error: 'Login required.' });
+    return null;
+  }
+  if (requesterId !== req.params.id) {
+    res.status(403).json({ error: 'You can only change your own profile photo.' });
+    return null;
+  }
+  return requesterId;
+}
+
+function photoRecordToUrl(value) {
+  if (!value) return null;
+  return `/uploads/profile/${path.basename(value)}`;
+}
+
+function deleteProfileFile(photoPath) {
+  if (!photoPath) return;
+  const filePath = path.join(PROFILE_UPLOAD_DIR, path.basename(photoPath));
+  if (!filePath.startsWith(PROFILE_UPLOAD_DIR)) return;
+  fs.promises.unlink(filePath).catch(() => {});
+}
+
+function stripProfilePhotoField(table, body) {
+  if (table !== 'users' || !body) return body;
+  if (Array.isArray(body)) {
+    return body.map((item) => {
+      if (!item || typeof item !== 'object') return item;
+      const copy = { ...item };
+      delete copy.profile_photo;
+      return copy;
+    });
+  }
+  if (typeof body === 'object') {
+    const copy = { ...body };
+    delete copy.profile_photo;
+    return copy;
+  }
+  return body;
+}
+
+app.post('/api/users/:id/photo', (req, res) => {
+  if (!requireOwnPhotoAccess(req, res)) return;
+  profileUpload.single('photo')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message = uploadErr.code === 'LIMIT_FILE_SIZE'
+        ? 'Photo must be 5 MB or smaller.'
+        : (uploadErr.message || 'Invalid photo upload.');
+      res.status(400).json({ error: message });
+      return;
+    }
+    if (!req.file) {
+      res.status(400).json({ error: 'No photo file received.' });
+      return;
+    }
+    try {
+      const buffer = await fs.promises.readFile(req.file.path);
+      if (!isValidImageBuffer(buffer)) {
+        await fs.promises.unlink(req.file.path).catch(() => {});
+        res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
+        return;
+      }
+      const target = await get('SELECT id, profile_photo FROM users WHERE id = ?', [req.params.id]);
+      if (!target) {
+        await fs.promises.unlink(req.file.path).catch(() => {});
+        res.status(404).json({ error: 'User not found.' });
+        return;
+      }
+      const photoPath = photoRecordToUrl(req.file.filename);
+      await run('UPDATE users SET profile_photo = ? WHERE id = ?', [photoPath, req.params.id]);
+      deleteProfileFile(target.profile_photo);
+      res.json({ ok: true, profile_photo: photoPath });
+    } catch (err) {
+      await fs.promises.unlink(req.file.path).catch(() => {});
+      console.error(err);
+      res.status(500).json({ error: 'Could not save the profile photo.' });
+    }
+  });
+});
+
+app.delete('/api/users/:id/photo', asyncHandler(async (req, res) => {
+  if (!requireOwnPhotoAccess(req, res)) return;
+  const target = await get('SELECT id, profile_photo FROM users WHERE id = ?', [req.params.id]);
+  if (!target) {
+    res.status(404).json({ error: 'User not found.' });
+    return;
+  }
+  await run('UPDATE users SET profile_photo = NULL WHERE id = ?', [req.params.id]);
+  deleteProfileFile(target.profile_photo);
+  res.json({ ok: true, profile_photo: null });
+}));
+
 app.get('/api/health', asyncHandler(async (req, res) => {
   const row = await get('SELECT COUNT(*) AS users FROM users');
   res.json({
@@ -519,7 +672,7 @@ app.put('/api/:table', asyncHandler(async (req, res) => {
   }
 
   await run(`DELETE FROM ${tableName(table)}`);
-  for (const item of req.body) {
+  for (const item of stripProfilePhotoField(table, req.body)) {
     await saveRecord(table, item);
   }
   res.json(await getTableData(table));
@@ -528,14 +681,15 @@ app.put('/api/:table', asyncHandler(async (req, res) => {
 app.post('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
-  await saveRecord(table, req.body);
-  res.status(201).json(sanitizeRecord(table, req.body));
+  const body = stripProfilePhotoField(table, req.body);
+  await saveRecord(table, body);
+  res.status(201).json(sanitizeRecord(table, body));
 }));
 
 app.put('/api/:table/:id', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
-  const item = { ...req.body, id: req.params.id };
+  const item = { ...stripProfilePhotoField(table, req.body), id: req.params.id };
   await saveRecord(table, item);
   res.json(sanitizeRecord(table, item));
 }));

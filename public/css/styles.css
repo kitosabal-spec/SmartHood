@@ -1516,6 +1516,60 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 .profile-info h3 { font-size: 1.2rem; }
 .profile-info p  { color: var(--text-3); font-size: 0.85rem; margin-top: 4px; }
 
+/* ── Profile photos (circular, theme-consistent) ── */
+.avatar-img,
+.avatar-fallback {
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: var(--teal-600);
+  color: #fff;
+  font-weight: 700;
+  overflow: hidden;
+}
+.avatar-img { width: 36px; height: 36px; }
+.avatar-fallback { width: 36px; height: 36px; font-size: 0.85rem; }
+.avatar-sm, img.avatar-sm, span.avatar-sm { width: 32px; height: 32px; font-size: 0.75rem; }
+.avatar-xl, img.avatar-xl, span.avatar-xl { width: 72px; height: 72px; font-size: 1.6rem; }
+.user-avatar, .topbar-avatar, .profile-avatar-big { overflow: hidden; padding: 0; }
+.user-avatar .avatar-img, .topbar-avatar .avatar-img { width: 100%; height: 100%; }
+.profile-avatar-big .avatar-img, .profile-avatar-big .avatar-fallback { width: 72px; height: 72px; }
+.cell-user { display: flex; align-items: center; gap: 10px; }
+.homeowner-name-cell { display: flex; align-items: center; gap: 10px; }
+.photo-upload-row { display: flex; gap: 18px; align-items: flex-start; flex-wrap: wrap; }
+.photo-preview-wrap { flex-shrink: 0; }
+.photo-upload-info { flex: 1; min-width: 220px; }
+.photo-upload-hint { font-size: 0.82rem; color: var(--text-3); margin-bottom: 10px; }
+.photo-upload-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.photo-upload-status { font-size: 0.8rem; color: var(--text-2); margin-top: 8px; min-height: 1.2em; word-break: break-word; }
+/* ── Photo crop editor ── */
+.crop-editor { margin-top: 12px; }
+.crop-viewport {
+  width: 240px; max-width: 70vw; aspect-ratio: 1 / 1;
+  overflow: hidden; position: relative;
+  border-radius: 12px; background: #0f172a;
+  touch-action: none; cursor: grab; user-select: none;
+}
+.crop-viewport:active { cursor: grabbing; }
+.crop-viewport img {
+  position: absolute; left: 0; top: 0;
+  max-width: none; pointer-events: none;
+}
+.crop-viewport::after {
+  content: ''; position: absolute; inset: 0;
+  border-radius: 50%; border: 2px dashed rgba(255,255,255,0.9);
+  box-shadow: 0 0 0 999px rgba(0,0,0,0.45);
+  pointer-events: none;
+}
+.crop-controls { display: flex; align-items: center; gap: 10px; margin-top: 10px; max-width: 240px; color: var(--text-2); font-weight: 700; }
+.crop-controls input[type="range"] { flex: 1; accent-color: var(--teal-600); }
+@media (max-width: 640px) {
+  .photo-upload-row { flex-direction: column; align-items: center; text-align: center; }
+  .photo-upload-actions { justify-content: center; }
+  .profile-card { flex-direction: column; text-align: center; }
+}
+
 .toast-container {
   position: fixed; bottom: 24px; right: 24px;
   display: flex; flex-direction: column; gap: 10px;

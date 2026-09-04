@@ -1,3 +1,4 @@
 node_modules/
-database.sqlite
 npm-debug.log*
+public/uploads/profile/*
+!public/uploads/profile/.gitkeep

@@ -485,11 +485,307 @@ function scheduleSidebarBadgeRefresh() {
   });
 }
 
+// PROFILE PHOTOS (served from /uploads/profile/, stored as path in users.profile_photo)
+function userInitials(name) {
+  return (name || '?').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
+}
+
+function profilePhotoUrl(user) {
+  const value = user && user.profile_photo;
+  if (!value || typeof value !== 'string') return null;
+  if (/^(https?:|data:|blob:)/i.test(value)) return value;
+  if (value.startsWith('/uploads/profile/')) return value;
+  if (/^[a-zA-Z0-9][a-zA-Z0-9._-]*\.(jpg|jpeg|png|webp)$/i.test(value)) return `/uploads/profile/${value}`;
+  return null;
+}
+
+function avatarHTML(user, sizeClass = '') {
+  const url = profilePhotoUrl(user);
+  const initials = userInitials(user && user.name);
+  if (url) return `<img src="${url}" alt="" class="avatar-img ${sizeClass}" loading="lazy" onerror="this.outerHTML=avatarFallbackHTML('${initials}', '${sizeClass}')"/>`;
+  return avatarFallbackHTML(initials, sizeClass);
+}
+
+function avatarFallbackHTML(initials, sizeClass = '') {
+  return `<span class="avatar-fallback ${sizeClass}">${initials}</span>`;
+}
+
+function renderAvatarInto(el, user) {
+  if (!el) return;
+  el.innerHTML = avatarHTML(user);
+  el.classList.add('has-photo');
+}
+
+function syncUserPhotoInCache(userId, photoPath) {
+  const users = db.get('users');
+  const idx = users.findIndex(u => u.id === userId);
+  if (idx >= 0) {
+    users[idx] = { ...users[idx], profile_photo: photoPath };
+    dbCache.users = users;
+  }
+  if (currentUser && currentUser.id === userId) {
+    currentUser = { ...currentUser, profile_photo: photoPath };
+  }
+}
+
+function profilePhotoSectionHTML(u) {
+  const url = profilePhotoUrl(u);
+  return `
+  <div class="settings-section">
+    <div class="settings-section-header"><h4>Profile Photo</h4></div>
+    <div class="settings-section-body">
+      <div class="photo-upload-row">
+        <div class="photo-preview-wrap" id="photoPreviewWrap">${avatarHTML(u, 'avatar-xl')}</div>
+        <div class="photo-upload-info">
+          <p class="photo-upload-hint">JPG, PNG, or WebP up to 5 MB. After choosing, drag to position and zoom, then save.</p>
+          <input type="file" id="profilePhotoInput" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="hidden" onchange="handleProfilePhotoSelect(this)"/>
+          <div class="photo-upload-actions">
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('profilePhotoInput').click()">Change Photo</button>
+            ${url ? '<button class="btn btn-danger btn-sm" onclick="confirmRemoveProfilePhoto()">Remove Photo</button>' : ''}
+          </div>
+          <div id="cropEditor" class="crop-editor hidden">
+            <div class="crop-viewport" id="cropViewport"><img id="cropImg" alt="Crop preview" draggable="false"/></div>
+            <div class="crop-controls"><span aria-hidden="true">−</span><input type="range" id="cropZoom" min="1" max="2" step="0.01" value="1" aria-label="Zoom photo"/><span aria-hidden="true">+</span></div>
+          </div>
+          <div id="photoPreviewActions" class="photo-upload-actions hidden" style="margin-top:8px">
+            <button class="btn btn-primary btn-sm" id="photoSaveBtn" onclick="uploadProfilePhoto()">Save Photo</button>
+            <button class="btn btn-secondary btn-sm" onclick="cancelProfilePhotoSelect()">Cancel</button>
+          </div>
+          <div id="photoUploadStatus" class="photo-upload-status"></div>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+let pendingPhotoFile = null;
+let pendingPhotoPreviewUrl = null;
+
+function handleProfilePhotoSelect(input) {
+  const file = input.files && input.files[0];
+  const statusEl = document.getElementById('photoUploadStatus');
+  if (!file) return;
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    if (statusEl) statusEl.textContent = 'Only JPG, PNG, or WebP images are allowed.';
+    showToast('error', 'Invalid File', 'Only JPG, PNG, or WebP images are allowed.');
+    input.value = '';
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    if (statusEl) statusEl.textContent = 'Photo must be 5 MB or smaller.';
+    showToast('error', 'Too Large', 'Photo must be 5 MB or smaller.');
+    input.value = '';
+    return;
+  }
+  pendingPhotoFile = file;
+  if (pendingPhotoPreviewUrl) URL.revokeObjectURL(pendingPhotoPreviewUrl);
+  pendingPhotoPreviewUrl = URL.createObjectURL(file);
+  openCropEditor(pendingPhotoPreviewUrl, file.type);
+  document.getElementById('photoPreviewActions')?.classList.remove('hidden');
+  if (statusEl) statusEl.textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB) — drag to position, zoom with the slider, then Save Photo.`;
+}
+
+let cropState = null;
+
+function openCropEditor(url, mime) {
+  const editor = document.getElementById('cropEditor');
+  const viewport = document.getElementById('cropViewport');
+  const img = document.getElementById('cropImg');
+  const zoom = document.getElementById('cropZoom');
+  if (!editor || !viewport || !img || !zoom) return;
+  editor.classList.remove('hidden');
+  bindCropViewport(viewport, zoom);
+  img.onload = () => {
+    const vw = viewport.clientWidth || 240;
+    const minScale = Math.max(vw / img.naturalWidth, vw / img.naturalHeight);
+    cropState = {
+      url, mime, imgEl: img,
+      imgW: img.naturalWidth, imgH: img.naturalHeight, vw,
+      scale: minScale, minScale,
+      x: (vw - img.naturalWidth * minScale) / 2,
+      y: (vw - img.naturalHeight * minScale) / 2,
+    };
+    zoom.min = String(minScale);
+    zoom.max = String(minScale * 4);
+    zoom.step = String(minScale / 50);
+    zoom.value = String(minScale);
+    applyCropTransform();
+  };
+  img.src = url;
+}
+
+function clampCropPosition(state) {
+  const w = state.imgW * state.scale;
+  const h = state.imgH * state.scale;
+  state.x = Math.min(0, Math.max(state.vw - w, state.x));
+  state.y = Math.min(0, Math.max(state.vw - h, state.y));
+}
+
+function applyCropTransform() {
+  if (!cropState) return;
+  const img = document.getElementById('cropImg');
+  if (!img) return;
+  clampCropPosition(cropState);
+  img.style.width = `${cropState.imgW * cropState.scale}px`;
+  img.style.height = 'auto';
+  img.style.transform = `translate(${cropState.x}px, ${cropState.y}px)`;
+}
+
+function bindCropViewport(viewport, zoom) {
+  if (viewport.dataset.cropBound) return;
+  viewport.dataset.cropBound = '1';
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+  viewport.addEventListener('pointerdown', (e) => {
+    if (!cropState) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    try { viewport.setPointerCapture(e.pointerId); } catch { /* noop */ }
+  });
+  viewport.addEventListener('pointermove', (e) => {
+    if (!dragging || !cropState) return;
+    cropState.x += e.clientX - lastX;
+    cropState.y += e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    applyCropTransform();
+  });
+  const endDrag = () => { dragging = false; };
+  viewport.addEventListener('pointerup', endDrag);
+  viewport.addEventListener('pointercancel', endDrag);
+  zoom.addEventListener('input', () => {
+    if (!cropState) return;
+    const newScale = Number(zoom.value);
+    if (!Number.isFinite(newScale) || newScale <= 0) return;
+    const cx = cropState.vw / 2;
+    const cy = cropState.vw / 2;
+    const ratio = newScale / cropState.scale;
+    cropState.x = cx - (cx - cropState.x) * ratio;
+    cropState.y = cy - (cy - cropState.y) * ratio;
+    cropState.scale = newScale;
+    applyCropTransform();
+  });
+}
+
+function renderCroppedPhoto() {
+  return new Promise((resolve, reject) => {
+    if (!cropState || !cropState.imgEl) {
+      reject(new Error('Choose a photo first.'));
+      return;
+    }
+    const st = cropState;
+    const side = st.vw / st.scale;
+    const sx = -st.x / st.scale;
+    const sy = -st.y / st.scale;
+    const OUT = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = OUT;
+    canvas.height = OUT;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      reject(new Error('Cropping is not supported in this browser.'));
+      return;
+    }
+    ctx.drawImage(st.imgEl, sx, sy, side, side, 0, 0, OUT, OUT);
+    const mime = st.mime === 'image/png' ? 'image/png' : (st.mime === 'image/webp' ? 'image/webp' : 'image/jpeg');
+    const ext = mime === 'image/png' ? '.png' : (mime === 'image/webp' ? '.webp' : '.jpg');
+    const toFile = (blob) => {
+      if (!blob) {
+        if (mime !== 'image/jpeg') {
+          canvas.toBlob((fallback) => {
+            if (!fallback) { reject(new Error('Could not process the image.')); return; }
+            resolve(new File([fallback], `profile-${Date.now().toString(36)}.jpg`, { type: 'image/jpeg' }));
+          }, 'image/jpeg', 0.92);
+          return;
+        }
+        reject(new Error('Could not process the image.'));
+        return;
+      }
+      resolve(new File([blob], `profile-${Date.now().toString(36)}${ext}`, { type: mime }));
+    };
+    canvas.toBlob(toFile, mime, 0.92);
+  });
+}
+
+function cancelProfilePhotoSelect() {
+  pendingPhotoFile = null;
+  cropState = null;
+  if (pendingPhotoPreviewUrl) { URL.revokeObjectURL(pendingPhotoPreviewUrl); pendingPhotoPreviewUrl = null; }
+  const input = document.getElementById('profilePhotoInput');
+  if (input) input.value = '';
+  document.getElementById('cropEditor')?.classList.add('hidden');
+  document.getElementById('photoPreviewActions')?.classList.add('hidden');
+  const statusEl = document.getElementById('photoUploadStatus');
+  if (statusEl) statusEl.textContent = '';
+  const wrap = document.getElementById('photoPreviewWrap');
+  if (wrap && currentUser) wrap.innerHTML = avatarHTML(currentUser, 'avatar-xl');
+}
+
+async function uploadProfilePhoto() {
+  if (!currentUser) return;
+  if (!pendingPhotoFile || !cropState) {
+    showToast('error', 'No Photo', 'Choose a photo first.');
+    return;
+  }
+  const statusEl = document.getElementById('photoUploadStatus');
+  const saveBtn = document.getElementById('photoSaveBtn');
+  if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
+  if (statusEl) statusEl.textContent = 'Cropping and uploading…';
+  try {
+    const croppedFile = await renderCroppedPhoto();
+    const form = new FormData();
+    form.append('photo', croppedFile, croppedFile.name);
+    const response = await fetch(`/api/users/${encodeURIComponent(currentUser.id)}/photo`, {
+      method: 'POST',
+      headers: { 'X-User-Id': currentUser.id },
+      body: form,
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Upload failed.');
+    syncUserPhotoInCache(currentUser.id, result.profile_photo);
+    pendingPhotoFile = null;
+    cropState = null;
+    if (pendingPhotoPreviewUrl) { URL.revokeObjectURL(pendingPhotoPreviewUrl); pendingPhotoPreviewUrl = null; }
+    buildSidebar();
+    showToast('success', 'Saved', 'Profile photo updated.');
+    if (typeof currentView !== 'undefined' && currentView) renderView(currentView);
+  } catch (error) {
+    if (statusEl) statusEl.textContent = error.message;
+    showToast('error', 'Upload Failed', error.message);
+  } finally {
+    if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = 'Save Photo'; }
+  }
+}
+
+function confirmRemoveProfilePhoto() {
+  openConfirm('Remove Photo', 'Remove your profile photo and use the default avatar instead?', removeProfilePhoto);
+}
+
+async function removeProfilePhoto() {
+  if (!currentUser) return;
+  try {
+    const response = await fetch(`/api/users/${encodeURIComponent(currentUser.id)}/photo`, {
+      method: 'DELETE',
+      headers: { 'X-User-Id': currentUser.id },
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.error || 'Could not remove photo.');
+    syncUserPhotoInCache(currentUser.id, null);
+    buildSidebar();
+    showToast('success', 'Removed', 'Profile photo removed.');
+    if (typeof currentView !== 'undefined' && currentView) renderView(currentView);
+  } catch (error) {
+    showToast('error', 'Failed', error.message);
+  }
+}
+
 function buildSidebar() {
   const nav = getNavForRole(currentUser.role);
-  const initials = currentUser.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
-  document.getElementById('sidebarAvatar').textContent = initials;
-  document.getElementById('topbarAvatar').textContent = initials;
+  renderAvatarInto(document.getElementById('sidebarAvatar'), currentUser);
+  renderAvatarInto(document.getElementById('topbarAvatar'), currentUser);
   document.getElementById('sidebarName').textContent = currentUser.name;
   document.getElementById('sidebarRole').textContent = ROLE_LABELS[currentUser.role] || currentUser.role;
 
@@ -992,7 +1288,7 @@ function renderHOTable(filtered = null) {
   tbody.innerHTML = users.map((u, i) => `
     <tr>
       <td>${i + 1}</td>
-      <td><div class="homeowner-name-cell"><strong>${u.name}</strong></div></td>
+      <td><div class="homeowner-name-cell">${avatarHTML(u, 'avatar-sm')}<strong>${u.name}</strong></div></td>
       <td>${u.block || '—'}, ${u.lot || '—'}</td>
       <td class="${(u.balance||0) > 0 ? 'amount-due' : 'amount-paid'}">₱${(u.balance||0).toLocaleString()}</td>
       <td><button class="ho-info-btn" onclick="openViewHO('${u.id}')" title="View details">i</button></td>
@@ -1077,7 +1373,7 @@ function openViewHO(id) {
   const complaints = db.get('complaints').filter(c => c.homeownerId === id);
   openModal(`Profile: ${u.name}`, `
     <div class="profile-card" style="margin-bottom:16px">
-      <div class="profile-avatar-big">${u.name.split(' ').map(n=>n[0]).join('').substring(0,2)}</div>
+      <div class="profile-avatar-big">${avatarHTML(u, 'avatar-xl')}</div>
       <div class="profile-info"><h3>${u.name}</h3><p>${u.email}</p><p>${u.block||''} ${u.lot||''}</p></div>
     </div>
     <div class="grid-2" style="grid-template-columns:1fr 1fr 1fr;gap:10px">
@@ -1884,7 +2180,7 @@ function renderAmenityBookingsAdmin() {
           ${bookings.map(booking => {
             const homeowner = db.getOne('users', booking.homeownerId);
             return `<tr>
-              <td><strong>${homeowner ? homeowner.name : 'Unknown'}</strong></td>
+              <td><div class="cell-user">${avatarHTML(homeowner, 'avatar-sm')}<strong>${homeowner ? homeowner.name : 'Unknown'}</strong></div></td>
               <td>${booking.amenity}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.purpose || 'No purpose provided'}</span></td>
               <td>${formatAmenityDate(booking.bookingDate)}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
               <td>${amenityStatusBadge(booking.status)}</td>
@@ -2969,7 +3265,7 @@ function renderAdminComplaintTable(filtered = null) {
     const shortDesc = c.description.length > 60 ? c.description.substring(0, 60) + '…' : c.description;
     return `<tr>
       <td>${i + 1}</td>
-      <td><strong>${ho ? ho.name : 'Unknown'}</strong><br><span style="font-size:0.75rem;color:var(--text-3)">${ho ? (ho.block || '') + ' ' + (ho.lot || '') : ''}</span></td>
+      <td><div class="cell-user">${avatarHTML(ho, 'avatar-sm')}<div><strong>${ho ? ho.name : 'Unknown'}</strong><br><span style="font-size:0.75rem;color:var(--text-3)">${ho ? (ho.block || '') + ' ' + (ho.lot || '') : ''}</span></div></div></td>
       <td>${complaintCategoryBadge(c.category)}</td>
       <td style="max-width:200px;font-size:0.85rem;color:var(--text-2)">${shortDesc}</td>
       <td>${c.dateFiled}</td>
@@ -3114,15 +3410,20 @@ function renderAnnouncementCards() {
   const announcements = [...db.get('announcements')].reverse();
   if (!announcements.length) { list.innerHTML = `<div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-megaphone"/></svg>No announcements yet.</div>`; return; }
   const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#8795a8' };
-  list.innerHTML = announcements.map(a => `
+  list.innerHTML = announcements.map(a => {
+    const author = db.getOne('users', a.createdBy);
+    return `
     <div class="announcement-card" style="--card-accent:${catColors[a.category]||'#2271c3'}">
       <div class="announcement-header">
-        <div>
-          <div class="announcement-title">${a.title}</div>
-          <div class="announcement-meta">
-            <span>${a.date}</span>
-            <span class="badge badge-blue">${a.category}</span>
-            ${a.urgent ? '<span class="badge badge-red">Urgent</span>' : ''}
+        <div class="cell-user">${avatarHTML(author, 'avatar-sm')}
+          <div>
+            <div class="announcement-title">${a.title}</div>
+            <div class="announcement-meta">
+              <span>${author ? author.name : ''}</span>
+              <span>${a.date}</span>
+              <span class="badge badge-blue">${a.category}</span>
+              ${a.urgent ? '<span class="badge badge-red">Urgent</span>' : ''}
+            </div>
           </div>
         </div>
         <div style="display:flex;gap:6px">
@@ -3130,7 +3431,8 @@ function renderAnnouncementCards() {
         </div>
       </div>
       <div class="announcement-body">${a.description}</div>
-    </div>`).join('');
+    </div>`;
+    }).join('');
 }
 
 function openAddAnnouncementModal() {
@@ -3386,9 +3688,11 @@ function renderSettings() {
   </div>
 
   <div class="profile-card">
-    <div class="profile-avatar-big">${currentUser.name.split(' ').map(n=>n[0]).join('').substring(0,2)}</div>
+    <div class="profile-avatar-big">${avatarHTML(currentUser, 'avatar-xl')}</div>
     <div class="profile-info"><h3>${currentUser.name}</h3><p>${currentUser.email}</p><p>Administrator · ${currentUser.username}</p></div>
   </div>
+
+  ${profilePhotoSectionHTML(currentUser)}
 
   <div class="settings-section">
     <div class="settings-section-header"><h4>Admin Profile</h4></div>
@@ -3935,20 +4239,26 @@ function renderHOAnnouncements() {
   const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#8795a8' };
   area.innerHTML = `
   <div class="page-header"><div class="page-header-left"><h2>Announcements</h2><p>Latest notices from San Alfonso Homes.</p></div></div>
-  ${announcements.map(a => `
+  ${announcements.map(a => {
+    const author = db.getOne('users', a.createdBy);
+    return `
     <div class="announcement-card" style="--card-accent:${catColors[a.category]||'#2271c3'}">
       <div class="announcement-header">
-        <div>
-          <div class="announcement-title">${a.title}</div>
-          <div class="announcement-meta">
-            <span>${a.date}</span>
-            <span class="badge badge-blue">${a.category}</span>
-            ${a.urgent ? '<span class="badge badge-red">Urgent</span>' : ''}
+        <div class="cell-user">${avatarHTML(author, 'avatar-sm')}
+          <div>
+            <div class="announcement-title">${a.title}</div>
+            <div class="announcement-meta">
+              <span>${author ? author.name : ''}</span>
+              <span>${a.date}</span>
+              <span class="badge badge-blue">${a.category}</span>
+              ${a.urgent ? '<span class="badge badge-red">Urgent</span>' : ''}
+            </div>
           </div>
         </div>
       </div>
       <div class="announcement-body">${a.description}</div>
-    </div>`).join('') || '<div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-megaphone"/></svg>No announcements.</div>'}`;
+    </div>`;
+  }).join('') || '<div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-megaphone"/></svg>No announcements.</div>'}`;
 }
 
 function renderHOProfile() {
@@ -3958,9 +4268,10 @@ function renderHOProfile() {
   area.innerHTML = `
   <div class="page-header"><div class="page-header-left"><h2>My Profile</h2><p>View and update your personal information.</p></div></div>
   <div class="profile-card">
-    <div class="profile-avatar-big">${u.name.split(' ').map(n=>n[0]).join('').substring(0,2)}</div>
+    <div class="profile-avatar-big">${avatarHTML(u, 'avatar-xl')}</div>
     <div class="profile-info"><h3>${u.name}</h3><p>${u.email}</p><p>${u.block||''} ${u.lot||''} · ${u.contact||'No contact'}</p></div>
   </div>
+  ${profilePhotoSectionHTML(u)}
   <div class="settings-section">
     <div class="settings-section-header"><h4>Edit Profile</h4></div>
     <div class="settings-section-body">
