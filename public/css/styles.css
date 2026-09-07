@@ -145,7 +145,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   max-width: 1200px; margin: 0 auto;
   padding: 0 24px;
   height: 68px;
-  display: flex; align-items: center; gap: 20px;
+  display: flex; align-items: center; justify-content: space-between; gap: 20px;
 }
 .pub-nav-brand {
   display: flex; align-items: center; gap: 12px;
@@ -180,6 +180,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 }
 .pub-nav-actions {
   display: flex; align-items: center; gap: 8px; flex-shrink: 0;
+  margin-left: auto;
 }
 .pub-login-btn {
   padding: 8px 16px;
@@ -210,11 +211,25 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 }
 .pub-hamburger {
   display: none;
-  flex-direction: column; gap: 4px;
-  padding: 6px; cursor: pointer;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  width: 40px;
+  height: 40px;
+  padding: 6px;
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  transition: background 0.2s ease;
+}
+.pub-hamburger:hover,
+.pub-hamburger:active {
+  background: rgba(255, 255, 255, 0.1);
 }
 .pub-hamburger span {
-  width: 20px; height: 2px;
+  width: 22px; height: 2px;
   background: #a8d8db;
   border-radius: 2px;
   transition: all 0.2s;
@@ -2916,9 +2931,19 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
     grid-template-columns: 1fr;
   }
 
+  .pub-nav-inner {
+    padding: 0 20px;
+    justify-content: space-between;
+  }
   .pub-nav-links { display: none; }
   .pub-login-btn { display: none; }
-  .pub-hamburger { display: flex; }
+  .pub-nav-actions {
+    margin-left: auto;
+  }
+  .pub-hamburger {
+    display: flex;
+    margin-left: auto;
+  }
   .pub-hero { padding: 110px 20px 80px; }
   .pub-hero-stats { flex-wrap: wrap; gap: 16px; }
   .pub-band-inner { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
@@ -2926,6 +2951,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 }
 
 @media (max-width: 640px) {
+  .pub-nav-inner { padding: 0 16px; }
   .pub-about-cards { grid-template-columns: 1fr; }
   .pub-portals-grid { grid-template-columns: 1fr; }
   .pub-hero-btns { flex-direction: column; align-items: center; }
