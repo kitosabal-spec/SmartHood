@@ -528,34 +528,70 @@ function syncUserPhotoInCache(userId, photoPath) {
   }
 }
 
-function profilePhotoSectionHTML(u) {
-  const url = profilePhotoUrl(u);
+function profileAvatarEditableHTML(user) {
   return `
-  <div class="settings-section">
-    <div class="settings-section-header"><h4>Profile Photo</h4></div>
-    <div class="settings-section-body">
-      <div class="photo-upload-row">
-        <div class="photo-preview-wrap" id="photoPreviewWrap">${avatarHTML(u, 'avatar-xl')}</div>
-        <div class="photo-upload-info">
-          <p class="photo-upload-hint">JPG, PNG, or WebP up to 5 MB. After choosing, drag to position and zoom, then save.</p>
-          <input type="file" id="profilePhotoInput" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="hidden" onchange="handleProfilePhotoSelect(this)"/>
-          <div class="photo-upload-actions">
-            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('profilePhotoInput').click()">Change Photo</button>
-            ${url ? '<button class="btn btn-danger btn-sm" onclick="confirmRemoveProfilePhoto()">Remove Photo</button>' : ''}
-          </div>
-          <div id="cropEditor" class="crop-editor hidden">
-            <div class="crop-viewport" id="cropViewport"><img id="cropImg" alt="Crop preview" draggable="false"/></div>
-            <div class="crop-controls"><span aria-hidden="true">−</span><input type="range" id="cropZoom" min="1" max="2" step="0.01" value="1" aria-label="Zoom photo"/><span aria-hidden="true">+</span></div>
-          </div>
-          <div id="photoPreviewActions" class="photo-upload-actions hidden" style="margin-top:8px">
-            <button class="btn btn-primary btn-sm" id="photoSaveBtn" onclick="uploadProfilePhoto()">Save Photo</button>
-            <button class="btn btn-secondary btn-sm" onclick="cancelProfilePhotoSelect()">Cancel</button>
-          </div>
-          <div id="photoUploadStatus" class="photo-upload-status"></div>
-        </div>
-      </div>
+  <div class="profile-avatar-wrapper">
+    <div class="profile-avatar-big" id="profileAvatarBig">
+      ${avatarHTML(user, 'avatar-2xl')}
     </div>
+    <button type="button" class="profile-avatar-edit-btn" id="profileAvatarEditBtn" onclick="toggleProfileAvatarMenu(event)" title="Edit profile photo" aria-label="Edit profile photo" aria-haspopup="true" aria-expanded="false">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+      </svg>
+    </button>
+    <div class="profile-avatar-menu hidden" id="profileAvatarMenu" role="menu">
+      <button type="button" class="profile-avatar-menu-item" onclick="handleAvatarMenuChangePhoto(event)" role="menuitem">
+        <span class="profile-avatar-menu-icon">📷</span>
+        <span>Change Photo</span>
+      </button>
+      <button type="button" class="profile-avatar-menu-item danger" onclick="handleAvatarMenuRemovePhoto(event)" role="menuitem">
+        <span class="profile-avatar-menu-icon">🗑️</span>
+        <span>Remove Photo</span>
+      </button>
+    </div>
+    <input type="file" id="profilePhotoInput" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp" class="hidden" onchange="handleProfilePhotoSelect(this)"/>
   </div>`;
+}
+
+function toggleProfileAvatarMenu(e) {
+  if (e) e.stopPropagation();
+  const menu = document.getElementById('profileAvatarMenu');
+  const btn = document.getElementById('profileAvatarEditBtn');
+  if (!menu) return;
+  const isHidden = menu.classList.contains('hidden');
+  if (isHidden) {
+    menu.classList.remove('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+  } else {
+    menu.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function closeProfileAvatarMenu() {
+  const menu = document.getElementById('profileAvatarMenu');
+  const btn = document.getElementById('profileAvatarEditBtn');
+  if (menu && !menu.classList.contains('hidden')) {
+    menu.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function handleAvatarMenuChangePhoto(e) {
+  if (e) e.stopPropagation();
+  closeProfileAvatarMenu();
+  const input = document.getElementById('profilePhotoInput');
+  if (input) input.click();
+}
+
+function handleAvatarMenuRemovePhoto(e) {
+  if (e) e.stopPropagation();
+  closeProfileAvatarMenu();
+  confirmRemoveProfilePhoto();
+}
+
+function profilePhotoSectionHTML(u) {
+  return '';
 }
 
 let pendingPhotoFile = null;
@@ -563,17 +599,14 @@ let pendingPhotoPreviewUrl = null;
 
 function handleProfilePhotoSelect(input) {
   const file = input.files && input.files[0];
-  const statusEl = document.getElementById('photoUploadStatus');
   if (!file) return;
   const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
   if (!allowedTypes.includes(file.type)) {
-    if (statusEl) statusEl.textContent = 'Only JPG, PNG, or WebP images are allowed.';
     showToast('error', 'Invalid File', 'Only JPG, PNG, or WebP images are allowed.');
     input.value = '';
     return;
   }
   if (file.size > 5 * 1024 * 1024) {
-    if (statusEl) statusEl.textContent = 'Photo must be 5 MB or smaller.';
     showToast('error', 'Too Large', 'Photo must be 5 MB or smaller.');
     input.value = '';
     return;
@@ -581,9 +614,28 @@ function handleProfilePhotoSelect(input) {
   pendingPhotoFile = file;
   if (pendingPhotoPreviewUrl) URL.revokeObjectURL(pendingPhotoPreviewUrl);
   pendingPhotoPreviewUrl = URL.createObjectURL(file);
-  openCropEditor(pendingPhotoPreviewUrl, file.type);
-  document.getElementById('photoPreviewActions')?.classList.remove('hidden');
-  if (statusEl) statusEl.textContent = `${file.name} (${(file.size / 1024).toFixed(0)} KB) — drag to position, zoom with the slider, then Save Photo.`;
+  openCropModal(pendingPhotoPreviewUrl, file.type);
+}
+
+function openCropModal(url, mime) {
+  openModal('Adjust Profile Photo', `
+    <div class="crop-modal-content">
+      <p class="crop-modal-hint">Drag to position, use the slider to zoom, then save.</p>
+      <div id="cropEditor" class="crop-editor">
+        <div class="crop-viewport" id="cropViewport"><img id="cropImg" alt="Crop preview" draggable="false"/></div>
+        <div class="crop-controls">
+          <span aria-hidden="true">−</span>
+          <input type="range" id="cropZoom" min="1" max="2" step="0.01" value="1" aria-label="Zoom photo"/>
+          <span aria-hidden="true">+</span>
+        </div>
+      </div>
+      <div id="photoUploadStatus" class="photo-upload-status" style="margin-top:10px;"></div>
+    </div>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Save Photo', cls: 'btn-primary', action: uploadProfilePhoto },
+  ]);
+  openCropEditor(url, mime);
 }
 
 let cropState = null;
@@ -720,8 +772,6 @@ function cancelProfilePhotoSelect() {
   document.getElementById('photoPreviewActions')?.classList.add('hidden');
   const statusEl = document.getElementById('photoUploadStatus');
   if (statusEl) statusEl.textContent = '';
-  const wrap = document.getElementById('photoPreviewWrap');
-  if (wrap && currentUser) wrap.innerHTML = avatarHTML(currentUser, 'avatar-xl');
 }
 
 async function uploadProfilePhoto() {
@@ -731,7 +781,7 @@ async function uploadProfilePhoto() {
     return;
   }
   const statusEl = document.getElementById('photoUploadStatus');
-  const saveBtn = document.getElementById('photoSaveBtn');
+  const saveBtn = document.querySelector('#modalFooter .btn-primary') || document.getElementById('photoSaveBtn');
   if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = 'Saving…'; }
   if (statusEl) statusEl.textContent = 'Cropping and uploading…';
   try {
@@ -750,6 +800,9 @@ async function uploadProfilePhoto() {
     cropState = null;
     if (pendingPhotoPreviewUrl) { URL.revokeObjectURL(pendingPhotoPreviewUrl); pendingPhotoPreviewUrl = null; }
     buildSidebar();
+    const input = document.getElementById('profilePhotoInput');
+    if (input) input.value = '';
+    closeModal();
     showToast('success', 'Saved', 'Profile photo updated.');
     if (typeof currentView !== 'undefined' && currentView) renderView(currentView);
   } catch (error) {
@@ -761,7 +814,10 @@ async function uploadProfilePhoto() {
 }
 
 function confirmRemoveProfilePhoto() {
-  openConfirm('Remove Photo', 'Remove your profile photo and use the default avatar instead?', removeProfilePhoto);
+  openModal('Remove Profile Photo?', '<p style="color:var(--text-2);line-height:1.6">Are you sure you want to remove your profile photo?</p>', [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Remove Photo', cls: 'btn-danger', action: () => { closeModal(); removeProfilePhoto(); } },
+  ]);
 }
 
 async function removeProfilePhoto() {
@@ -3688,11 +3744,10 @@ function renderSettings() {
   </div>
 
   <div class="profile-card">
-    <div class="profile-avatar-big">${avatarHTML(currentUser, 'avatar-xl')}</div>
+    ${profileAvatarEditableHTML(currentUser)}
     <div class="profile-info"><h3>${currentUser.name}</h3><p>${currentUser.email}</p><p>Administrator · ${currentUser.username}</p></div>
   </div>
 
-  ${profilePhotoSectionHTML(currentUser)}
 
   <div class="settings-section">
     <div class="settings-section-header"><h4>Admin Profile</h4></div>
@@ -4268,10 +4323,9 @@ function renderHOProfile() {
   area.innerHTML = `
   <div class="page-header"><div class="page-header-left"><h2>My Profile</h2><p>View and update your personal information.</p></div></div>
   <div class="profile-card">
-    <div class="profile-avatar-big">${avatarHTML(u, 'avatar-xl')}</div>
+    ${profileAvatarEditableHTML(u)}
     <div class="profile-info"><h3>${u.name}</h3><p>${u.email}</p><p>${u.block||''} ${u.lot||''} · ${u.contact||'No contact'}</p></div>
   </div>
-  ${profilePhotoSectionHTML(u)}
   <div class="settings-section">
     <div class="settings-section-header"><h4>Edit Profile</h4></div>
     <div class="settings-section-body">
@@ -4378,6 +4432,9 @@ function openModal(title, bodyHtml, buttons = []) {
 }
 
 function closeModal() {
+  if (pendingPhotoFile || pendingPhotoPreviewUrl) {
+    cancelProfilePhotoSelect();
+  }
   document.getElementById('modalOverlay').classList.add('hidden');
   document.body.style.overflow = '';
 }
@@ -4632,6 +4689,7 @@ function applyStoredTheme() {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    closeProfileAvatarMenu();
     closeModal();
     closeLoginModal();
     const np = document.getElementById('notifPanel');
@@ -4644,6 +4702,13 @@ document.addEventListener('keydown', e => {
 });
 
 document.addEventListener('click', e => {
+  const avatarMenu = document.getElementById('profileAvatarMenu');
+  const avatarBtn = document.getElementById('profileAvatarEditBtn');
+  if (avatarMenu && !avatarMenu.classList.contains('hidden')) {
+    if (!avatarMenu.contains(e.target) && !avatarBtn?.contains(e.target)) {
+      closeProfileAvatarMenu();
+    }
+  }
   const panel = document.getElementById('notifPanel');
   const bell = document.querySelector('.notif-bell');
   if (panel && !panel.classList.contains('hidden') && !panel.contains(e.target) && bell && !bell.contains(e.target)) {
