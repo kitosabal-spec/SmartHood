@@ -22,6 +22,8 @@ app.use('/public', express.static(path.join(__dirname, 'public')));
 
 const PROFILE_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'profile');
 fs.mkdirSync(PROFILE_UPLOAD_DIR, { recursive: true });
+const ANNOUNCEMENT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'announcements');
+fs.mkdirSync(ANNOUNCEMENT_UPLOAD_DIR, { recursive: true });
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 const tableConfig = {
@@ -41,9 +43,14 @@ const tableConfig = {
     booleanColumns: [],
   },
   announcements: {
-    columns: ['id', 'title', 'description', 'category', 'date', 'urgent', 'createdBy'],
-    jsonColumns: [],
+    columns: ['id', 'title', 'description', 'content', 'category', 'date', 'urgent', 'createdBy', 'user_id', 'image_path', 'images', 'created_at', 'updated_at'],
+    jsonColumns: ['images'],
     booleanColumns: ['urgent'],
+  },
+  announcement_comments: {
+    columns: ['id', 'announcement_id', 'user_id', 'comment', 'created_at', 'updated_at'],
+    jsonColumns: [],
+    booleanColumns: [],
   },
   complaints: {
     columns: ['id', 'homeownerId', 'category', 'description', 'status', 'adminResponse', 'dateFiled', 'updatedAt', 'resolvedAt'],
@@ -178,6 +185,7 @@ const seed = {
   billings: [],
   payments: [],
   announcements: [],
+  announcement_comments: [],
   complaints: [],
   amenityBookings: [],
   vehicleRegistrations: [],
@@ -365,10 +373,30 @@ async function createTables() {
     id VARCHAR(64) PRIMARY KEY,
     title TEXT,
     description LONGTEXT,
+    content LONGTEXT,
     category TEXT,
     date TEXT,
     urgent TINYINT(1) DEFAULT 0,
-    createdBy TEXT
+    createdBy TEXT,
+    user_id TEXT,
+    image_path TEXT,
+    created_at TEXT,
+    updated_at TEXT
+  )`);
+  await run('ALTER TABLE announcements ADD COLUMN content LONGTEXT').catch(() => {});
+  await run('ALTER TABLE announcements ADD COLUMN user_id TEXT').catch(() => {});
+  await run('ALTER TABLE announcements ADD COLUMN image_path TEXT').catch(() => {});
+  await run('ALTER TABLE announcements ADD COLUMN created_at TEXT').catch(() => {});
+  await run('ALTER TABLE announcements ADD COLUMN updated_at TEXT').catch(() => {});
+  await run('ALTER TABLE announcements ADD COLUMN images LONGTEXT').catch(() => {});
+
+  await run(`CREATE TABLE IF NOT EXISTS announcement_comments (
+    id VARCHAR(64) PRIMARY KEY,
+    announcement_id VARCHAR(64),
+    user_id VARCHAR(64),
+    comment LONGTEXT,
+    created_at TEXT,
+    updated_at TEXT
   )`);
 
   await run(`CREATE TABLE IF NOT EXISTS complaints (
@@ -538,6 +566,60 @@ function getRequestUserId(req) {
   return req.get('x-user-id') || req.body.userId || req.query.userId || null;
 }
 
+const announcementUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, ANNOUNCEMENT_UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || '.jpg';
+      const unique = `announcement-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+      cb(null, unique);
+    },
+  }),
+  limits: { fileSize: MAX_PHOTO_BYTES, files: 10 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ALLOWED_PHOTO_MIMES[file.mimetype] || !ALLOWED_PHOTO_EXTS.has(ext)) {
+      cb(new Error('Only JPG, PNG, or WebP images are allowed.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+const announcementUploadMiddleware = announcementUpload.fields([
+  { name: 'images', maxCount: 10 },
+  { name: 'image', maxCount: 1 }
+]);
+
+async function getRequester(req) {
+  const userId = getRequestUserId(req);
+  if (!userId) return null;
+  return await get('SELECT * FROM users WHERE id = ?', [userId]);
+}
+
+async function requireAuth(req, res) {
+  const requester = await getRequester(req);
+  if (!requester) {
+    res.status(401).json({ error: 'Login required.' });
+    return null;
+  }
+  return requester;
+}
+
+async function requireAdmin(req, res) {
+  const requester = await getRequester(req);
+  if (!requester) {
+    res.status(401).json({ error: 'Login required.' });
+    return null;
+  }
+  if (requester.role !== 'admin') {
+    res.status(403).json({ error: 'Only administrators can perform this action.' });
+    return null;
+  }
+  return requester;
+}
+
+
 function requireOwnPhotoAccess(req, res) {
   const requesterId = getRequestUserId(req);
   if (!requesterId) {
@@ -630,6 +712,321 @@ app.delete('/api/users/:id/photo', asyncHandler(async (req, res) => {
   await run('UPDATE users SET profile_photo = NULL WHERE id = ?', [req.params.id]);
   deleteProfileFile(target.profile_photo);
   res.json({ ok: true, profile_photo: null });
+}));
+
+
+// ── ANNOUNCEMENTS & COMMENTS SECURE APIS ──
+
+app.post('/api/announcements', (req, res) => {
+  requireAdmin(req, res).then(admin => {
+    if (!admin) return;
+
+    announcementUploadMiddleware(req, res, async (uploadErr) => {
+      if (uploadErr) {
+        const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
+          ? 'Image must be 5 MB or smaller.'
+          : (uploadErr.message || 'Invalid image upload.');
+        return res.status(400).json({ error: msg });
+      }
+
+      const uploadedFiles = [
+        ...((req.files && req.files.images) || []),
+        ...((req.files && req.files.image) || []),
+      ];
+
+      try {
+        const title = (req.body.title || '').trim();
+        const contentText = (req.body.content || req.body.description || '').trim();
+        if (!title || !contentText) {
+          for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+          return res.status(400).json({ error: 'Title and content are required.' });
+        }
+
+        const imagePaths = [];
+        for (const f of uploadedFiles) {
+          const buffer = await fs.promises.readFile(f.path);
+          if (!isValidImageBuffer(buffer)) {
+            for (const uf of uploadedFiles) await fs.promises.unlink(uf.path).catch(() => {});
+            return res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
+          }
+          imagePaths.push(`/uploads/announcements/${f.filename}`);
+        }
+
+        const primaryImage = imagePaths[0] || null;
+        const imagesJson = JSON.stringify(imagePaths);
+
+        const id = req.body.id || ('a' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex'));
+        const nowIso = new Date().toISOString();
+        const dateStr = req.body.date || nowIso.split('T')[0];
+        const urgent = req.body.urgent === 'true' || req.body.urgent === true ? 1 : 0;
+        const category = req.body.category || 'General';
+        const createdBy = admin.id;
+
+        await run(
+          `INSERT INTO announcements (id, title, description, content, category, date, urgent, createdBy, user_id, image_path, images, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, title, contentText, contentText, category, dateStr, urgent, createdBy, createdBy, primaryImage, imagesJson, nowIso, nowIso]
+        );
+
+        const created = await get('SELECT * FROM announcements WHERE id = ?', [id]);
+        res.status(201).json(deserializeRow('announcements', created));
+      } catch (err) {
+        for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+        console.error(err);
+        res.status(500).json({ error: 'Could not create announcement.' });
+      }
+    });
+  }).catch(err => {
+    console.error(err);
+    res.status(500).json({ error: 'Server error checking authorization.' });
+  });
+});
+
+app.put('/api/announcements/:id', (req, res) => {
+  requireAdmin(req, res).then(admin => {
+    if (!admin) return;
+
+    announcementUploadMiddleware(req, res, async (uploadErr) => {
+      if (uploadErr) {
+        const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
+          ? 'Image must be 5 MB or smaller.'
+          : (uploadErr.message || 'Invalid image upload.');
+        return res.status(400).json({ error: msg });
+      }
+
+      const uploadedFiles = [
+        ...((req.files && req.files.images) || []),
+        ...((req.files && req.files.image) || []),
+      ];
+
+      try {
+        const existing = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
+        if (!existing) {
+          for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+          return res.status(404).json({ error: 'Announcement not found.' });
+        }
+
+        const title = req.body.title !== undefined ? String(req.body.title).trim() : existing.title;
+        const contentText = req.body.content !== undefined
+          ? String(req.body.content).trim()
+          : (req.body.description !== undefined ? String(req.body.description).trim() : (existing.content || existing.description));
+
+        if (!title || !contentText) {
+          for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+          return res.status(400).json({ error: 'Title and content are required.' });
+        }
+
+        // Determine existing images to keep
+        let currentImages = [];
+        if (existing.images) {
+          try {
+            const parsed = typeof existing.images === 'string' ? JSON.parse(existing.images) : existing.images;
+            if (Array.isArray(parsed)) currentImages = parsed;
+          } catch { currentImages = []; }
+        } else if (existing.image_path) {
+          currentImages = [existing.image_path];
+        }
+
+        if (req.body.remove_image === 'true' || req.body.remove_all_images === 'true') {
+          for (const imgPath of currentImages) {
+            if (imgPath && imgPath.startsWith('/uploads/announcements/')) {
+              const oldFile = path.join(__dirname, 'public', imgPath);
+              fs.promises.unlink(oldFile).catch(() => {});
+            }
+          }
+          currentImages = [];
+        } else if (req.body.existing_images !== undefined) {
+          let keptImages = [];
+          try {
+            keptImages = typeof req.body.existing_images === 'string' ? JSON.parse(req.body.existing_images) : req.body.existing_images;
+            if (!Array.isArray(keptImages)) keptImages = [];
+          } catch { keptImages = currentImages; }
+
+          for (const oldImg of currentImages) {
+            if (!keptImages.includes(oldImg) && oldImg && oldImg.startsWith('/uploads/announcements/')) {
+              const oldFile = path.join(__dirname, 'public', oldImg);
+              fs.promises.unlink(oldFile).catch(() => {});
+            }
+          }
+          currentImages = keptImages;
+        }
+
+        // Process newly uploaded images
+        for (const f of uploadedFiles) {
+          const buffer = await fs.promises.readFile(f.path);
+          if (!isValidImageBuffer(buffer)) {
+            for (const uf of uploadedFiles) await fs.promises.unlink(uf.path).catch(() => {});
+            return res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
+          }
+          currentImages.push(`/uploads/announcements/${f.filename}`);
+        }
+
+        const primaryImage = currentImages[0] || null;
+        const imagesJson = JSON.stringify(currentImages);
+
+        const category = req.body.category || existing.category;
+        const dateStr = req.body.date || existing.date;
+        const urgent = req.body.urgent !== undefined ? (req.body.urgent === 'true' || req.body.urgent === true ? 1 : 0) : existing.urgent;
+        const nowIso = new Date().toISOString();
+
+        await run(
+          `UPDATE announcements SET title = ?, description = ?, content = ?, category = ?, date = ?, urgent = ?, image_path = ?, images = ?, updated_at = ? WHERE id = ?`,
+          [title, contentText, contentText, category, dateStr, urgent, primaryImage, imagesJson, nowIso, req.params.id]
+        );
+
+        const updated = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
+        res.json(deserializeRow('announcements', updated));
+      } catch (err) {
+        for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+        console.error(err);
+        res.status(500).json({ error: 'Could not update announcement.' });
+      }
+    });
+  }).catch(err => {
+    console.error(err);
+    res.status(500).json({ error: 'Server error checking authorization.' });
+  });
+});
+
+app.delete('/api/announcements/:id', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+
+  const existing = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
+  if (!existing) {
+    return res.status(404).json({ error: 'Announcement not found.' });
+  }
+
+  let allImages = [];
+  if (existing.images) {
+    try {
+      const parsed = typeof existing.images === 'string' ? JSON.parse(existing.images) : existing.images;
+      if (Array.isArray(parsed)) allImages = parsed;
+    } catch {}
+  }
+  if (existing.image_path && !allImages.includes(existing.image_path)) {
+    allImages.push(existing.image_path);
+  }
+
+  for (const imgPath of allImages) {
+    if (imgPath && imgPath.startsWith('/uploads/announcements/')) {
+      const oldFile = path.join(__dirname, 'public', imgPath);
+      fs.promises.unlink(oldFile).catch(() => {});
+    }
+  }
+
+  await run('DELETE FROM announcement_comments WHERE announcement_id = ?', [req.params.id]);
+  await run('DELETE FROM announcements WHERE id = ?', [req.params.id]);
+
+  res.json({ ok: true });
+}));
+
+app.get('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
+  const rows = await all(
+    `SELECT c.*, u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo
+     FROM announcement_comments c
+     LEFT JOIN users u ON c.user_id = u.id
+     WHERE c.announcement_id = ?
+     ORDER BY c.created_at ASC`,
+    [req.params.id]
+  );
+  res.json(rows);
+}));
+
+app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const announcement = await get('SELECT id FROM announcements WHERE id = ?', [req.params.id]);
+  if (!announcement) {
+    return res.status(404).json({ error: 'Announcement not found.' });
+  }
+
+  const commentText = (req.body.comment || '').trim();
+  if (!commentText) {
+    return res.status(400).json({ error: 'Comment cannot be empty.' });
+  }
+  if (commentText.length > 3000) {
+    return res.status(400).json({ error: 'Comment is too long (max 3000 characters).' });
+  }
+
+  const id = 'cm' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
+  const nowIso = new Date().toISOString();
+
+  await run(
+    `INSERT INTO announcement_comments (id, announcement_id, user_id, comment, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, req.params.id, user.id, commentText, nowIso, nowIso]
+  );
+
+  const created = await get(
+    `SELECT c.*, u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo
+     FROM announcement_comments c
+     LEFT JOIN users u ON c.user_id = u.id
+     WHERE c.id = ?`,
+    [id]
+  );
+  res.status(201).json(created);
+}));
+
+app.put('/api/announcements/:announcementId/comments/:commentId', asyncHandler(async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const existing = await get('SELECT * FROM announcement_comments WHERE id = ? AND announcement_id = ?', [
+    req.params.commentId,
+    req.params.announcementId,
+  ]);
+  if (!existing) {
+    return res.status(404).json({ error: 'Comment not found.' });
+  }
+
+  if (existing.user_id !== user.id) {
+    return res.status(403).json({ error: 'You can only edit your own comments.' });
+  }
+
+  const commentText = (req.body.comment || '').trim();
+  if (!commentText) {
+    return res.status(400).json({ error: 'Comment cannot be empty.' });
+  }
+  if (commentText.length > 3000) {
+    return res.status(400).json({ error: 'Comment is too long (max 3000 characters).' });
+  }
+
+  const nowIso = new Date().toISOString();
+  await run(
+    'UPDATE announcement_comments SET comment = ?, updated_at = ? WHERE id = ?',
+    [commentText, nowIso, req.params.commentId]
+  );
+
+  const updated = await get(
+    `SELECT c.*, u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo
+     FROM announcement_comments c
+     LEFT JOIN users u ON c.user_id = u.id
+     WHERE c.id = ?`,
+    [req.params.commentId]
+  );
+  res.json(updated);
+}));
+
+app.delete('/api/announcements/:announcementId/comments/:commentId', asyncHandler(async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+
+  const existing = await get('SELECT * FROM announcement_comments WHERE id = ? AND announcement_id = ?', [
+    req.params.commentId,
+    req.params.announcementId,
+  ]);
+  if (!existing) {
+    return res.status(404).json({ error: 'Comment not found.' });
+  }
+
+  if (existing.user_id !== user.id && user.role !== 'admin') {
+    return res.status(403).json({ error: 'You do not have permission to delete this comment.' });
+  }
+
+  await run('DELETE FROM announcement_comments WHERE id = ?', [req.params.commentId]);
+  res.json({ ok: true });
 }));
 
 app.get('/api/health', asyncHandler(async (req, res) => {

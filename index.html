@@ -520,6 +520,75 @@
   </div>
 </div>
 
+<!-- PHOTO CROPPER MODAL -->
+<div class="photo-cropper-overlay hidden" id="photoCropperOverlay">
+  <div class="photo-cropper-modal" id="photoCropperModal">
+    <div class="photo-cropper-header">
+      <div class="photo-cropper-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right:8px;vertical-align:-3px"><path d="M6.13 1L6 16a2 2 0 0 0 2 2h15"/><path d="M1 6.13L16 6a2 2 0 0 1 2 2v15"/></svg>
+        Crop Photo
+      </div>
+      <button class="photo-cropper-close" onclick="closePhotoCropper()" aria-label="Close cropper">
+        <svg width="14" height="14"><use href="#ico-x"/></svg>
+      </button>
+    </div>
+    
+    <div class="photo-cropper-toolbar">
+      <div class="cropper-ratios-container" id="cropperRatioGroup">
+        <span class="cropper-toolbar-label">Ratio:</span>
+        <button type="button" class="cropper-ratio-btn active" data-ratio="free" onclick="setCropperRatio('free')">Freeform</button>
+        <button type="button" class="cropper-ratio-btn" data-ratio="16:9" onclick="setCropperRatio('16:9')">16:9 Banner</button>
+        <button type="button" class="cropper-ratio-btn" data-ratio="4:3" onclick="setCropperRatio('4:3')">4:3 Photo</button>
+        <button type="button" class="cropper-ratio-btn" data-ratio="1:1" onclick="setCropperRatio('1:1')">1:1 Square</button>
+        <button type="button" class="cropper-ratio-btn" data-ratio="orig" onclick="setCropperRatio('orig')">Original</button>
+      </div>
+      <div class="cropper-tools-container">
+        <button type="button" class="cropper-action-btn" onclick="rotateCropper(90)" title="Rotate 90 degrees clockwise">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px"><path d="M21.5 2v6h-6"/><path d="M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          Rotate
+        </button>
+        <button type="button" class="cropper-action-btn" onclick="resetCropperBox()" title="Reset crop box">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10"/></svg>
+          Reset
+        </button>
+      </div>
+    </div>
+
+    <div class="photo-cropper-body">
+      <div class="photo-cropper-stage" id="cropperStage">
+        <img id="cropperTargetImg" alt="Crop Target" draggable="false" />
+        <div class="cropper-box" id="cropperBox">
+          <div class="cropper-grid-v1"></div>
+          <div class="cropper-grid-v2"></div>
+          <div class="cropper-grid-h1"></div>
+          <div class="cropper-grid-h2"></div>
+          <div class="cropper-handle handle-tl" data-handle="tl"></div>
+          <div class="cropper-handle handle-tr" data-handle="tr"></div>
+          <div class="cropper-handle handle-bl" data-handle="bl"></div>
+          <div class="cropper-handle handle-br" data-handle="br"></div>
+          <div class="cropper-handle handle-t" data-handle="t"></div>
+          <div class="cropper-handle handle-b" data-handle="b"></div>
+          <div class="cropper-handle handle-l" data-handle="l"></div>
+          <div class="cropper-handle handle-r" data-handle="r"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="photo-cropper-footer">
+      <div class="cropper-hint-text">
+        <span>💡 Drag inside box to move. Drag corners or edges to resize.</span>
+      </div>
+      <div class="photo-cropper-footer-btns">
+        <button type="button" class="btn btn-secondary" onclick="closePhotoCropper()">Cancel</button>
+        <button type="button" class="btn btn-primary" onclick="applyPhotoCrop()">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" style="margin-right:5px;"><polyline points="20 6 9 17 4 12"/></svg>
+          Apply Crop
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- TOAST CONTAINER -->
 <div class="toast-container" id="toastContainer"></div>
 
