@@ -28,8 +28,8 @@ app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 const tableConfig = {
   users: {
-    columns: ['id', 'username', 'password', 'role', 'name', 'email', 'block', 'lot', 'lotArea', 'contact', 'balance', 'profile_photo'],
-    jsonColumns: [],
+    columns: ['id', 'username', 'password', 'role', 'name', 'email', 'block', 'lot', 'lotArea', 'contact', 'balance', 'profile_photo', 'permissions', 'status'],
+    jsonColumns: ['permissions'],
     booleanColumns: [],
   },
   billings: {
@@ -102,6 +102,8 @@ const adminUser = {
   contact: null,
   balance: 0,
   profile_photo: null,
+  permissions: ['*'],
+  status: 'active',
 };
 
 const staffUsers = [
@@ -118,6 +120,8 @@ const staffUsers = [
     contact: null,
     balance: 0,
     profile_photo: null,
+    permissions: ['complaints'],
+    status: 'active',
   },
   {
     id: 'staff-security',
@@ -132,6 +136,8 @@ const staffUsers = [
     contact: null,
     balance: 0,
     profile_photo: null,
+    permissions: ['complaints', 'vehicles', 'lostfound'],
+    status: 'active',
   },
   {
     id: 'staff-treasurer',
@@ -146,6 +152,8 @@ const staffUsers = [
     contact: null,
     balance: 0,
     profile_photo: null,
+    permissions: ['payments', 'reports'],
+    status: 'active',
   },
   {
     id: 'staff-auditor',
@@ -160,6 +168,8 @@ const staffUsers = [
     contact: null,
     balance: 0,
     profile_photo: null,
+    permissions: ['billing', 'reports'],
+    status: 'active',
   },
 ];
 
@@ -266,6 +276,22 @@ function deserializeRow(table, row) {
 
   if (table === 'users') {
     delete output.password;
+    if (output.role === 'admin') {
+      output.permissions = Array.isArray(output.permissions) && output.permissions.length ? output.permissions : ['*'];
+    } else if (output.role === 'homeowner') {
+      output.permissions = Array.isArray(output.permissions) && output.permissions.length ? output.permissions : [
+        'ho-dashboard', 'ho-billing', 'ho-payments', 'ho-history', 'ho-amenities', 'ho-vehicles', 'ho-complaints', 'ho-announcements', 'ho-profile'
+      ];
+    } else if (!Array.isArray(output.permissions) || !output.permissions.length) {
+      const staffDefaults = {
+        president: ['complaints'],
+        security: ['complaints', 'vehicles', 'lostfound'],
+        treasurer: ['payments', 'reports'],
+        auditor: ['billing', 'reports'],
+      };
+      output.permissions = staffDefaults[output.role] || ['dashboard'];
+    }
+    output.status = output.status || 'active';
   }
 
   return output;
@@ -275,6 +301,7 @@ function sanitizeRecord(table, item) {
   if (table !== 'users') return item;
   const output = { ...item };
   delete output.password;
+  output.status = output.status || 'active';
   return output;
 }
 
@@ -344,6 +371,9 @@ async function createTables() {
   )`);
   await run('ALTER TABLE users ADD COLUMN lotArea DOUBLE').catch(() => {});
   await run('ALTER TABLE users ADD COLUMN profile_photo TEXT').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN permissions LONGTEXT').catch(() => {});
+  await run("ALTER TABLE users ADD COLUMN status VARCHAR(32) DEFAULT 'active'").catch(() => {});
+  await run("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''").catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS billings (
     id VARCHAR(64) PRIMARY KEY,
@@ -501,9 +531,17 @@ async function seedIfEmpty() {
 
 async function ensureStaffUsers() {
   for (const user of [adminUser, ...staffUsers]) {
-    const existing = await get('SELECT id FROM users WHERE username = ?', [user.username]);
+    const existing = await get('SELECT id, permissions, status FROM users WHERE username = ?', [user.username]);
     if (!existing) {
       await saveRecord('users', user);
+    } else {
+      if (!existing.permissions || !existing.status) {
+        await saveRecord('users', {
+          id: existing.id,
+          permissions: existing.permissions ? JSON.parse(existing.permissions) : user.permissions,
+          status: existing.status || 'active',
+        });
+      }
     }
   }
 }
@@ -594,7 +632,9 @@ const announcementUploadMiddleware = announcementUpload.fields([
 async function getRequester(req) {
   const userId = getRequestUserId(req);
   if (!userId) return null;
-  return await get('SELECT * FROM users WHERE id = ?', [userId]);
+  const row = await get('SELECT * FROM users WHERE id = ?', [userId]);
+  if (!row) return null;
+  return deserializeRow('users', row);
 }
 
 async function requireAuth(req, res) {
@@ -604,6 +644,78 @@ async function requireAuth(req, res) {
     return null;
   }
   return requester;
+}
+
+
+function userHasPermission(user, moduleKey) {
+  if (!user) return false;
+  if (user.status === 'inactive' || user.status === 'deactivated') return false;
+  if (user.role === 'admin') return true; // Administrator always has full unrestricted access
+  const perms = Array.isArray(user.permissions) ? user.permissions : [];
+  if (perms.includes('*')) return true;
+  return perms.includes(moduleKey);
+}
+
+const TABLE_PERMISSIONS = {
+  billings: 'billing',
+  payments: 'payments',
+  amenityBookings: 'amenities',
+  vehicleRegistrations: 'vehicles',
+  lostFound: 'lostfound',
+  complaints: 'complaints',
+  announcements: 'announcements',
+  auditLog: 'auditlog',
+  users: 'users',
+  appSettings: 'settings',
+};
+
+async function checkTableAccess(req, res, table, action = 'read') {
+  if (table === 'notifications' || table === 'announcement_comments') return true;
+
+  const requester = await getRequester(req);
+  if (!requester) {
+    if (action === 'read' && (table === 'announcements' || table === 'lostFound')) return true;
+    res.status(401).json({ error: 'Login required.' });
+    return null;
+  }
+
+  if (requester.status === 'inactive' || requester.status === 'deactivated') {
+    res.status(403).json({ error: 'Your account has been deactivated. Please contact the administrator.' });
+    return null;
+  }
+
+  // Administrator has 100% full access
+  if (requester.role === 'admin') return requester;
+
+  // Homeowner access rules
+  if (requester.role === 'homeowner') {
+    if (action === 'read') return requester;
+    if (action === 'create' && ['complaints', 'payments', 'amenityBookings', 'vehicleRegistrations', 'lostFound'].includes(table)) {
+      return requester;
+    }
+    if (action === 'update' && table === 'users' && req.params.id === requester.id) {
+      return requester;
+    }
+    const perm = TABLE_PERMISSIONS[table];
+    if (perm && userHasPermission(requester, perm)) return requester;
+
+    res.status(403).json({ error: `Access Denied: You do not have permission to ${action} ${table}.` });
+    return null;
+  }
+
+  // Staff and custom accounts
+  const requiredPerm = TABLE_PERMISSIONS[table];
+  if (requiredPerm && userHasPermission(requester, requiredPerm)) return requester;
+
+  if (action === 'read') {
+    if (table === 'users' && (userHasPermission(requester, 'users') || userHasPermission(requester, 'homeowners'))) return requester;
+    if (table === 'billings' && userHasPermission(requester, 'reports')) return requester;
+    if (table === 'payments' && userHasPermission(requester, 'reports')) return requester;
+    if (table === 'announcements') return requester;
+  }
+
+  res.status(403).json({ error: `Access Denied: You do not have permission to ${action} ${table}.` });
+  return null;
 }
 
 async function requireAdmin(req, res) {
@@ -617,6 +729,23 @@ async function requireAdmin(req, res) {
     return null;
   }
   return requester;
+}
+
+async function requirePermission(req, res, permissionKey) {
+  const requester = await getRequester(req);
+  if (!requester) {
+    res.status(401).json({ error: 'Login required.' });
+    return null;
+  }
+  if (requester.status === 'inactive' || requester.status === 'deactivated') {
+    res.status(403).json({ error: 'Your account has been deactivated. Please contact the administrator.' });
+    return null;
+  }
+  if (requester.role === 'admin' || userHasPermission(requester, permissionKey)) {
+    return requester;
+  }
+  res.status(403).json({ error: `Access Denied: You do not have permission to perform this action.` });
+  return null;
 }
 
 
@@ -718,8 +847,8 @@ app.delete('/api/users/:id/photo', asyncHandler(async (req, res) => {
 // ── ANNOUNCEMENTS & COMMENTS SECURE APIS ──
 
 app.post('/api/announcements', (req, res) => {
-  requireAdmin(req, res).then(admin => {
-    if (!admin) return;
+  requirePermission(req, res, 'announcements').then(author => {
+    if (!author) return;
 
     announcementUploadMiddleware(req, res, async (uploadErr) => {
       if (uploadErr) {
@@ -760,7 +889,7 @@ app.post('/api/announcements', (req, res) => {
         const dateStr = req.body.date || nowIso.split('T')[0];
         const urgent = req.body.urgent === 'true' || req.body.urgent === true ? 1 : 0;
         const category = req.body.category || 'General';
-        const createdBy = admin.id;
+        const createdBy = author ? author.id : 'u001';
 
         await run(
           `INSERT INTO announcements (id, title, description, content, category, date, urgent, createdBy, user_id, image_path, images, created_at, updated_at)
@@ -783,8 +912,8 @@ app.post('/api/announcements', (req, res) => {
 });
 
 app.put('/api/announcements/:id', (req, res) => {
-  requireAdmin(req, res).then(admin => {
-    if (!admin) return;
+  requirePermission(req, res, 'announcements').then(author => {
+    if (!author) return;
 
     announcementUploadMiddleware(req, res, async (uploadErr) => {
       if (uploadErr) {
@@ -889,8 +1018,10 @@ app.put('/api/announcements/:id', (req, res) => {
 });
 
 app.delete('/api/announcements/:id', asyncHandler(async (req, res) => {
-  const admin = await requireAdmin(req, res);
-  if (!admin) return;
+  const requester = await getRequester(req);
+  if (!requester || !userHasPermission(requester, 'announcements')) {
+    return res.status(403).json({ error: 'Access Denied: You do not have permission to delete announcements.' });
+  }
 
   const existing = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
   if (!existing) {
@@ -1051,18 +1182,26 @@ app.post('/api/login', asyncHandler(async (req, res) => {
     res.status(401).json({ error: 'Invalid username or password.' });
     return;
   }
+  if (user.status === 'inactive' || user.status === 'deactivated') {
+    res.status(403).json({ error: 'Your account has been deactivated. Please contact the administrator.' });
+    return;
+  }
   res.json(deserializeRow('users', user));
 }));
 
 app.get('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
+  const allowed = await checkTableAccess(req, res, table, 'read');
+  if (!allowed) return;
   res.json(await getTableData(table));
 }));
 
 app.put('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
+  const allowed = await checkTableAccess(req, res, table, 'update');
+  if (!allowed) return;
   if (!Array.isArray(req.body)) {
     res.status(400).json({ error: 'Expected an array of records.' });
     return;
@@ -1078,6 +1217,8 @@ app.put('/api/:table', asyncHandler(async (req, res) => {
 app.post('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
+  const allowed = await checkTableAccess(req, res, table, 'create');
+  if (!allowed) return;
   const body = stripProfilePhotoField(table, req.body);
   await saveRecord(table, body);
   res.status(201).json(sanitizeRecord(table, body));
@@ -1086,6 +1227,19 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
 app.put('/api/:table/:id', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
+  const allowed = await checkTableAccess(req, res, table, 'update');
+  if (!allowed) return;
+
+  // Protect Primary Administrator u001 from accidental deactivation or role change
+  if (table === 'users' && req.params.id === 'u001') {
+    if (req.body.status && req.body.status !== 'active') {
+      return res.status(400).json({ error: 'Primary Administrator account cannot be deactivated.' });
+    }
+    if (req.body.role && req.body.role !== 'admin') {
+      return res.status(400).json({ error: 'Primary Administrator role cannot be changed.' });
+    }
+  }
+
   const item = { ...stripProfilePhotoField(table, req.body), id: req.params.id };
   await saveRecord(table, item);
   res.json(sanitizeRecord(table, item));
@@ -1094,6 +1248,13 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
 app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
+  const allowed = await checkTableAccess(req, res, table, 'delete');
+  if (!allowed) return;
+
+  if (table === 'users' && req.params.id === 'u001') {
+    return res.status(400).json({ error: 'Primary Administrator account cannot be deleted.' });
+  }
+
   await run(`DELETE FROM ${tableName(table)} WHERE \`id\` = ?`, [req.params.id]);
   res.json({ ok: true });
 }));

@@ -22,8 +22,25 @@ const ROLE_LABELS = {
   security: 'Security Guard',
   treasurer: 'Treasurer',
   auditor: 'Auditor',
+  staff: 'Staff Member',
   homeowner: 'Homeowner',
 };
+
+const MODULE_PERMISSIONS = [
+  { id: 'dashboard',      label: 'Dashboard',            section: 'MAIN',        icon: 'ico-dashboard',  desc: 'Overview stats, collection trends, recent activity' },
+  { id: 'homeowners',     label: 'Homeowners',           section: 'MAIN',        icon: 'ico-users',      desc: 'Resident directory, contact details, balance info' },
+  { id: 'announcements',  label: 'Announcements',        section: 'MANAGEMENT',  icon: 'ico-megaphone',  desc: 'Post notices, multi-photo updates, comments' },
+  { id: 'billing',        label: 'Billing',              section: 'MANAGEMENT',  icon: 'ico-file',       desc: 'Create invoices, auto-generate dues, assign rates' },
+  { id: 'payments',       label: 'Payments',             section: 'MANAGEMENT',  icon: 'ico-credit',     desc: 'Verify receipts, approve/reject homeowner payments' },
+  { id: 'complaints',     label: 'Complaints',           section: 'MANAGEMENT',  icon: 'ico-flag',       desc: 'Review complaints, post admin responses, resolve' },
+  { id: 'amenities',      label: 'Amenity Bookings',     section: 'MANAGEMENT',  icon: 'ico-building',   desc: 'Facility reservation approvals and schedules' },
+  { id: 'vehicles',       label: 'Vehicle Management',   section: 'MANAGEMENT',  icon: 'ico-parking',    desc: 'Approve vehicle registrations and RFID stickers' },
+  { id: 'lostfound',      label: 'Lost and Found',        section: 'MANAGEMENT',  icon: 'ico-search',     desc: 'Manage community lost & found listings' },
+  { id: 'reports',        label: 'Reports',              section: 'ANALYTICS',   icon: 'ico-chart',      desc: 'Financial summaries, payment collection charts' },
+  { id: 'auditlog',       label: 'Audit Log',            section: 'ANALYTICS',   icon: 'ico-log',        desc: 'Audit trail of administrative system actions' },
+  { id: 'users',          label: 'Accounts & Roles',      section: 'SYSTEM',      icon: 'ico-shield',     desc: 'User management, custom roles, permission matrix' },
+  { id: 'settings',       label: 'Settings',             section: 'SYSTEM',      icon: 'ico-settings',   desc: 'System preferences, dues rate, admin profile' },
+];
 
 const ADMIN_NAV = [
   { id: 'dashboard',      icon: 'ico-dashboard',  label: 'Dashboard',       section: 'MAIN' },
@@ -37,6 +54,7 @@ const ADMIN_NAV = [
   { id: 'announcements',  icon: 'ico-megaphone',   label: 'Announcements',   section: 'MANAGEMENT' },
   { id: 'reports',        icon: 'ico-chart',       label: 'Reports',         section: 'ANALYTICS' },
   { id: 'auditlog',       icon: 'ico-log',         label: 'Audit Log',       section: 'ANALYTICS' },
+  { id: 'users',          icon: 'ico-shield',      label: 'Accounts & Roles', section: 'SYSTEM' },
   { id: 'settings',       icon: 'ico-settings',    label: 'Settings',        section: 'SYSTEM' },
 ];
 
@@ -389,6 +407,19 @@ function initApp() {
 }
 
 function getNavForRole(role) {
+  if (role === 'admin') return ADMIN_NAV;
+
+  // If user has custom permissions array in MySQL, dynamically build their navigation
+  if (currentUser && Array.isArray(currentUser.permissions) && currentUser.permissions.length > 0) {
+    if (role === 'homeowner') {
+      const perms = currentUser.permissions;
+      return HOMEOWNER_NAV.filter(item => perms.includes(item.id) || perms.includes('*'));
+    }
+    const perms = currentUser.permissions;
+    const permittedNav = ADMIN_NAV.filter(item => perms.includes(item.id) || perms.includes('*'));
+    if (permittedNav.length > 0) return permittedNav;
+  }
+
   const navMap = {
     admin: ADMIN_NAV,
     homeowner: HOMEOWNER_NAV,
@@ -396,26 +427,48 @@ function getNavForRole(role) {
     security: SECURITY_NAV,
     treasurer: TREASURER_NAV,
     auditor: AUDITOR_NAV,
+    staff: ADMIN_NAV.filter(item => ['dashboard'].includes(item.id)),
   };
   return navMap[role] || HOMEOWNER_NAV;
 }
 
 function getDefaultViewForRole(role) {
-  return (getNavForRole(role)[0] || HOMEOWNER_NAV[0]).id;
+  const nav = getNavForRole(role);
+  if (nav && nav.length > 0) return nav[0].id;
+  return role === 'homeowner' ? HOMEOWNER_NAV[0].id : ADMIN_NAV[0].id;
+}
+
+function userHasModulePermission(moduleId) {
+  if (!currentUser) return false;
+  if (currentUser.status === 'inactive' || currentUser.status === 'deactivated') return false;
+  if (currentUser.role === 'admin') return true;
+  if (Array.isArray(currentUser.permissions)) {
+    if (currentUser.permissions.includes('*')) return true;
+    if (currentUser.permissions.includes(moduleId)) return true;
+  }
+  return false;
 }
 
 function isAdmin() { return currentUser?.role === 'admin'; }
-function canManageComplaints() { return ['admin', 'president'].includes(currentUser?.role); }
-function canViewAdminComplaints() { return ['admin', 'president', 'security'].includes(currentUser?.role); }
-function canManagePayments() { return isAdmin(); }
-function canViewPayments() { return ['admin', 'treasurer'].includes(currentUser?.role); }
-function canManageBilling() { return isAdmin(); }
-function canViewBillingStatus() { return ['admin', 'auditor'].includes(currentUser?.role); }
-function canViewReports() { return ['admin', 'treasurer', 'auditor'].includes(currentUser?.role); }
+function canManageComplaints() { return isAdmin() || userHasModulePermission('complaints') || ['president'].includes(currentUser?.role); }
+function canViewAdminComplaints() { return isAdmin() || userHasModulePermission('complaints') || ['president', 'security'].includes(currentUser?.role); }
+function canManagePayments() { return isAdmin() || userHasModulePermission('payments'); }
+function canViewPayments() { return isAdmin() || userHasModulePermission('payments') || ['treasurer'].includes(currentUser?.role); }
+function canManageBilling() { return isAdmin() || userHasModulePermission('billing'); }
+function canViewBillingStatus() { return isAdmin() || userHasModulePermission('billing') || ['auditor'].includes(currentUser?.role); }
+function canViewReports() { return isAdmin() || userHasModulePermission('reports') || ['treasurer', 'auditor'].includes(currentUser?.role); }
 
 function canAccessView(viewId) {
+  if (!currentUser) return false;
+  if (currentUser.status === 'inactive' || currentUser.status === 'deactivated') return false;
   if (isAdmin()) return true;
-  return getNavForRole(currentUser?.role).some(item => item.id === viewId);
+
+  if (Array.isArray(currentUser.permissions) && currentUser.permissions.length > 0) {
+    if (currentUser.permissions.includes('*')) return true;
+    if (currentUser.permissions.includes(viewId)) return true;
+  }
+
+  return getNavForRole(currentUser.role).some(item => item.id === viewId);
 }
 
 function hasPaymentForBilling(payments, billingId, statuses) {
@@ -938,7 +991,8 @@ function buildSidebar() {
 
 function navigate(viewId) {
   if (!canAccessView(viewId)) {
-    viewId = getDefaultViewForRole(currentUser.role);
+    renderAccessDenied(viewId);
+    return;
   }
   currentView = viewId;
   document.querySelectorAll('.nav-item').forEach(el => {
@@ -952,6 +1006,41 @@ function navigate(viewId) {
   updateSidebarBadges();
   if (window.innerWidth <= 900) closeSidebar();
   document.getElementById('notifPanel').classList.add('hidden');
+}
+
+function renderAccessDenied(viewId) {
+  const area = document.getElementById('contentArea');
+  if (!area) return;
+  document.getElementById('topbarTitle').textContent = 'Access Denied';
+  document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
+
+  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV, ...PRESIDENT_NAV, ...SECURITY_NAV, ...TREASURER_NAV, ...AUDITOR_NAV];
+  const targetItem = allNav.find(n => n.id === viewId);
+  const targetLabel = targetItem ? targetItem.label : viewId;
+  const defaultView = getDefaultViewForRole(currentUser ? currentUser.role : 'homeowner');
+
+  area.innerHTML = `
+    <div class="access-denied-container">
+      <div class="access-denied-card">
+        <div class="access-denied-icon">
+          <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+          </svg>
+        </div>
+        <h2 class="access-denied-title">Access Denied</h2>
+        <p class="access-denied-desc">
+          You do not have permission to access the <strong>${escapeHtml(targetLabel)}</strong> module.
+        </p>
+        <p class="access-denied-subdesc">
+          Your account access permissions are configured by the SmartHood administrator. If you require access to this section, please contact your HOA admin.
+        </p>
+        <button class="btn btn-primary" onclick="navigate('${defaultView}')" style="margin-top:16px;">
+          Return to ${currentUser && currentUser.role === 'admin' ? 'Dashboard' : 'Authorized Area'}
+        </button>
+      </div>
+    </div>
+  `;
 }
 
 function renderView(viewId) {
@@ -969,6 +1058,7 @@ function renderView(viewId) {
     'announcements':     renderAnnouncements,
     'reports':           renderReports,
     'auditlog':          renderAuditLog,
+    'users':             renderUserManagement,
     'settings':          renderSettings,
     'ho-dashboard':      renderHODashboard,
     'ho-billing':        renderHOBilling,
@@ -1363,11 +1453,102 @@ function renderDonut(containerId, segments, total, centerLabel, centerVal) {
 }
 
 
+
+// ══════════════════════════════════════════════════════════════
+// TABLE PAGINATION UTILITY COMPONENT
+// ══════════════════════════════════════════════════════════════
+
+function renderPaginationComponent(config) {
+  const {
+    containerId,
+    currentPage,
+    pageSize,
+    totalItems,
+    pageSizeOptions = [10, 25, 50, 100],
+    onPageChangeFn,
+    onPageSizeChangeFn,
+    itemLabel = 'entries',
+  } = config;
+
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  const page = Math.min(Math.max(1, currentPage), totalPages);
+  const start = totalItems === 0 ? 0 : (page - 1) * pageSize + 1;
+  const end = Math.min(page * pageSize, totalItems);
+
+  // Generate page numbers array with smart ellipsis
+  const pages = [];
+  if (totalPages <= 7) {
+    for (let i = 1; i <= totalPages; i++) pages.push(i);
+  } else {
+    pages.push(1);
+    if (page > 3) pages.push('...');
+    const startPage = Math.max(2, page - 1);
+    const endPage = Math.min(totalPages - 1, page + 1);
+    for (let i = startPage; i <= endPage; i++) {
+      if (!pages.includes(i)) pages.push(i);
+    }
+    if (page < totalPages - 2) pages.push('...');
+    if (!pages.includes(totalPages)) pages.push(totalPages);
+  }
+
+  container.innerHTML = `
+    <div class="table-pagination-wrapper">
+      <div class="table-pagination-info">
+        Showing <span class="table-pagination-highlight">${start}</span> to <span class="table-pagination-highlight">${end}</span> of <span class="table-pagination-highlight">${totalItems.toLocaleString()}</span> ${escapeHtml(itemLabel)}
+      </div>
+      <div class="table-pagination-actions">
+        <div class="table-pagination-size">
+          <span>Show</span>
+          <select class="table-pagination-size-select" onchange="${onPageSizeChangeFn}(Number(this.value))">
+            ${pageSizeOptions.map(sz => `<option value="${sz}" ${sz === pageSize ? 'selected' : ''}>${sz}</option>`).join('')}
+          </select>
+          <span>per page</span>
+        </div>
+        <div class="table-pagination-nav">
+          <button class="table-pagination-btn" onclick="${onPageChangeFn}(1)" ${page === 1 ? 'disabled' : ''} title="First Page">«</button>
+          <button class="table-pagination-btn" onclick="${onPageChangeFn}(${page - 1})" ${page === 1 ? 'disabled' : ''} title="Previous Page">‹</button>
+          <div class="pagination-numbers" style="display:inline-flex;gap:4px;">
+            ${pages.map(p => {
+              if (p === '...') return `<span class="table-pagination-ellipsis">…</span>`;
+              const isActive = p === page;
+              return `<button class="table-pagination-btn ${isActive ? 'active' : ''}" onclick="${onPageChangeFn}(${p})" ${isActive ? 'disabled' : ''}>${p}</button>`;
+            }).join('')}
+          </div>
+          <button class="table-pagination-btn" onclick="${onPageChangeFn}(${page + 1})" ${page === totalPages ? 'disabled' : ''} title="Next Page">›</button>
+          <button class="table-pagination-btn" onclick="${onPageChangeFn}(${totalPages})" ${page === totalPages ? 'disabled' : ''} title="Last Page">»</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
 // SECTION 7: ADMIN — HOMEOWNERS
 
 
+let hoPaginationState = { page: 1, pageSize: 10 };
+let currentHOFilteredList = null;
+
+function changeHOPage(page) {
+  hoPaginationState.page = page;
+  renderHOTable(currentHOFilteredList, false);
+}
+window.changeHOPage = changeHOPage;
+
+function changeHOPageSize(pageSize) {
+  hoPaginationState.pageSize = pageSize;
+  hoPaginationState.page = 1;
+  renderHOTable(currentHOFilteredList, false);
+}
+window.changeHOPageSize = changeHOPageSize;
+
 function renderHomeowners() {
   syncHomeownerBalances();
+  hoPaginationState.page = 1;
+  currentHOFilteredList = null;
+
   const area = document.getElementById('contentArea');
   const blockOptions = [...new Set(db.get('users')
     .filter(u => u.role === 'homeowner' && u.block)
@@ -1396,22 +1577,54 @@ function renderHomeowners() {
         <tbody id="hoTableBody"></tbody>
       </table></div>
     </div>
+    <div id="hoPagination"></div>
   </div>`;
 
   document.getElementById('hoSearch').addEventListener('input', filterHomeowners);
   renderHOTable();
 }
 
-function renderHOTable(filtered = null) {
-  const users = filtered !== null ? filtered : db.get('users').filter(u => u.role === 'homeowner');
+function renderHOTable(filtered = null, resetPage = false) {
+  if (filtered !== null) {
+    currentHOFilteredList = filtered;
+  } else if (currentHOFilteredList === null) {
+    currentHOFilteredList = db.get('users').filter(u => u.role === 'homeowner');
+  }
+  const users = currentHOFilteredList || [];
   const tbody = document.getElementById('hoTableBody');
   if (!tbody) return;
-  if (!users.length) { tbody.innerHTML = `<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg>No homeowners found.</div></td></tr>`; return; }
-  tbody.innerHTML = users.map((u, i) => `
+
+  if (resetPage) hoPaginationState.page = 1;
+
+  const totalItems = users.length;
+  const pageSize = hoPaginationState.pageSize || 10;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  if (hoPaginationState.page > totalPages) hoPaginationState.page = totalPages;
+  if (hoPaginationState.page < 1) hoPaginationState.page = 1;
+
+  if (!totalItems) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg>No homeowners found.</div></td></tr>`;
+    renderPaginationComponent({
+      containerId: 'hoPagination',
+      currentPage: 1,
+      pageSize,
+      totalItems: 0,
+      onPageChangeFn: 'changeHOPage',
+      onPageSizeChangeFn: 'changeHOPageSize',
+      itemLabel: 'homeowners',
+    });
+    return;
+  }
+
+  const startIndex = (hoPaginationState.page - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const pageItems = users.slice(startIndex, endIndex);
+
+  tbody.innerHTML = pageItems.map((u, i) => `
     <tr>
-      <td>${i + 1}</td>
-      <td><div class="homeowner-name-cell">${avatarHTML(u, 'avatar-sm')}<strong>${u.name}</strong></div></td>
-      <td>${u.block || '—'}, ${u.lot || '—'}</td>
+      <td>${startIndex + i + 1}</td>
+      <td><div class="homeowner-name-cell">${avatarHTML(u, 'avatar-sm')}<strong>${escapeHtml(u.name)}</strong></div></td>
+      <td>${escapeHtml(u.block || '—')}, ${escapeHtml(u.lot || '—')}</td>
       <td class="${(u.balance||0) > 0 ? 'amount-due' : 'amount-paid'}">₱${(u.balance||0).toLocaleString()}</td>
       <td><button class="ho-info-btn" onclick="openViewHO('${u.id}')" title="View details">i</button></td>
       <td><div class="td-actions">
@@ -1419,6 +1632,16 @@ function renderHOTable(filtered = null) {
         <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteHO('${u.id}')" title="Delete"><svg width="14" height="14"><use href="#ico-trash"/></svg></button>
       </div></td>
     </tr>`).join('');
+
+  renderPaginationComponent({
+    containerId: 'hoPagination',
+    currentPage: hoPaginationState.page,
+    pageSize,
+    totalItems,
+    onPageChangeFn: 'changeHOPage',
+    onPageSizeChangeFn: 'changeHOPageSize',
+    itemLabel: 'homeowners',
+  });
 }
 
 function filterHomeowners() {
@@ -1432,7 +1655,7 @@ function filterHomeowners() {
     || (u.block || '').toLowerCase().includes(q)
   );
   if (blk) users = users.filter(u => u.block === blk);
-  renderHOTable(users);
+  renderHOTable(users, true);
 }
 
 function openAddHomeownerModal() {
@@ -5002,21 +5225,32 @@ function renderReports() {
   </div>
 
   <div class="section-card" style="margin-bottom:22px">
-    <div class="section-card-header"><div><h3>Homeowner Balance Report</h3></div></div>
-    <div class="section-card-body no-pad">
-      <table class="data-table">
-        <thead><tr><th>Name</th><th>Block/Lot</th><th>Balance</th><th>Status</th></tr></thead>
-        <tbody>
-          ${users.map(u => `
-            <tr>
-              <td><strong>${u.name}</strong></td>
-              <td>${u.block||''} ${u.lot||''}</td>
-              <td class="${(u.balance||0) > 0 ? 'amount-due' : 'amount-paid'}">₱${(u.balance||0).toLocaleString()}</td>
-              <td>${(u.balance||0) > 0 ? '<span class="badge badge-red">With Balance</span>' : '<span class="badge badge-green">Clear</span>'}</td>
-            </tr>`).join('')}
-        </tbody>
-      </table>
+    <div class="section-card-header">
+      <div>
+        <h3>Homeowner Balance Report</h3>
+        <p style="font-size:0.8rem;color:var(--text-3);margin-top:2px;">Overview of resident account dues and payment clearance status.</p>
+      </div>
+      <div class="filters-row">
+        <div class="search-box">
+          <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
+          <input id="hoBalanceSearch" type="text" placeholder="Search homeowner or block..." oninput="filterHOBalanceReport()"/>
+        </div>
+        <select class="filter-select" id="hoBalanceStatusFilter" onchange="filterHOBalanceReport()">
+          <option value="">All Statuses</option>
+          <option value="due">With Balance</option>
+          <option value="clear">Clear</option>
+        </select>
+      </div>
     </div>
+    <div class="section-card-body no-pad">
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>#</th><th>Name</th><th>Block/Lot</th><th>Balance</th><th>Status</th></tr></thead>
+          <tbody id="hoBalanceTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="hoBalancePagination"></div>
   </div>
 
   <div class="section-card">
@@ -5055,7 +5289,114 @@ function renderReports() {
     { value: complaints.filter(c=>c.status==='Resolved').length,    color: '#16a34a' },
     { value: complaints.filter(c=>c.status==='Rejected').length,    color: '#dc2626' },
   ], cmpTotal, 'Complaints', complaints.length);
+
+  hoBalancePaginationState.page = 1;
+  currentHOBalanceFiltered = null;
+  renderHOBalanceReportTable();
 }
+
+let hoBalancePaginationState = { page: 1, pageSize: 10 };
+let currentHOBalanceFiltered = null;
+
+function changeHOBalancePage(page) {
+  hoBalancePaginationState.page = page;
+  renderHOBalanceReportTable(currentHOBalanceFiltered, false);
+}
+window.changeHOBalancePage = changeHOBalancePage;
+
+function changeHOBalancePageSize(size) {
+  hoBalancePaginationState.pageSize = size;
+  hoBalancePaginationState.page = 1;
+  renderHOBalanceReportTable(currentHOBalanceFiltered, false);
+}
+window.changeHOBalancePageSize = changeHOBalancePageSize;
+
+function renderHOBalanceReportTable(filtered = null, resetPage = false) {
+  const tbody = document.getElementById('hoBalanceTableBody');
+  if (!tbody) return;
+
+  if (filtered !== null) {
+    currentHOBalanceFiltered = filtered;
+  } else if (currentHOBalanceFiltered === null) {
+    currentHOBalanceFiltered = db.get('users').filter(u => u.role === 'homeowner');
+  }
+  const users = currentHOBalanceFiltered || [];
+
+  if (resetPage) hoBalancePaginationState.page = 1;
+
+  const totalItems = users.length;
+  const pageSize = hoBalancePaginationState.pageSize || 10;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  if (hoBalancePaginationState.page > totalPages) hoBalancePaginationState.page = totalPages;
+  if (hoBalancePaginationState.page < 1) hoBalancePaginationState.page = 1;
+
+  if (!totalItems) {
+    tbody.innerHTML = `<tr><td colspan="5"><div class="no-results" style="padding:24px;"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg><p style="margin-top:6px;">No homeowners found matching your criteria.</p></div></td></tr>`;
+    renderPaginationComponent({
+      containerId: 'hoBalancePagination',
+      currentPage: 1,
+      pageSize,
+      totalItems: 0,
+      onPageChangeFn: 'changeHOBalancePage',
+      onPageSizeChangeFn: 'changeHOBalancePageSize',
+      itemLabel: 'homeowners',
+    });
+    return;
+  }
+
+  const startIndex = (hoBalancePaginationState.page - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const pageItems = users.slice(startIndex, endIndex);
+
+  tbody.innerHTML = pageItems.map((u, i) => `
+    <tr>
+      <td>${startIndex + i + 1}</td>
+      <td>
+        <div class="homeowner-name-cell">
+          ${avatarHTML(u, 'avatar-sm')}
+          <strong>${escapeHtml(u.name)}</strong>
+        </div>
+      </td>
+      <td>${escapeHtml(u.block || '—')}, ${escapeHtml(u.lot || '—')}</td>
+      <td class="${(u.balance || 0) > 0 ? 'amount-due' : 'amount-paid'}">₱${(u.balance || 0).toLocaleString()}</td>
+      <td>${(u.balance || 0) > 0 ? '<span class="badge badge-red">With Balance</span>' : '<span class="badge badge-green">Clear</span>'}</td>
+    </tr>
+  `).join('');
+
+  renderPaginationComponent({
+    containerId: 'hoBalancePagination',
+    currentPage: hoBalancePaginationState.page,
+    pageSize,
+    totalItems,
+    onPageChangeFn: 'changeHOBalancePage',
+    onPageSizeChangeFn: 'changeHOBalancePageSize',
+    itemLabel: 'homeowners',
+  });
+}
+
+function filterHOBalanceReport() {
+  const q = (document.getElementById('hoBalanceSearch')?.value || '').toLowerCase().trim();
+  const statusFilter = document.getElementById('hoBalanceStatusFilter')?.value || '';
+
+  let users = db.get('users').filter(u => u.role === 'homeowner');
+  if (q) {
+    users = users.filter(u =>
+      (u.name || '').toLowerCase().includes(q)
+      || (u.username || '').toLowerCase().includes(q)
+      || (u.email || '').toLowerCase().includes(q)
+      || (u.block || '').toLowerCase().includes(q)
+      || (u.lot || '').toLowerCase().includes(q)
+    );
+  }
+  if (statusFilter === 'due') {
+    users = users.filter(u => (u.balance || 0) > 0);
+  } else if (statusFilter === 'clear') {
+    users = users.filter(u => (u.balance || 0) <= 0);
+  }
+
+  renderHOBalanceReportTable(users, true);
+}
+window.filterHOBalanceReport = filterHOBalanceReport;
 
 
 // SECTION 13: ADMIN — AUDIT LOG
@@ -5235,6 +5576,805 @@ function confirmResetData() {
       performLogout();
       showToast('success', 'Reset', 'Data has been reset.');
     }},
+  ]);
+}
+
+
+
+// ════════════════════════════════════════════════════════════
+// SECTION 14B: ADMIN — ACCOUNTS, ROLES & PERMISSIONS
+// ════════════════════════════════════════════════════════════
+
+function renderUserManagement() {
+  const area = document.getElementById('contentArea');
+  if (!area) return;
+
+  const users = db.get('users');
+  const activeCount = users.filter(u => (u.status || 'active') === 'active').length;
+  const staffCount = users.filter(u => u.role !== 'homeowner').length;
+  const hoCount = users.filter(u => u.role === 'homeowner').length;
+
+  area.innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left">
+      <h2>Accounts &amp; Permissions</h2>
+      <p>Create accounts, customize module access permissions, and manage user status.</p>
+    </div>
+    <div class="page-header-actions">
+      <button class="btn btn-primary" onclick="openCreateAccountModal()">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px;vertical-align:-2px"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        New Account
+      </button>
+    </div>
+  </div>
+
+  <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px;">
+    <div class="stat-card">
+      <div class="stat-icon" style="background:var(--teal-50);color:var(--teal-600);"><svg width="22" height="22"><use href="#ico-users"/></svg></div>
+      <div class="stat-value">${users.length}</div>
+      <div class="stat-label">Total Accounts</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#dcfce7;color:#16a34a;"><svg width="22" height="22"><use href="#ico-shield"/></svg></div>
+      <div class="stat-value">${activeCount}</div>
+      <div class="stat-label">Active Accounts</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#e0f2fe;color:#0284c7;"><svg width="22" height="22"><use href="#ico-user"/></svg></div>
+      <div class="stat-value">${staffCount}</div>
+      <div class="stat-label">Staff / Admin Accounts</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-icon" style="background:#fef3c7;color:#d97706;"><svg width="22" height="22"><use href="#ico-home"/></svg></div>
+      <div class="stat-value">${hoCount}</div>
+      <div class="stat-label">Homeowner Residents</div>
+    </div>
+  </div>
+
+  <div class="section-card">
+    <div class="section-card-header">
+      <div class="filters-row">
+        <div class="search-box">
+          <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
+          <input id="userMgmtSearch" type="text" placeholder="Search by name, username, email, role..." oninput="filterUserManagementTable()"/>
+        </div>
+        <select class="filter-select" id="userRoleFilter" onchange="filterUserManagementTable()">
+          <option value="">All Roles</option>
+          <option value="admin">Administrator</option>
+          <option value="president">President</option>
+          <option value="treasurer">Treasurer</option>
+          <option value="auditor">Auditor</option>
+          <option value="security">Security Guard</option>
+          <option value="staff">Staff Member</option>
+          <option value="homeowner">Homeowner</option>
+        </select>
+        <select class="filter-select" id="userStatusFilter" onchange="filterUserManagementTable()">
+          <option value="">All Statuses</option>
+          <option value="active">Active</option>
+          <option value="inactive">Deactivated</option>
+        </select>
+      </div>
+    </div>
+    <div class="section-card-body no-pad">
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>User</th>
+              <th>Username / Email</th>
+              <th>Role</th>
+              <th>Assigned Permissions</th>
+              <th>Status</th>
+              <th style="text-align:right">Actions</th>
+            </tr>
+          </thead>
+          <tbody id="userMgmtTableBody"></tbody>
+        </table>
+      </div>
+    </div>
+    <div id="userMgmtPagination"></div>
+  </div>`;
+
+  userMgmtPaginationState.page = 1;
+  currentUserMgmtFilteredList = null;
+  renderUserManagementRows();
+}
+
+let userMgmtPaginationState = { page: 1, pageSize: 10 };
+let currentUserMgmtFilteredList = null;
+
+function changeUserMgmtPage(page) {
+  userMgmtPaginationState.page = page;
+  renderUserManagementRows(currentUserMgmtFilteredList, false);
+}
+window.changeUserMgmtPage = changeUserMgmtPage;
+
+function changeUserMgmtPageSize(size) {
+  userMgmtPaginationState.pageSize = size;
+  userMgmtPaginationState.page = 1;
+  renderUserManagementRows(currentUserMgmtFilteredList, false);
+}
+window.changeUserMgmtPageSize = changeUserMgmtPageSize;
+
+function renderUserManagementRows(filteredUsers = null, resetPage = false) {
+  const tbody = document.getElementById('userMgmtTableBody');
+  if (!tbody) return;
+
+  if (filteredUsers !== null) {
+    currentUserMgmtFilteredList = filteredUsers;
+  } else if (currentUserMgmtFilteredList === null) {
+    currentUserMgmtFilteredList = db.get('users');
+  }
+  const users = currentUserMgmtFilteredList || [];
+
+  if (resetPage) userMgmtPaginationState.page = 1;
+
+  const totalItems = users.length;
+  const pageSize = userMgmtPaginationState.pageSize || 10;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  if (userMgmtPaginationState.page > totalPages) userMgmtPaginationState.page = totalPages;
+  if (userMgmtPaginationState.page < 1) userMgmtPaginationState.page = 1;
+
+  if (!totalItems) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="no-results" style="padding:30px;"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg><p style="margin-top:6px;">No accounts found matching your filters.</p></div></td></tr>`;
+    renderPaginationComponent({
+      containerId: 'userMgmtPagination',
+      currentPage: 1,
+      pageSize,
+      totalItems: 0,
+      onPageChangeFn: 'changeUserMgmtPage',
+      onPageSizeChangeFn: 'changeUserMgmtPageSize',
+      itemLabel: 'accounts',
+    });
+    return;
+  }
+
+  const roleColors = {
+    admin: '#dc2626',
+    president: '#177a80',
+    treasurer: '#059669',
+    auditor: '#7c3aed',
+    security: '#d97706',
+    staff: '#0284c7',
+    homeowner: '#64748b',
+  };
+
+  const startIndex = (userMgmtPaginationState.page - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const pageItems = users.slice(startIndex, endIndex);
+
+  tbody.innerHTML = pageItems.map((u, idx) => {
+    const roleLabel = ROLE_LABELS[u.role] || u.role;
+    const roleColor = roleColors[u.role] || '#177a80';
+    const status = u.status || 'active';
+    const isActive = status === 'active';
+    const isPrimaryAdmin = u.id === 'u001';
+
+    // Format permissions preview
+    let permsHtml = '';
+    if (u.role === 'admin') {
+      permsHtml = '<span class="perm-pill" style="background:#16a34a18;color:#16a34a;border-color:#16a34a40;font-weight:700;">★ Full Access (All Modules)</span>';
+    } else {
+      const perms = Array.isArray(u.permissions) ? u.permissions : [];
+      if (!perms.length) {
+        permsHtml = '<span style="color:var(--text-3);font-size:0.75rem;font-style:italic;">No custom modules assigned</span>';
+      } else {
+        const visible = perms.slice(0, 3);
+        const remaining = perms.length - 3;
+        permsHtml = visible.map(pid => {
+          const mod = MODULE_PERMISSIONS.find(m => m.id === pid);
+          return `<span class="perm-pill">${escapeHtml(mod ? mod.label : pid)}</span>`;
+        }).join('');
+        if (remaining > 0) {
+          permsHtml += `<span class="perm-pill" style="color:var(--teal-600);font-weight:700;">+${remaining} more</span>`;
+        }
+      }
+    }
+
+    return `
+    <tr id="user-row-${u.id}">
+      <td>${startIndex + idx + 1}</td>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px;">
+          ${avatarHTML(u, 'avatar-sm')}
+          <div>
+            <div style="font-weight:700;color:var(--text);font-size:0.88rem;">${escapeHtml(u.name)}</div>
+            ${u.contact ? `<div style="font-size:0.75rem;color:var(--text-3);">${escapeHtml(u.contact)}</div>` : ''}
+          </div>
+        </div>
+      </td>
+      <td>
+        <div style="font-size:0.84rem;font-weight:600;color:var(--text-2);">@${escapeHtml(u.username || '—')}</div>
+        <div style="font-size:0.75rem;color:var(--text-3);">${escapeHtml(u.email || '—')}</div>
+      </td>
+      <td>
+        <span class="badge" style="background:${roleColor}18;color:${roleColor};font-weight:700;padding:3px 8px;border-radius:12px;font-size:0.73rem;">
+          ${escapeHtml(roleLabel)}
+        </span>
+      </td>
+      <td>${permsHtml}</td>
+      <td>
+        <span class="${isActive ? 'badge-status-active' : 'badge-status-inactive'}">
+          ● ${isActive ? 'Active' : 'Deactivated'}
+        </span>
+      </td>
+      <td style="text-align:right;">
+        <div class="td-actions" style="justify-content:flex-end;">
+          <button class="btn btn-secondary btn-sm" onclick="openEditUserPermissionsModal('${u.id}')" title="Configure Permissions">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right:3px;vertical-align:-1px;"><path d="M21 2l-2 2m-2-2l2 2m7 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"></path></svg>
+            Permissions
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="openEditUserAccountModal('${u.id}')" title="Edit Profile">
+            Edit
+          </button>
+          ${!isPrimaryAdmin ? `
+            <button class="btn ${isActive ? 'btn-secondary' : 'btn-primary'} btn-sm" onclick="confirmToggleUserStatus('${u.id}')" title="${isActive ? 'Deactivate account' : 'Activate account'}">
+              ${isActive ? 'Deactivate' : 'Activate'}
+            </button>
+            <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteUserAccount('${u.id}')" title="Delete Account">
+              <svg width="13" height="13"><use href="#ico-trash"/></svg>
+            </button>
+          ` : `
+            <span style="font-size:0.72rem;color:var(--text-3);padding:0 6px;font-style:italic;">Protected</span>
+          `}
+        </div>
+      </td>
+    </tr>`;
+  }).join('');
+
+  renderPaginationComponent({
+    containerId: 'userMgmtPagination',
+    currentPage: userMgmtPaginationState.page,
+    pageSize,
+    totalItems,
+    onPageChangeFn: 'changeUserMgmtPage',
+    onPageSizeChangeFn: 'changeUserMgmtPageSize',
+    itemLabel: 'accounts',
+  });
+}
+
+function filterUserManagementTable() {
+  const q = (document.getElementById('userMgmtSearch')?.value || '').toLowerCase().trim();
+  const roleFilter = document.getElementById('userRoleFilter')?.value || '';
+  const statusFilter = document.getElementById('userStatusFilter')?.value || '';
+
+  let users = db.get('users');
+  if (q) {
+    users = users.filter(u =>
+      (u.name || '').toLowerCase().includes(q)
+      || (u.username || '').toLowerCase().includes(q)
+      || (u.email || '').toLowerCase().includes(q)
+      || (ROLE_LABELS[u.role] || '').toLowerCase().includes(q)
+    );
+  }
+  if (roleFilter) {
+    users = users.filter(u => u.role === roleFilter);
+  }
+  if (statusFilter) {
+    users = users.filter(u => (u.status || 'active') === statusFilter);
+  }
+
+  renderUserManagementRows(users, true);
+}
+
+// ── Account Creation with Custom Permissions ──
+
+function openCreateAccountModal() {
+  openModal('Create New Account', `
+    <div class="grid-2">
+      <div class="form-group">
+        <label>Full Name *</label>
+        <input id="ca_name" placeholder="e.g. Maria Santos"/>
+      </div>
+      <div class="form-group">
+        <label>Username *</label>
+        <input id="ca_user" placeholder="e.g. mariasantos"/>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label>Email Address *</label>
+        <input id="ca_email" type="email" placeholder="e.g. maria@example.com"/>
+      </div>
+      <div class="form-group">
+        <label>Initial Password *</label>
+        <input id="ca_pass" type="password" placeholder="Min. 6 characters"/>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label>User Role *</label>
+        <select id="ca_role" onchange="handleCreateAccountRoleChange()">
+          <option value="staff" selected>Staff Member</option>
+          <option value="admin">Administrator (Full Access)</option>
+          <option value="president">President</option>
+          <option value="treasurer">Treasurer</option>
+          <option value="auditor">Auditor</option>
+          <option value="security">Security Guard</option>
+          <option value="homeowner">Homeowner / Resident</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Contact Number (Optional)</label>
+        <input id="ca_contact" placeholder="e.g. 09171234567"/>
+      </div>
+    </div>
+
+    <!-- Homeowner-specific inputs (hidden by default) -->
+    <div id="ca_ho_fields" class="hidden">
+      <div class="grid-2">
+        <div class="form-group"><label>Block</label><input id="ca_block" placeholder="e.g. Block 2"/></div>
+        <div class="form-group"><label>Lot</label><input id="ca_lot" placeholder="e.g. Lot 5"/></div>
+      </div>
+      <div class="form-group"><label>Lot Area (sqm)</label><input id="ca_lotArea" type="number" min="0" step="0.01" placeholder="e.g. 120"/></div>
+    </div>
+
+    <!-- Custom Permissions Checklist -->
+    <div class="permissions-section-wrap" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div>
+          <label style="margin-bottom:2px;font-weight:700;font-size:0.92rem;color:var(--text);">Module Access Permissions</label>
+          <div style="font-size:0.76rem;color:var(--text-3);">Select the modules this account is allowed to access and manage.</div>
+        </div>
+        <button type="button" class="btn btn-secondary btn-xs" id="btnSelectAllPerms" onclick="toggleSelectAllPermissions('ca_perms_grid', this)">
+          Select All
+        </button>
+      </div>
+
+      <div id="ca_admin_notice" class="hidden" style="background:var(--teal-50);border:1px solid var(--teal-500);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:0.82rem;color:var(--teal-800);font-weight:600;">
+        ★ Administrator role has unrestricted access to all current and future modules.
+      </div>
+
+      <div class="permission-grid" id="ca_perms_grid">
+        ${MODULE_PERMISSIONS.map(p => `
+          <label class="permission-card" for="perm_${p.id}">
+            <input type="checkbox" id="perm_${p.id}" value="${p.id}" class="perm-checkbox" onchange="updatePermissionCardState(this)" />
+            <div class="permission-info">
+              <div class="permission-title">
+                <svg width="14" height="14" style="margin-right:4px;vertical-align:-2px;"><use href="#${p.icon}"/></svg>
+                ${escapeHtml(p.label)}
+              </div>
+              <div class="permission-desc">${escapeHtml(p.desc)}</div>
+            </div>
+          </label>
+        `).join('')}
+      </div>
+    </div>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Create Account', cls: 'btn-primary', action: saveCreateAccount },
+  ]);
+
+  // Default preselection for staff
+  handleCreateAccountRoleChange();
+}
+
+function handleCreateAccountRoleChange() {
+  const role = document.getElementById('ca_role')?.value;
+  const hoFields = document.getElementById('ca_ho_fields');
+  const adminNotice = document.getElementById('ca_admin_notice');
+  const grid = document.getElementById('ca_perms_grid');
+  const btnSelectAll = document.getElementById('btnSelectAllPerms');
+  if (!role) return;
+
+  if (hoFields) hoFields.classList.toggle('hidden', role !== 'homeowner');
+
+  const checkboxes = document.querySelectorAll('#ca_perms_grid .perm-checkbox');
+
+  if (role === 'admin') {
+    if (adminNotice) adminNotice.classList.remove('hidden');
+    if (btnSelectAll) btnSelectAll.disabled = true;
+    checkboxes.forEach(cb => {
+      cb.checked = true;
+      cb.disabled = true;
+      updatePermissionCardState(cb);
+    });
+    return;
+  }
+
+  if (adminNotice) adminNotice.classList.add('hidden');
+  if (btnSelectAll) btnSelectAll.disabled = false;
+  checkboxes.forEach(cb => { cb.disabled = false; });
+
+  // Recommended role defaults
+  const roleDefaults = {
+    staff: ['dashboard', 'announcements', 'complaints'],
+    president: ['complaints', 'announcements'],
+    treasurer: ['payments', 'reports'],
+    auditor: ['billing', 'reports'],
+    security: ['complaints', 'vehicles', 'lostfound'],
+    homeowner: ['announcements', 'lostfound'],
+  };
+
+  const defaults = roleDefaults[role] || ['dashboard'];
+  checkboxes.forEach(cb => {
+    cb.checked = defaults.includes(cb.value);
+    updatePermissionCardState(cb);
+  });
+}
+
+function updatePermissionCardState(checkbox) {
+  const card = checkbox.closest('.permission-card');
+  if (card) {
+    card.classList.toggle('selected', checkbox.checked);
+  }
+}
+
+function toggleSelectAllPermissions(containerId, buttonEl) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  const checkboxes = Array.from(container.querySelectorAll('.perm-checkbox:not(:disabled)'));
+  if (!checkboxes.length) return;
+
+  const allChecked = checkboxes.every(cb => cb.checked);
+  checkboxes.forEach(cb => {
+    cb.checked = !allChecked;
+    updatePermissionCardState(cb);
+  });
+
+  if (buttonEl) {
+    buttonEl.textContent = allChecked ? 'Select All' : 'Deselect All';
+  }
+}
+
+async function saveCreateAccount() {
+  const name = (document.getElementById('ca_name')?.value || '').trim();
+  const username = (document.getElementById('ca_user')?.value || '').trim().toLowerCase();
+  const email = (document.getElementById('ca_email')?.value || '').trim();
+  const password = (document.getElementById('ca_pass')?.value || '').trim();
+  const role = document.getElementById('ca_role')?.value;
+  const contact = (document.getElementById('ca_contact')?.value || '').trim();
+
+  if (!name || !username || !email || !password) {
+    showToast('error', 'Missing Fields', 'Please fill in Name, Username, Email, and Password.');
+    return;
+  }
+  if (password.length < 6) {
+    showToast('error', 'Weak Password', 'Password must be at least 6 characters.');
+    return;
+  }
+
+  const existingUser = db.get('users').find(u => (u.username || '').toLowerCase() === username);
+  if (existingUser) {
+    showToast('error', 'Username Taken', 'That username is already registered. Please choose another.');
+    return;
+  }
+
+  // Collect selected permissions
+  let permissions = [];
+  if (role === 'admin') {
+    permissions = ['*'];
+  } else {
+    document.querySelectorAll('#ca_perms_grid .perm-checkbox:checked').forEach(cb => {
+      permissions.push(cb.value);
+    });
+  }
+
+  const newUser = {
+    id: db.newId('u'),
+    name,
+    username,
+    email,
+    password,
+    role,
+    contact: contact || null,
+    permissions,
+    status: 'active',
+    balance: 0,
+    profile_photo: null,
+  };
+
+  if (role === 'homeowner') {
+    newUser.block = formatLocationPart(document.getElementById('ca_block')?.value, 'Block');
+    newUser.lot = formatLocationPart(document.getElementById('ca_lot')?.value, 'Lot');
+    const lotAreaVal = document.getElementById('ca_lotArea')?.value;
+    newUser.lotArea = lotAreaVal ? Number(lotAreaVal) : 0;
+  }
+
+  showLoading();
+  try {
+    await db.save('users', newUser);
+    logAction(`Created account: "${name}" (@${username}) with role: ${role}`);
+    closeModal();
+    hideLoading();
+    showToast('success', 'Account Created', `Account for ${name} has been created.`);
+    renderUserManagement();
+  } catch (err) {
+    hideLoading();
+    showToast('error', 'Failed', err.message || 'Could not create account.');
+  }
+}
+
+// ── Edit User Permissions Modal ──
+
+function openEditUserPermissionsModal(userId) {
+  const u = db.getOne('users', userId);
+  if (!u) return;
+
+  const isPrimaryAdmin = u.id === 'u001';
+  const roleLabel = ROLE_LABELS[u.role] || u.role;
+  const currentPerms = Array.isArray(u.permissions) ? u.permissions : [];
+  const hasWildcard = currentPerms.includes('*') || u.role === 'admin';
+
+  openModal(`Permissions: ${escapeHtml(u.name)}`, `
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);">
+      ${avatarHTML(u, 'avatar-md')}
+      <div style="flex:1;">
+        <div style="font-weight:700;font-size:1rem;color:var(--text);">${escapeHtml(u.name)}</div>
+        <div style="font-size:0.8rem;color:var(--text-3);">@${escapeHtml(u.username)} &bull; ${escapeHtml(u.email)}</div>
+        <div style="margin-top:4px;">
+          <span class="badge badge-teal" style="font-size:0.72rem;font-weight:700;">${escapeHtml(roleLabel)}</span>
+          <span class="${(u.status || 'active') === 'active' ? 'badge-status-active' : 'badge-status-inactive'}" style="margin-left:6px;">
+            ● ${(u.status || 'active') === 'active' ? 'Active' : 'Deactivated'}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    ${isPrimaryAdmin ? `
+      <div style="background:#16a34a12;border:1px solid #16a34a40;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#16a34a;font-size:0.85rem;font-weight:600;">
+        ★ Primary Administrator has unrestricted full access to all system modules and features.
+      </div>
+    ` : `
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <label style="margin-bottom:0;font-weight:700;font-size:0.88rem;color:var(--text);">Configure Module Permissions</label>
+        <button type="button" class="btn btn-secondary btn-xs" id="btnEditSelectAll" onclick="toggleSelectAllPermissions('edit_perms_grid', this)">
+          ${MODULE_PERMISSIONS.every(p => currentPerms.includes(p.id) || hasWildcard) ? 'Deselect All' : 'Select All'}
+        </button>
+      </div>
+
+      <div class="permission-grid" id="edit_perms_grid">
+        ${MODULE_PERMISSIONS.map(p => {
+          const isChecked = hasWildcard || currentPerms.includes(p.id);
+          return `
+            <label class="permission-card ${isChecked ? 'selected' : ''}" for="edit_perm_${p.id}">
+              <input type="checkbox" id="edit_perm_${p.id}" value="${p.id}" class="perm-checkbox" ${isChecked ? 'checked' : ''} onchange="updatePermissionCardState(this)" />
+              <div class="permission-info">
+                <div class="permission-title">
+                  <svg width="14" height="14" style="margin-right:4px;vertical-align:-2px;"><use href="#${p.icon}"/></svg>
+                  ${escapeHtml(p.label)}
+                </div>
+                <div class="permission-desc">${escapeHtml(p.desc)}</div>
+              </div>
+            </label>
+          `;
+        }).join('')}
+      </div>
+    `}
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    ...(!isPrimaryAdmin ? [
+      { label: 'Save Permissions', cls: 'btn-primary', action: () => saveEditUserPermissions(userId) }
+    ] : [])
+  ]);
+}
+
+async function saveEditUserPermissions(userId) {
+  const u = db.getOne('users', userId);
+  if (!u) return;
+
+  const newPermissions = [];
+  document.querySelectorAll('#edit_perms_grid .perm-checkbox:checked').forEach(cb => {
+    newPermissions.push(cb.value);
+  });
+
+  u.permissions = newPermissions;
+
+  showLoading();
+  try {
+    await db.save('users', u);
+    logAction(`Updated permissions for user: ${u.name} (@${u.username})`);
+
+    // If updating current user's permissions, refresh sidebar immediately
+    if (currentUser && currentUser.id === u.id) {
+      currentUser.permissions = newPermissions;
+      buildSidebar();
+    }
+
+    closeModal();
+    hideLoading();
+    showToast('success', 'Permissions Updated', `Permissions saved for ${u.name}.`);
+    renderUserManagement();
+  } catch (err) {
+    hideLoading();
+    showToast('error', 'Failed', err.message || 'Could not update permissions.');
+  }
+}
+
+// ── Edit User Account Details Modal ──
+
+function openEditUserAccountModal(userId) {
+  const u = db.getOne('users', userId);
+  if (!u) return;
+
+  const isHomeowner = u.role === 'homeowner';
+
+  openModal(`Edit Account: ${escapeHtml(u.name)}`, `
+    <div class="grid-2">
+      <div class="form-group">
+        <label>Full Name *</label>
+        <input id="ea_name" value="${escapeHtml(u.name)}"/>
+      </div>
+      <div class="form-group">
+        <label>Username</label>
+        <input id="ea_user" value="${escapeHtml(u.username || '')}" ${u.id === 'u001' ? 'disabled' : ''}/>
+      </div>
+    </div>
+    <div class="grid-2">
+      <div class="form-group">
+        <label>Email Address</label>
+        <input id="ea_email" type="email" value="${escapeHtml(u.email || '')}"/>
+      </div>
+      <div class="form-group">
+        <label>Contact Number</label>
+        <input id="ea_contact" value="${escapeHtml(u.contact || '')}"/>
+      </div>
+    </div>
+
+    ${isHomeowner ? `
+      <div class="grid-2">
+        <div class="form-group"><label>Block</label><input id="ea_block" value="${escapeHtml(u.block || '')}"/></div>
+        <div class="form-group"><label>Lot</label><input id="ea_lot" value="${escapeHtml(u.lot || '')}"/></div>
+      </div>
+      <div class="form-group"><label>Lot Area (sqm)</label><input id="ea_lotArea" type="number" step="0.01" value="${u.lotArea || 0}"/></div>
+    ` : ''}
+
+    <div class="form-group" style="margin-top:10px;border-top:1px solid var(--border);padding-top:12px;">
+      <label>Change Password (Leave blank to keep current)</label>
+      <input id="ea_newpass" type="password" placeholder="New password (min. 6 characters)..."/>
+    </div>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Save Changes', cls: 'btn-primary', action: () => saveEditUserAccount(userId) },
+  ]);
+}
+
+async function saveEditUserAccount(userId) {
+  const u = db.getOne('users', userId);
+  if (!u) return;
+
+  const name = (document.getElementById('ea_name')?.value || '').trim();
+  const username = (document.getElementById('ea_user')?.value || '').trim().toLowerCase();
+  const email = (document.getElementById('ea_email')?.value || '').trim();
+  const contact = (document.getElementById('ea_contact')?.value || '').trim();
+  const newPass = (document.getElementById('ea_newpass')?.value || '').trim();
+
+  if (!name) {
+    showToast('error', 'Missing Name', 'Full name cannot be empty.');
+    return;
+  }
+
+  // Check username uniqueness if changed
+  if (username && username !== (u.username || '').toLowerCase()) {
+    const duplicate = db.get('users').find(x => x.id !== userId && (x.username || '').toLowerCase() === username);
+    if (duplicate) {
+      showToast('error', 'Username Taken', 'That username is already taken by another account.');
+      return;
+    }
+    u.username = username;
+  }
+
+  if (newPass) {
+    if (newPass.length < 6) {
+      showToast('error', 'Weak Password', 'New password must be at least 6 characters.');
+      return;
+    }
+    u.password = newPass;
+  }
+
+  u.name = name;
+  u.email = email;
+  u.contact = contact;
+
+  if (u.role === 'homeowner') {
+    u.block = formatLocationPart(document.getElementById('ea_block')?.value, 'Block');
+    u.lot = formatLocationPart(document.getElementById('ea_lot')?.value, 'Lot');
+    const lotAreaVal = document.getElementById('ea_lotArea')?.value;
+    u.lotArea = lotAreaVal ? Number(lotAreaVal) : 0;
+  }
+
+  showLoading();
+  try {
+    await db.save('users', u);
+    logAction(`Updated account profile: ${u.name}`);
+
+    if (currentUser && currentUser.id === u.id) {
+      currentUser.name = u.name;
+      currentUser.email = u.email;
+      buildSidebar();
+    }
+
+    closeModal();
+    hideLoading();
+    showToast('success', 'Profile Saved', `Account for ${u.name} updated.`);
+    renderUserManagement();
+  } catch (err) {
+    hideLoading();
+    showToast('error', 'Failed', err.message || 'Could not update account.');
+  }
+}
+
+// ── Activate / Deactivate Account Status ──
+
+function confirmToggleUserStatus(userId) {
+  const u = db.getOne('users', userId);
+  if (!u) return;
+
+  if (u.id === 'u001') {
+    showToast('error', 'Protected Account', 'The primary administrator account cannot be deactivated.');
+    return;
+  }
+
+  const isCurrentlyActive = (u.status || 'active') === 'active';
+  const targetAction = isCurrentlyActive ? 'deactivate' : 'activate';
+  const title = isCurrentlyActive ? 'Deactivate Account?' : 'Activate Account?';
+  const message = isCurrentlyActive
+    ? `Are you sure you want to deactivate <strong>${escapeHtml(u.name)}</strong> (@${escapeHtml(u.username)})?<br/><br/><span style="color:var(--red-600);font-size:0.84rem;">The user will be immediately blocked from logging in and accessing the system.</span>`
+    : `Are you sure you want to reactivate <strong>${escapeHtml(u.name)}</strong> (@${escapeHtml(u.username)})?<br/><br/>The user will regain login access with their assigned permissions.`;
+
+  openModal(title, `<p style="color:var(--text-2);line-height:1.6">${message}</p>`, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    {
+      label: isCurrentlyActive ? 'Deactivate Account' : 'Activate Account',
+      cls: isCurrentlyActive ? 'btn-danger' : 'btn-primary',
+      action: async () => {
+        closeModal();
+        showLoading();
+        try {
+          u.status = isCurrentlyActive ? 'inactive' : 'active';
+          await db.save('users', u);
+          logAction(`${isCurrentlyActive ? 'Deactivated' : 'Activated'} user account: ${u.name}`);
+          hideLoading();
+          showToast('success', isCurrentlyActive ? 'Account Deactivated' : 'Account Activated', `${u.name} is now ${u.status}.`);
+          renderUserManagement();
+        } catch (err) {
+          hideLoading();
+          showToast('error', 'Failed', err.message || 'Could not update account status.');
+        }
+      }
+    }
+  ]);
+}
+
+// ── Delete Account with Confirmation ──
+
+function confirmDeleteUserAccount(userId) {
+  const u = db.getOne('users', userId);
+  if (!u) return;
+
+  if (u.id === 'u001') {
+    showToast('error', 'Protected Account', 'The primary administrator account cannot be deleted.');
+    return;
+  }
+
+  openModal('Delete User Account?', `
+    <p style="color:var(--text-2);line-height:1.6">
+      Are you sure you want to permanently delete <strong>${escapeHtml(u.name)}</strong> (@${escapeHtml(u.username)})?
+    </p>
+    <p style="color:var(--red-600);font-size:0.83rem;margin-top:8px;">
+      This action cannot be undone. All associated account permissions and profile data will be permanently removed.
+    </p>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    {
+      label: 'Delete Account',
+      cls: 'btn-danger',
+      action: async () => {
+        closeModal();
+        showLoading();
+        try {
+          await db.delete('users', userId);
+          logAction(`Deleted user account: ${u.name} (@${u.username})`);
+          hideLoading();
+          showToast('success', 'Account Deleted', `Account for ${u.name} has been removed.`);
+          renderUserManagement();
+        } catch (err) {
+          hideLoading();
+          showToast('error', 'Failed', err.message || 'Could not delete account.');
+        }
+      }
+    }
   ]);
 }
 
