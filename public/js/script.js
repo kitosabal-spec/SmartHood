@@ -36,6 +36,8 @@ const MODULE_PERMISSIONS = [
   { id: 'amenities',      label: 'Amenity Bookings',     section: 'MANAGEMENT',  icon: 'ico-building',   desc: 'Facility reservation approvals and schedules' },
   { id: 'vehicles',       label: 'Vehicle Management',   section: 'MANAGEMENT',  icon: 'ico-parking',    desc: 'Approve vehicle registrations and RFID stickers' },
   { id: 'lostfound',      label: 'Lost and Found',        section: 'MANAGEMENT',  icon: 'ico-search',     desc: 'Manage community lost & found listings' },
+  { id: 'announcements',  label: 'Announcements',        section: 'MANAGEMENT',  icon: 'ico-megaphone',  desc: 'Post notices, multi-photo updates, comments' },
+  { id: 'board',          label: 'Board of Directors',   section: 'MANAGEMENT',  icon: 'ico-users',      desc: 'Manage elected HOA officers, terms, and leadership' },
   { id: 'reports',        label: 'Reports',              section: 'ANALYTICS',   icon: 'ico-chart',      desc: 'Financial summaries, payment collection charts' },
   { id: 'auditlog',       label: 'Audit Log',            section: 'ANALYTICS',   icon: 'ico-log',        desc: 'Audit trail of administrative system actions' },
   { id: 'users',          label: 'Accounts & Roles',      section: 'SYSTEM',      icon: 'ico-shield',     desc: 'User management, custom roles, permission matrix' },
@@ -52,6 +54,7 @@ const ADMIN_NAV = [
   { id: 'lostfound',      icon: 'ico-search',      label: 'Lost and Found',   section: 'MANAGEMENT' },
   { id: 'complaints',     icon: 'ico-flag',        label: 'Complaints',      section: 'MANAGEMENT' },
   { id: 'announcements',  icon: 'ico-megaphone',   label: 'Announcements',   section: 'MANAGEMENT' },
+  { id: 'board',          icon: 'ico-users',       label: 'Board of Directors', section: 'MANAGEMENT' },
   { id: 'reports',        icon: 'ico-chart',       label: 'Reports',         section: 'ANALYTICS' },
   { id: 'auditlog',       icon: 'ico-log',         label: 'Audit Log',       section: 'ANALYTICS' },
   { id: 'users',          icon: 'ico-shield',      label: 'Accounts & Roles', section: 'SYSTEM' },
@@ -1056,6 +1059,7 @@ function renderView(viewId) {
     'lostfound':         renderLostFoundManagement,
     'complaints':        renderAdminComplaints,
     'announcements':     renderAnnouncements,
+    'board':             renderBoardOfDirectorsManagement,
     'reports':           renderReports,
     'auditlog':          renderAuditLog,
     'users':             renderUserManagement,
@@ -7279,7 +7283,7 @@ function pubScrollTo(e, sectionId) {
     window.scrollTo({ top: y, behavior: 'smooth' });
   }
   document.querySelectorAll('.pub-nav-link').forEach(l => l.classList.remove('active'));
-  const mapping = { hero: 0, announcements: 1, lostfound: 2, about: 3, contact: 4 };
+  const mapping = { hero: 0, announcements: 1, lostfound: 2, board: 3, about: 4, contact: 5 };
   const links = document.querySelectorAll('.pub-nav-link');
   const idx = mapping[sectionId];
   if (idx !== undefined && links[idx]) links[idx].classList.add('active');
@@ -7288,6 +7292,576 @@ function pubScrollTo(e, sectionId) {
 function togglePubNav() {
   const mn = document.getElementById('pubMobileNav');
   if (mn) mn.classList.toggle('hidden');
+}
+
+/* ════════════════════════════════════════════════════════════
+   Board of Directors: Public Homepage & Admin Management
+════════════════════════════════════════════════════════════ */
+
+async function renderPublicBoardOfDirectors() {
+  const container = document.getElementById('pubBoardContainer');
+  if (!container) return;
+
+  let members = [];
+  try {
+    const cached = db.get('board_of_directors');
+    if (cached && cached.length) {
+      members = [...cached].sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0));
+    } else {
+      members = await api.request('/api/board');
+      if (Array.isArray(members)) {
+        dbCache['board_of_directors'] = members;
+      }
+    }
+  } catch (err) {
+    console.warn('Could not load board members:', err);
+    members = db.get('board_of_directors') || [];
+  }
+
+  if (!members || !members.length) {
+    container.innerHTML = `
+      <div class="no-results" style="padding: 40px 20px;">
+        <svg style="width:2.5rem;height:2.5rem;color:var(--text-3);margin-bottom:12px;"><use href="#ico-users"/></svg>
+        <p style="font-size:1.05rem;font-weight:600;color:var(--text-2);">Board of Directors details will be announced soon.</p>
+      </div>`;
+    return;
+  }
+
+  // Update subtitle term years if available
+  const sampleTerm = members.find(m => m.term_years && m.term_years.trim())?.term_years || '2026 - 2028';
+  const termSub = document.getElementById('pubBoardTermSub');
+  if (termSub) {
+    termSub.innerHTML = `Term ${escapeHtml(sampleTerm)} &bull; Dedicated to serving San Alfonso Homes with integrity, transparency, and unity.`;
+  }
+
+  // Find President
+  const president = members.find(m => (m.position || '').trim().toLowerCase() === 'president') || members[0];
+  const otherMembers = members.filter(m => m.id !== president.id);
+
+  function getPositionBadgeClass(pos) {
+    const p = (pos || '').toLowerCase();
+    if (p.includes('president') && !p.includes('vice')) return 'pub-board-pos-pres';
+    if (p.includes('vice')) return 'pub-board-pos-vp';
+    if (p.includes('secretary')) return 'pub-board-pos-sec';
+    if (p.includes('treasurer')) return 'pub-board-pos-treas';
+    if (p.includes('auditor')) return 'pub-board-pos-aud';
+    return 'pub-board-pos-default';
+  }
+
+  function getPhotoHtml(m, isPres = false) {
+    const photoUrl = m.photo ? escapeHtml(m.photo) : null;
+    const initial = (m.name || 'B').charAt(0).toUpperCase();
+    if (photoUrl) {
+      return `
+        <div class="pub-board-photo-wrap">
+          <img src="${photoUrl}" alt="${escapeHtml(m.name)}" class="pub-board-photo" loading="lazy" onerror="this.parentElement.innerHTML='<div class=\\'bod-table-avatar\\' style=\\'width:100%;height:100%;font-size:2.5rem;display:flex;align-items:center;justify-content:center;background:var(--teal-100);color:var(--teal-800);font-weight:700;\\'>${initial}</div>'" />
+        </div>`;
+    }
+    return `
+      <div class="pub-board-photo-wrap" style="display:flex;align-items:center;justify-content:center;background:var(--teal-50);color:var(--teal-700);font-size:2.5rem;font-weight:700;">
+        ${initial}
+      </div>`;
+  }
+
+  function getContactHtml(m) {
+    const contact = (m.contact_number || '').trim();
+    if (!contact) return '';
+    const cleanNum = contact.replace(/[^0-9+]/g, '');
+    return `
+      <a href="tel:${cleanNum}" class="pub-board-contact" title="Call ${escapeHtml(m.name)}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M22 16.92v3a2 2 0 01-2.18 2 19.79 19.79 0 01-8.63-3.07A19.5 19.5 0 013.07 8.81 19.79 19.79 0 01.01 4.18 2 2 0 012 2h3a2 2 0 012 1.72 12.84 12.84 0 00.7 2.81 2 2 0 01-.45 2.11L6.09 9.91a16 16 0 006 6l1.27-1.27a2 2 0 012.11-.45 12.84 12.84 0 002.81.7A2 2 0 0122 16.92z"/>
+        </svg>
+        <span>${escapeHtml(contact)}</span>
+      </a>`;
+  }
+
+  let html = '';
+
+  // Prominent President Card at Top Center
+  if (president) {
+    html += `
+      <div class="pub-board-president-wrap">
+        <div class="pub-board-card pub-board-card-pres">
+          ${getPhotoHtml(president, true)}
+          <div class="pub-board-name">${escapeHtml(president.name)}</div>
+          <div class="pub-board-pos-badge ${getPositionBadgeClass(president.position)}">${escapeHtml(president.position)}</div>
+          ${getContactHtml(president)}
+        </div>
+      </div>`;
+  }
+
+  // Executive Officers Grid Below
+  if (otherMembers.length > 0) {
+    html += `
+      <div class="pub-board-grid">
+        ${otherMembers.map(m => `
+          <div class="pub-board-card">
+            ${getPhotoHtml(m, false)}
+            <div class="pub-board-name">${escapeHtml(m.name)}</div>
+            <div class="pub-board-pos-badge ${getPositionBadgeClass(m.position)}">${escapeHtml(m.position)}</div>
+            ${getContactHtml(m)}
+          </div>
+        `).join('')}
+      </div>`;
+  }
+
+  container.innerHTML = html;
+}
+
+// ── Admin Board of Directors Management ──
+
+function renderBoardOfDirectorsManagement(filtered = null) {
+  const area = document.getElementById('contentArea');
+  if (!area) return;
+
+  const members = filtered || db.get('board_of_directors') || [];
+  const sorted = [...members].sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0));
+
+  const allMembers = db.get('board_of_directors') || [];
+  const totalCount = allMembers.length;
+  const sampleTerm = allMembers.find(m => m.term_years && m.term_years.trim())?.term_years || '2026 - 2028';
+  const hasPres = allMembers.some(m => (m.position || '').toLowerCase().includes('president') && !(m.position || '').toLowerCase().includes('vice'));
+
+  function getPositionBadgeClass(pos) {
+    const p = (pos || '').toLowerCase();
+    if (p.includes('president') && !p.includes('vice')) return 'pub-board-pos-pres';
+    if (p.includes('vice')) return 'pub-board-pos-vp';
+    if (p.includes('secretary')) return 'pub-board-pos-sec';
+    if (p.includes('treasurer')) return 'pub-board-pos-treas';
+    if (p.includes('auditor')) return 'pub-board-pos-aud';
+    return 'pub-board-pos-default';
+  }
+
+  area.innerHTML = `
+    <div class="page-header">
+      <div class="page-header-left">
+        <h2>Board of Directors</h2>
+        <p>Manage elected HOA officers, positions, contact details, term years, and profile photos.</p>
+      </div>
+      <div class="page-header-actions">
+        <button class="btn btn-primary" onclick="openAddBoardMemberModal()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:-2px"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Add Board Member
+        </button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-icon" style="background:var(--teal-50);color:var(--teal-600);"><svg width="22" height="22"><use href="#ico-users"/></svg></div>
+        <div class="stat-info">
+          <span class="stat-value">${totalCount}</span>
+          <span class="stat-label">Total Officers</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:rgba(34,113,195,0.1);color:#1d4ed8;"><svg width="22" height="22"><use href="#ico-clock"/></svg></div>
+        <div class="stat-info">
+          <span class="stat-value" style="font-size:1.3rem;">${escapeHtml(sampleTerm)}</span>
+          <span class="stat-label">Current Term</span>
+        </div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon" style="background:rgba(22,163,74,0.1);color:#16a34a;"><svg width="22" height="22"><use href="#ico-shield"/></svg></div>
+        <div class="stat-info">
+          <span class="stat-value">${hasPres ? 'Active' : 'Unassigned'}</span>
+          <span class="stat-label">President Role</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="section-card">
+      <div class="section-card-header">
+        <div class="filters-row" style="width:100%;">
+          <div class="search-box">
+            <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
+            <input id="bodSearchInput" type="text" placeholder="Search name, position, contact..." oninput="filterBoardMembers()" />
+          </div>
+          <select class="filter-select" id="bodPositionFilter" onchange="filterBoardMembers()">
+            <option value="">All Positions</option>
+            <option value="President">President</option>
+            <option value="Vice President">Vice President</option>
+            <option value="Secretary">Secretary</option>
+            <option value="Treasurer">Treasurer</option>
+            <option value="Auditor">Auditor</option>
+          </select>
+        </div>
+      </div>
+      <div class="section-card-body no-pad">
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th style="width:70px;">Photo</th>
+                <th>Full Name</th>
+                <th>Position</th>
+                <th>Contact Number</th>
+                <th>Term Years</th>
+                <th>Order</th>
+                <th style="text-align:right;">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${sorted.length ? sorted.map(m => {
+                const initial = (m.name || 'B').charAt(0).toUpperCase();
+                const photoHtml = m.photo
+                  ? `<img src="${escapeHtml(m.photo)}" alt="${escapeHtml(m.name)}" class="bod-table-avatar" onerror="this.outerHTML='<div class=\\'bod-table-avatar\\' style=\\'display:flex;align-items:center;justify-content:center;background:var(--teal-100);color:var(--teal-800);font-weight:700;\\'>${initial}</div>'" />`
+                  : `<div class="bod-table-avatar" style="display:flex;align-items:center;justify-content:center;background:var(--teal-100);color:var(--teal-800);font-weight:700;">${initial}</div>`;
+                return `
+                  <tr>
+                    <td>${photoHtml}</td>
+                    <td>
+                      <strong>${escapeHtml(m.name)}</strong>
+                    </td>
+                    <td>
+                      <span class="pub-board-pos-badge ${getPositionBadgeClass(m.position)}" style="margin-bottom:0;font-size:0.73rem;">
+                        ${escapeHtml(m.position)}
+                      </span>
+                    </td>
+                    <td>
+                      <span style="font-family:monospace;font-weight:600;color:var(--text-2);">${escapeHtml(m.contact_number || '—')}</span>
+                    </td>
+                    <td>
+                      <span class="badge badge-gray">${escapeHtml(m.term_years || '2026 - 2028')}</span>
+                    </td>
+                    <td>
+                      <span style="font-weight:700;color:var(--text-3);">${m.display_order ?? 0}</span>
+                    </td>
+                    <td style="text-align:right;">
+                      <div class="td-actions" style="justify-content:flex-end;">
+                        <button class="btn btn-secondary btn-sm" onclick="openEditBoardMemberModal('${m.id}')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                          Edit
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="confirmDeleteBoardMember('${m.id}')">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+                          Delete
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('') : `
+                <tr>
+                  <td colspan="7">
+                    <div class="no-results" style="padding:32px;">
+                      <svg style="width:2rem;height:2rem;color:var(--text-3);"><use href="#ico-users"/></svg>
+                      No board members found. Click "Add Board Member" to create one.
+                    </div>
+                  </td>
+                </tr>
+              `}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function filterBoardMembers() {
+  const query = (document.getElementById('bodSearchInput')?.value || '').trim().toLowerCase();
+  const posFilter = (document.getElementById('bodPositionFilter')?.value || '').trim().toLowerCase();
+  const allMembers = db.get('board_of_directors') || [];
+
+  const filtered = allMembers.filter(m => {
+    const matchesQuery = !query ||
+      (m.name || '').toLowerCase().includes(query) ||
+      (m.position || '').toLowerCase().includes(query) ||
+      (m.contact_number || '').toLowerCase().includes(query) ||
+      (m.term_years || '').toLowerCase().includes(query);
+    const matchesPos = !posFilter || (m.position || '').toLowerCase().includes(posFilter);
+    return matchesQuery && matchesPos;
+  });
+
+  renderBoardOfDirectorsManagement(filtered);
+}
+
+let pendingBodPhotoFile = null;
+
+function previewBodModalPhoto(input) {
+  const preview = document.getElementById('bodPhotoPreview');
+  const placeholder = document.getElementById('bodPreviewPlaceholder');
+  if (input.files && input.files[0]) {
+    const file = input.files[0];
+    if (file.size > 5 * 1024 * 1024) {
+      showToast('error', 'File Too Large', 'Photo must be 5MB or smaller.');
+      input.value = '';
+      return;
+    }
+    pendingBodPhotoFile = file;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      if (preview) {
+        preview.src = e.target.result;
+        preview.classList.remove('hidden');
+      }
+      if (placeholder) placeholder.classList.add('hidden');
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+function handleBodPositionChange(select) {
+  const customInput = document.getElementById('bod_custom_position');
+  if (!customInput) return;
+  if (select.value === 'custom') {
+    customInput.classList.remove('hidden');
+    customInput.focus();
+  } else {
+    customInput.classList.add('hidden');
+  }
+}
+
+function openAddBoardMemberModal() {
+  pendingBodPhotoFile = null;
+  const bodyHtml = `
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="form-group">
+        <label>Profile Photo (Square)</label>
+        <div class="bod-upload-container">
+          <div class="bod-photo-preview-wrap">
+            <img id="bodPhotoPreview" class="bod-photo-preview-img hidden" alt="Preview" />
+            <div id="bodPreviewPlaceholder" class="bod-preview-placeholder">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="margin-bottom:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span>No Photo</span>
+            </div>
+          </div>
+          <div style="flex:1;">
+            <input type="file" id="bod_photo_input" accept="image/jpeg,image/png,image/webp" onchange="previewBodModalPhoto(this)" style="display:none;" />
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('bod_photo_input').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Choose Photo
+            </button>
+            <div style="font-size:0.75rem;color:var(--text-3);margin-top:6px;">Square JPG, PNG, or WebP up to 5MB.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Full Name <span style="color:var(--red-600);">*</span></label>
+        <input type="text" id="bod_name_input" placeholder="e.g. Arturo Tuy" required />
+      </div>
+
+      <div class="form-group">
+        <label>Position <span style="color:var(--red-600);">*</span></label>
+        <select id="bod_position_select" onchange="handleBodPositionChange(this)">
+          <option value="President">President</option>
+          <option value="Vice President">Vice President</option>
+          <option value="Secretary">Secretary</option>
+          <option value="Treasurer">Treasurer</option>
+          <option value="Auditor">Auditor</option>
+          <option value="custom">Other / Custom Position...</option>
+        </select>
+        <input type="text" id="bod_custom_position" class="hidden" placeholder="Enter custom position title" style="margin-top:8px;" />
+      </div>
+
+      <div class="form-group">
+        <label>Contact Number</label>
+        <input type="text" id="bod_contact_input" placeholder="e.g. 09125225210" />
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div class="form-group">
+          <label>Term Years</label>
+          <input type="text" id="bod_term_input" value="2026 - 2028" placeholder="e.g. 2026 - 2028" />
+        </div>
+        <div class="form-group">
+          <label>Display Order</label>
+          <input type="number" id="bod_order_input" value="6" min="1" max="99" />
+        </div>
+      </div>
+    </div>
+  `;
+
+  openModal('Add New Board Member', bodyHtml, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Save Member', cls: 'btn-primary', action: () => saveBoardMember(false) },
+  ]);
+}
+
+function openEditBoardMemberModal(memberId) {
+  pendingBodPhotoFile = null;
+  const m = db.getOne('board_of_directors', memberId);
+  if (!m) {
+    showToast('error', 'Error', 'Board member not found.');
+    return;
+  }
+
+  const standardPositions = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor'];
+  const isCustom = !standardPositions.includes(m.position);
+  const photoUrl = m.photo ? escapeHtml(m.photo) : '';
+
+  const bodyHtml = `
+    <div style="display:flex;flex-direction:column;gap:16px;">
+      <div class="form-group">
+        <label>Profile Photo (Square)</label>
+        <div class="bod-upload-container">
+          <div class="bod-photo-preview-wrap">
+            <img id="bodPhotoPreview" class="bod-photo-preview-img ${photoUrl ? '' : 'hidden'}" src="${photoUrl}" alt="Preview" />
+            <div id="bodPreviewPlaceholder" class="bod-preview-placeholder ${photoUrl ? 'hidden' : ''}">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="margin-bottom:4px;"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+              <span>No Photo</span>
+            </div>
+          </div>
+          <div style="flex:1;">
+            <input type="file" id="bod_photo_input" accept="image/jpeg,image/png,image/webp" onchange="previewBodModalPhoto(this)" style="display:none;" />
+            <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('bod_photo_input').click()">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+              Change Photo
+            </button>
+            <div style="font-size:0.75rem;color:var(--text-3);margin-top:6px;">Select a new image to replace current photo.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Full Name <span style="color:var(--red-600);">*</span></label>
+        <input type="text" id="bod_name_input" value="${escapeHtml(m.name || '')}" required />
+      </div>
+
+      <div class="form-group">
+        <label>Position <span style="color:var(--red-600);">*</span></label>
+        <select id="bod_position_select" onchange="handleBodPositionChange(this)">
+          <option value="President" ${m.position === 'President' ? 'selected' : ''}>President</option>
+          <option value="Vice President" ${m.position === 'Vice President' ? 'selected' : ''}>Vice President</option>
+          <option value="Secretary" ${m.position === 'Secretary' ? 'selected' : ''}>Secretary</option>
+          <option value="Treasurer" ${m.position === 'Treasurer' ? 'selected' : ''}>Treasurer</option>
+          <option value="Auditor" ${m.position === 'Auditor' ? 'selected' : ''}>Auditor</option>
+          <option value="custom" ${isCustom ? 'selected' : ''}>Other / Custom Position...</option>
+        </select>
+        <input type="text" id="bod_custom_position" class="${isCustom ? '' : 'hidden'}" value="${isCustom ? escapeHtml(m.position || '') : ''}" placeholder="Enter custom position title" style="margin-top:8px;" />
+      </div>
+
+      <div class="form-group">
+        <label>Contact Number</label>
+        <input type="text" id="bod_contact_input" value="${escapeHtml(m.contact_number || '')}" placeholder="e.g. 09125225210" />
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+        <div class="form-group">
+          <label>Term Years</label>
+          <input type="text" id="bod_term_input" value="${escapeHtml(m.term_years || '2026 - 2028')}" placeholder="e.g. 2026 - 2028" />
+        </div>
+        <div class="form-group">
+          <label>Display Order</label>
+          <input type="number" id="bod_order_input" value="${m.display_order ?? 1}" min="1" max="99" />
+        </div>
+      </div>
+    </div>
+  `;
+
+  openModal('Edit Board Member', bodyHtml, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Save Changes', cls: 'btn-primary', action: () => saveBoardMember(true, memberId) },
+  ]);
+}
+
+async function saveBoardMember(isEdit, memberId = null) {
+  const nameInput = document.getElementById('bod_name_input');
+  const posSelect = document.getElementById('bod_position_select');
+  const customPosInput = document.getElementById('bod_custom_position');
+  const contactInput = document.getElementById('bod_contact_input');
+  const termInput = document.getElementById('bod_term_input');
+  const orderInput = document.getElementById('bod_order_input');
+
+  const name = (nameInput?.value || '').trim();
+  let position = posSelect?.value;
+  if (position === 'custom') {
+    position = (customPosInput?.value || '').trim();
+  }
+
+  if (!name) {
+    showToast('error', 'Name Required', 'Please enter the board member\'s full name.');
+    return;
+  }
+  if (!position) {
+    showToast('error', 'Position Required', 'Please specify a position for this board member.');
+    return;
+  }
+
+  const contact = (contactInput?.value || '').trim();
+  const term = (termInput?.value || '2026 - 2028').trim();
+  const order = parseInt(orderInput?.value, 10) || 1;
+
+  const formData = new FormData();
+  formData.append('name', name);
+  formData.append('position', position);
+  formData.append('contact_number', contact);
+  formData.append('term_years', term);
+  formData.append('display_order', order);
+
+  if (pendingBodPhotoFile) {
+    formData.append('photo', pendingBodPhotoFile);
+  }
+
+  const url = isEdit ? `/api/board/${memberId}` : '/api/board';
+  const method = isEdit ? 'PUT' : 'POST';
+
+  try {
+    const headers = {};
+    if (currentUser && currentUser.id) {
+      headers['X-User-Id'] = currentUser.id;
+    }
+
+    const res = await fetch(url, {
+      method,
+      headers,
+      body: formData,
+    });
+
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({ error: 'Failed to save board member.' }));
+      throw new Error(err.error || 'Failed to save board member.');
+    }
+
+    // Refresh local cache
+    const updatedList = await api.request('/api/board');
+    dbCache['board_of_directors'] = updatedList;
+
+    closeModal();
+    showToast('success', 'Success', isEdit ? 'Board member updated successfully.' : 'New board member added successfully.');
+    renderBoardOfDirectorsManagement();
+    renderPublicBoardOfDirectors();
+  } catch (err) {
+    console.error(err);
+    showToast('error', 'Error', err.message || 'Could not save board member.');
+  }
+}
+
+function confirmDeleteBoardMember(memberId) {
+  const m = db.getOne('board_of_directors', memberId);
+  if (!m) return;
+
+  openModal('Delete Board Member?', `
+    <p style="color:var(--text-2);line-height:1.6;">
+      Are you sure you want to remove <strong>${escapeHtml(m.name)}</strong> (${escapeHtml(m.position)}) from the Board of Directors?
+    </p>
+    <p style="color:var(--red-600);font-size:0.84rem;margin-top:8px;">
+      This action cannot be undone. Their profile and details will be permanently removed from the public homepage and management directory.
+    </p>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    {
+      label: 'Delete Member',
+      cls: 'btn-danger',
+      action: async () => {
+        try {
+          await api.request(`/api/board/${memberId}`, { method: 'DELETE' });
+          const updatedList = await api.request('/api/board');
+          dbCache['board_of_directors'] = updatedList;
+          closeModal();
+          showToast('success', 'Deleted', `${m.name} was removed from the Board of Directors.`);
+          renderBoardOfDirectorsManagement();
+          renderPublicBoardOfDirectors();
+        } catch (err) {
+          console.error(err);
+          showToast('error', 'Delete Failed', err.message || 'Could not delete board member.');
+        }
+      }
+    }
+  ]);
 }
 
 function renderPublicAnnouncements() {
@@ -7341,6 +7915,7 @@ function showLandingPage() {
   document.getElementById('appShell').classList.add('hidden');
   renderPublicAnnouncements();
   renderPublicLostFound();
+  renderPublicBoardOfDirectors();
   updateHeroStat();
   applyStoredTheme();
 }
@@ -7383,5 +7958,15 @@ function handleLogout() {
     initApp();
   } else {
     showLandingPage();
+    if (window.location.hash) {
+      const hashSec = window.location.hash.replace('#', '');
+      const el = document.getElementById(hashSec);
+      if (el) {
+        const offset = 72;
+        const y = el.getBoundingClientRect().top + window.scrollY - offset;
+        window.scrollTo({ top: y, behavior: 'instant' });
+      }
+      pubScrollTo(null, hashSec);
+    }
   }
 })();

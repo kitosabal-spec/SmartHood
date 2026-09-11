@@ -24,6 +24,8 @@ const PROFILE_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'profile');
 fs.mkdirSync(PROFILE_UPLOAD_DIR, { recursive: true });
 const ANNOUNCEMENT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'announcements');
 fs.mkdirSync(ANNOUNCEMENT_UPLOAD_DIR, { recursive: true });
+const BOARD_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'board');
+fs.mkdirSync(BOARD_UPLOAD_DIR, { recursive: true });
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 const tableConfig = {
@@ -84,6 +86,11 @@ const tableConfig = {
   },
   appSettings: {
     columns: ['id', 'value'],
+    jsonColumns: [],
+    booleanColumns: [],
+  },
+  board_of_directors: {
+    columns: ['id', 'name', 'position', 'contact_number', 'photo', 'term_years', 'display_order', 'created_at', 'updated_at'],
     jsonColumns: [],
     booleanColumns: [],
   },
@@ -203,6 +210,63 @@ const seed = {
   auditLog: [],
   notifications: [],
   appSettings: [{ id: 'duesRatePerSqm', value: '5.725' }],
+  board_of_directors: [
+    {
+      id: 'bod-01',
+      name: 'Arturo Tuy',
+      position: 'President',
+      contact_number: '09125225210',
+      photo: '/uploads/board/arturo_tuy.jpg',
+      term_years: '2026 - 2028',
+      display_order: 1,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    {
+      id: 'bod-02',
+      name: 'Mrs. Marian Ciudadano',
+      position: 'Vice President',
+      contact_number: '09171234567',
+      photo: '/uploads/board/marian_ciudadano.jpg',
+      term_years: '2026 - 2028',
+      display_order: 2,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    {
+      id: 'bod-03',
+      name: 'Mrs. Mary Ann Celis',
+      position: 'Secretary',
+      contact_number: '09615508124',
+      photo: '/uploads/board/mary_ann_celis.jpg',
+      term_years: '2026 - 2028',
+      display_order: 3,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    {
+      id: 'bod-04',
+      name: 'Mrs. Claudette Delaon',
+      position: 'Treasurer',
+      contact_number: '09478534457',
+      photo: '/uploads/board/claudette_delaon.jpg',
+      term_years: '2026 - 2028',
+      display_order: 4,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+    {
+      id: 'bod-05',
+      name: 'Mrs. Mitch Aganan',
+      position: 'Auditor',
+      contact_number: '09618828545',
+      photo: '/uploads/board/mitch_aganan.jpg',
+      term_years: '2026 - 2028',
+      display_order: 5,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString(),
+    },
+  ],
 };
 
 function quoteIdentifier(identifier) {
@@ -516,15 +580,34 @@ async function createTables() {
     id VARCHAR(64) PRIMARY KEY,
     value TEXT
   )`);
+
+  await run(`CREATE TABLE IF NOT EXISTS board_of_directors (
+    id VARCHAR(64) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    position VARCHAR(100) NOT NULL,
+    contact_number VARCHAR(64),
+    photo TEXT,
+    term_years VARCHAR(64) DEFAULT '2026 - 2028',
+    display_order INT DEFAULT 0,
+    created_at TEXT,
+    updated_at TEXT
+  )`);
 }
 
 async function seedIfEmpty() {
   const row = await get('SELECT COUNT(*) AS count FROM users');
-  if (Number(row.count) > 0) return;
+  if (Number(row.count) === 0) {
+    for (const [table, records] of Object.entries(seed)) {
+      for (const record of records) {
+        await saveRecord(table, record);
+      }
+    }
+  }
 
-  for (const [table, records] of Object.entries(seed)) {
-    for (const record of records) {
-      await saveRecord(table, record);
+  const bodRow = await get('SELECT COUNT(*) AS count FROM board_of_directors').catch(() => ({ count: 0 }));
+  if (Number(bodRow.count) === 0 && Array.isArray(seed.board_of_directors)) {
+    for (const record of seed.board_of_directors) {
+      await saveRecord('board_of_directors', record);
     }
   }
 }
@@ -629,6 +712,26 @@ const announcementUploadMiddleware = announcementUpload.fields([
   { name: 'image', maxCount: 1 }
 ]);
 
+const boardUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, BOARD_UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || '.jpg';
+      const unique = `bod-${Date.now().toString(36)}-${crypto.randomBytes(6).toString('hex')}${ext}`;
+      cb(null, unique);
+    },
+  }),
+  limits: { fileSize: MAX_PHOTO_BYTES, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ALLOWED_PHOTO_MIMES[file.mimetype] || !ALLOWED_PHOTO_EXTS.has(ext)) {
+      cb(new Error('Only JPG, PNG, or WebP images are allowed.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
 async function getRequester(req) {
   const userId = getRequestUserId(req);
   if (!userId) return null;
@@ -667,6 +770,7 @@ const TABLE_PERMISSIONS = {
   auditLog: 'auditlog',
   users: 'users',
   appSettings: 'settings',
+  board_of_directors: 'board',
 };
 
 async function checkTableAccess(req, res, table, action = 'read') {
@@ -674,7 +778,7 @@ async function checkTableAccess(req, res, table, action = 'read') {
 
   const requester = await getRequester(req);
   if (!requester) {
-    if (action === 'read' && (table === 'announcements' || table === 'lostFound')) return true;
+    if (action === 'read' && (table === 'announcements' || table === 'lostFound' || table === 'board_of_directors')) return true;
     res.status(401).json({ error: 'Login required.' });
     return null;
   }
@@ -1157,6 +1261,163 @@ app.delete('/api/announcements/:announcementId/comments/:commentId', asyncHandle
   }
 
   await run('DELETE FROM announcement_comments WHERE id = ?', [req.params.commentId]);
+  res.json({ ok: true });
+}));
+
+// ── BOARD OF DIRECTORS SECURE APIS ──
+
+app.get('/api/board', asyncHandler(async (req, res) => {
+  const rows = await all('SELECT * FROM board_of_directors ORDER BY display_order ASC, created_at ASC');
+  res.json(rows.map(r => deserializeRow('board_of_directors', r)));
+}));
+
+app.post('/api/board', (req, res) => {
+  requirePermission(req, res, 'board').then(author => {
+    if (!author) return;
+
+    boardUpload.single('photo')(req, res, async (uploadErr) => {
+      if (uploadErr) {
+        const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
+          ? 'Photo must be 5 MB or smaller.'
+          : (uploadErr.message || 'Invalid photo upload.');
+        return res.status(400).json({ error: msg });
+      }
+
+      try {
+        const name = (req.body.name || '').trim();
+        const position = (req.body.position || '').trim();
+        const contactNumber = (req.body.contact_number || '').trim();
+        const termYears = (req.body.term_years || '2026 - 2028').trim();
+        const displayOrder = parseInt(req.body.display_order, 10) || 0;
+
+        if (!name || !position) {
+          if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+          return res.status(400).json({ error: 'Name and position are required.' });
+        }
+
+        let photoPath = null;
+        if (req.file) {
+          const buffer = await fs.promises.readFile(req.file.path);
+          if (!isValidImageBuffer(buffer)) {
+            await fs.promises.unlink(req.file.path).catch(() => {});
+            return res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
+          }
+          photoPath = `/uploads/board/${req.file.filename}`;
+        } else if (req.body.photo) {
+          photoPath = req.body.photo.trim();
+        }
+
+        const id = req.body.id || ('bod-' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex'));
+        const nowIso = new Date().toISOString();
+
+        await run(
+          `INSERT INTO board_of_directors (id, name, position, contact_number, photo, term_years, display_order, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          [id, name, position, contactNumber, photoPath, termYears, displayOrder, nowIso, nowIso]
+        );
+
+        const created = await get('SELECT * FROM board_of_directors WHERE id = ?', [id]);
+        res.status(201).json(deserializeRow('board_of_directors', created));
+      } catch (err) {
+        if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+        console.error(err);
+        res.status(500).json({ error: 'Could not create board member.' });
+      }
+    });
+  }).catch(err => {
+    console.error(err);
+    res.status(500).json({ error: 'Server error checking authorization.' });
+  });
+});
+
+app.put('/api/board/:id', (req, res) => {
+  requirePermission(req, res, 'board').then(author => {
+    if (!author) return;
+
+    boardUpload.single('photo')(req, res, async (uploadErr) => {
+      if (uploadErr) {
+        const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
+          ? 'Photo must be 5 MB or smaller.'
+          : (uploadErr.message || 'Invalid photo upload.');
+        return res.status(400).json({ error: msg });
+      }
+
+      try {
+        const existing = await get('SELECT * FROM board_of_directors WHERE id = ?', [req.params.id]);
+        if (!existing) {
+          if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+          return res.status(404).json({ error: 'Board member not found.' });
+        }
+
+        const name = req.body.name !== undefined ? req.body.name.trim() : existing.name;
+        const position = req.body.position !== undefined ? req.body.position.trim() : existing.position;
+        const contactNumber = req.body.contact_number !== undefined ? req.body.contact_number.trim() : existing.contact_number;
+        const termYears = req.body.term_years !== undefined ? req.body.term_years.trim() : existing.term_years;
+        const displayOrder = req.body.display_order !== undefined ? (parseInt(req.body.display_order, 10) || 0) : existing.display_order;
+
+        if (!name || !position) {
+          if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+          return res.status(400).json({ error: 'Name and position cannot be empty.' });
+        }
+
+        let photoPath = existing.photo;
+        if (req.file) {
+          const buffer = await fs.promises.readFile(req.file.path);
+          if (!isValidImageBuffer(buffer)) {
+            await fs.promises.unlink(req.file.path).catch(() => {});
+            return res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
+          }
+          photoPath = `/uploads/board/${req.file.filename}`;
+
+          // Unlink old photo if custom uploaded
+          if (existing.photo && existing.photo.startsWith('/uploads/board/') && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
+            const oldFile = path.join(__dirname, 'public', existing.photo);
+            fs.promises.unlink(oldFile).catch(() => {});
+          }
+        } else if (req.body.remove_photo === 'true') {
+          if (existing.photo && existing.photo.startsWith('/uploads/board/') && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
+            const oldFile = path.join(__dirname, 'public', existing.photo);
+            fs.promises.unlink(oldFile).catch(() => {});
+          }
+          photoPath = null;
+        }
+
+        const nowIso = new Date().toISOString();
+
+        await run(
+          `UPDATE board_of_directors SET name = ?, position = ?, contact_number = ?, photo = ?, term_years = ?, display_order = ?, updated_at = ? WHERE id = ?`,
+          [name, position, contactNumber, photoPath, termYears, displayOrder, nowIso, req.params.id]
+        );
+
+        const updated = await get('SELECT * FROM board_of_directors WHERE id = ?', [req.params.id]);
+        res.json(deserializeRow('board_of_directors', updated));
+      } catch (err) {
+        if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+        console.error(err);
+        res.status(500).json({ error: 'Could not update board member.' });
+      }
+    });
+  }).catch(err => {
+    console.error(err);
+    res.status(500).json({ error: 'Server error checking authorization.' });
+  });
+});
+
+app.delete('/api/board/:id', asyncHandler(async (req, res) => {
+  const author = await requirePermission(req, res, 'board');
+  if (!author) return;
+
+  const existing = await get('SELECT * FROM board_of_directors WHERE id = ?', [req.params.id]);
+  if (!existing) {
+    return res.status(404).json({ error: 'Board member not found.' });
+  }
+
+  if (existing.photo && existing.photo.startsWith('/uploads/board/') && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
+    const oldFile = path.join(__dirname, 'public', existing.photo);
+    fs.promises.unlink(oldFile).catch(() => {});
+  }
+
+  await run('DELETE FROM board_of_directors WHERE id = ?', [req.params.id]);
   res.json({ ok: true });
 }));
 

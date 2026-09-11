@@ -163,6 +163,7 @@
         <a href="javascript:void(0)" class="pub-nav-link active" onclick="pubScrollTo(event,'hero')">Home</a>
         <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'announcements')">Announcements</a>
         <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'lostfound')">Lost &amp; Found</a>
+        <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'board')">Board of Directors</a>
         <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'about')">About</a>
         <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'contact')">Contact</a>
       </div>
@@ -188,6 +189,9 @@
     </a>
     <a href="javascript:void(0)" onclick="pubScrollTo(event,'lostfound');togglePubNav()">
       <svg class="mob-ico"><use href="#ico-search"/></svg> Lost &amp; Found
+    </a>
+    <a href="javascript:void(0)" onclick="pubScrollTo(event,'board');togglePubNav()">
+      <svg class="mob-ico"><use href="#ico-users"/></svg> Board of Directors
     </a>
     <a href="javascript:void(0)" onclick="pubScrollTo(event,'about');togglePubNav()">
       <svg class="mob-ico"><use href="#ico-building"/></svg> About
@@ -289,6 +293,20 @@
         </button>
       </div>
       <div class="pub-lostfound-grid" id="pubLostFoundGrid"></div>
+    </div>
+  </section>
+
+  <!-- ── BOARD OF DIRECTORS ── -->
+  <section class="pub-section" id="board">
+    <div class="pub-container">
+      <div class="pub-section-header">
+        <div class="pub-section-badge">Leadership &amp; Governance</div>
+        <h2 class="pub-section-title">Board of Directors</h2>
+        <p class="pub-section-sub" id="pubBoardTermSub">Term 2026 &#8211; 2028 &bull; Dedicated to serving San Alfonso Homes with integrity, transparency, and unity.</p>
+      </div>
+      <div id="pubBoardContainer" class="pub-board-container">
+        <!-- Rendered dynamically by renderPublicBoardOfDirectors() -->
+      </div>
     </div>
   </section>
 
