@@ -1,0 +1,163 @@
+.billing-form {
+  display: grid;
+  gap: 18px;
+}
+
+.billing-form-section {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  padding: 16px;
+}
+
+.billing-form-kicker {
+  color: var(--teal-700);
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  margin-bottom: 12px;
+  text-transform: uppercase;
+}
+
+.billing-compact-grid {
+  gap: 12px;
+}
+
+.billing-desc-group {
+  margin-bottom: 0;
+}
+
+.billing-desc-group textarea {
+  min-height: 92px;
+}
+
+.billing-assignment-section {
+  padding-bottom: 12px;
+}
+
+.billing-assignment-header,
+.billing-assignment-tools {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+}
+
+.billing-helper-text {
+  color: var(--text-3);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  margin-top: 7px;
+}
+
+#bf_amountHint:not(:empty) {
+  color: var(--teal-700);
+  font-weight: 600;
+  padding-left: 2px;
+}
+
+.billing-selected-count {
+  background: var(--teal-50);
+  border: 1px solid var(--teal-100);
+  border-radius: 999px;
+  color: var(--teal-700);
+  flex-shrink: 0;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 6px 10px;
+}
+
+.billing-assignment-tools {
+  border-bottom: 1px solid var(--border);
+  margin-top: 14px;
+  padding-bottom: 12px;
+}
+
+.billing-select-all {
+  align-items: center;
+  color: var(--text-2);
+  cursor: pointer;
+  display: inline-flex;
+  font-size: 0.85rem;
+  font-weight: 600;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.billing-search {
+  align-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-3);
+  display: flex;
+  gap: 8px;
+  max-width: 260px;
+  padding: 0 10px;
+  width: 100%;
+}
+
+.billing-search input {
+  background: transparent;
+  border: 0;
+  color: var(--text);
+  font-size: 0.85rem;
+  outline: none;
+  padding: 9px 0;
+  width: 100%;
+}
+
+
+.billing-homeowner-list {
+  display: grid;
+  gap: 6px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding-top: 12px;
+}
+
+.billing-homeowner-row {
+  align-items: center;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  padding: 9px 10px;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.billing-homeowner-row:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+.billing-homeowner-row.hidden {
+  display: none;
+}
+
+.billing-homeowner-main {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.billing-homeowner-name {
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.billing-homeowner-meta {
+  color: var(--text-3);
+  font-size: 0.76rem;
+}
+
+
+.amount-due { color: var(--red-600); font-weight: 700; }
+.amount-paid { color: var(--green-600); font-weight: 700; }
+.overdue-row td { background: rgba(220,38,38,0.04); }
+.receipt-preview-img { max-width: 100%; border-radius: var(--radius); border: 1px solid var(--border); margin-top: 8px; }

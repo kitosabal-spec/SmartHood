@@ -30,12 +30,12 @@ server.js        Runs the Express backend and connects to MySQL.
 MySQL database   Stores your homeowners, bills, payments, complaints, announcements, logs, and notifications.
 ```
 
-Your existing frontend files are still used:
+Your frontend files are organized into modular CSS and JS directories:
 
 ```text
 index.html
-styles.css
-script.js
+public/css/ (style.css, dashboard.css, announcements.css, residents.css, billing.css, complaints.css, amenities.css, vehicles.css, lost-found.css, profile.css, board-of-directors.css)
+public/js/  (main.js, dashboard.js, announcements.js, residents.js, billing.js, complaints.js, amenities.js, vehicles.js, lost-found.js, profile.js, board-of-directors.js)
 ```
 
 ## 3. Make Sure MySQL is Running

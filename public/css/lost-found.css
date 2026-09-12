@@ -1,0 +1,21 @@
+.lostfound-form-note {
+  background: var(--gold-50);
+  border: 1px solid var(--gold-100);
+  border-left: 3px solid var(--gold-400);
+  border-radius: var(--radius-sm);
+  color: var(--text-2);
+  font-size: 0.84rem;
+  line-height: 1.55;
+  margin-bottom: 18px;
+  padding: 10px 14px;
+}
+
+.lostfound-admin-image {
+  aspect-ratio: 16 / 9;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  display: block;
+  margin-bottom: 16px;
+  object-fit: cover;
+  width: 100%;
+}

@@ -1,0 +1,82 @@
+.vehicle-fee-panel {
+  background: var(--teal-50);
+  border: 1px solid var(--teal-100);
+  border-left: 3px solid var(--teal-500);
+  border-radius: var(--radius-sm);
+  margin-bottom: 18px;
+  padding: 12px 14px;
+}
+
+.vehicle-fee-panel div {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.vehicle-fee-panel span {
+  color: var(--text-3);
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.vehicle-fee-panel strong {
+  color: var(--teal-700);
+  font-size: 1.1rem;
+}
+
+.vehicle-fee-panel p {
+  color: var(--text-3);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin-top: 6px;
+}
+
+.vehicle-detail-grid {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.vehicle-detail-grid > div {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+}
+
+.vehicle-detail-grid span {
+  color: var(--text-3);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 800;
+  margin-bottom: 3px;
+  text-transform: uppercase;
+}
+
+.vehicle-detail-grid strong {
+  color: var(--text);
+  font-size: 0.9rem;
+}
+
+.vehicle-release-check {
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: flex;
+  gap: 10px;
+  padding: 11px 12px;
+}
+
+.vehicle-release-check input {
+  height: 16px;
+  width: 16px;
+}
+
+.vehicle-release-check span {
+  color: var(--text-2);
+  font-size: 0.86rem;
+  font-weight: 700;
+}

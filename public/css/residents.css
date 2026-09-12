@@ -1,0 +1,61 @@
+.homeowner-compact-table {
+  table-layout: fixed;
+  width: 100%;
+}
+
+.homeowner-compact-table th:nth-child(1),
+.homeowner-compact-table td:nth-child(1) {
+  width: 54px;
+}
+
+.homeowner-compact-table th:nth-child(4),
+.homeowner-compact-table td:nth-child(4) {
+  width: 140px;
+}
+
+.homeowner-compact-table th:nth-child(5),
+.homeowner-compact-table td:nth-child(5) {
+  text-align: center;
+  width: 86px;
+}
+
+.homeowner-compact-table th:nth-child(6),
+.homeowner-compact-table td:nth-child(6) {
+  width: 120px;
+}
+
+.homeowner-name-cell {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.homeowner-name-cell strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ho-info-btn {
+  align-items: center;
+  background: var(--teal-50);
+  border: 1px solid var(--teal-100);
+  border-radius: 50%;
+  color: var(--teal-700);
+  cursor: pointer;
+  display: inline-flex;
+  flex: 0 0 22px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  height: 22px;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  width: 22px;
+}
+
+.ho-info-btn:hover {
+  background: var(--teal-100);
+  border-color: var(--teal-400);
+}

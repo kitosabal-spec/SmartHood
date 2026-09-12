@@ -19,6 +19,8 @@ let db;
 
 app.use(express.json({ limit: '15mb' }));
 app.use('/public', express.static(path.join(__dirname, 'public')));
+app.use('/css', express.static(path.join(__dirname, 'public', 'css')));
+app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
 
 const PROFILE_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'profile');
 fs.mkdirSync(PROFILE_UPLOAD_DIR, { recursive: true });
