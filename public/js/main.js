@@ -1177,49 +1177,349 @@ window.filterHOBalanceReport = filterHOBalanceReport;
 // SECTION 13: ADMIN — AUDIT LOG
 
 
+function parseLogTimestamp(ts) {
+  if (!ts) return null;
+  if (ts instanceof Date) return isNaN(ts.getTime()) ? null : ts;
+  const str = String(ts).trim();
+  const d = new Date(str);
+  if (!isNaN(d.getTime())) return d;
+
+  // Format: M/D/YY or M/D/YYYY, H:MM(:SS) AM/PM
+  const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?)?/i);
+  if (m) {
+    const month = parseInt(m[1], 10) - 1;
+    const day = parseInt(m[2], 10);
+    let year = parseInt(m[3], 10);
+    if (year < 100) year += 2000;
+    let hour = m[4] ? parseInt(m[4], 10) : 0;
+    const min = m[5] ? parseInt(m[5], 10) : 0;
+    const sec = m[6] ? parseInt(m[6], 10) : 0;
+    const ampm = (m[7] || '').toUpperCase();
+    if (ampm === 'PM' && hour < 12) hour += 12;
+    if (ampm === 'AM' && hour === 12) hour = 0;
+    return new Date(year, month, day, hour, min, sec);
+  }
+
+  // Format: YYYY-MM-DD
+  const m2 = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/i);
+  if (m2) {
+    const year = parseInt(m2[1], 10);
+    const month = parseInt(m2[2], 10) - 1;
+    const day = parseInt(m2[3], 10);
+    const hour = m2[4] ? parseInt(m2[4], 10) : 0;
+    const min = m2[5] ? parseInt(m2[5], 10) : 0;
+    const sec = m2[6] ? parseInt(m2[6], 10) : 0;
+    return new Date(year, month, day, hour, min, sec);
+  }
+
+  return null;
+}
+
+function getAuditPerformerName(adminId) {
+  if (!adminId) return 'System';
+  const u = db.getOne('users', adminId);
+  if (u) return u.name || u.username || adminId;
+  return adminId;
+}
+
+let auditLogPaginationState = { page: 1, pageSize: 10 };
+let currentAuditLogFilteredList = null;
+
+function changeAuditLogPage(page) {
+  auditLogPaginationState.page = page;
+  renderAuditLogRows(currentAuditLogFilteredList, false);
+}
+window.changeAuditLogPage = changeAuditLogPage;
+
+function changeAuditLogPageSize(size) {
+  auditLogPaginationState.pageSize = size;
+  auditLogPaginationState.page = 1;
+  renderAuditLogRows(currentAuditLogFilteredList, false);
+}
+window.changeAuditLogPageSize = changeAuditLogPageSize;
+
 function renderAuditLog() {
-  const logs = [...db.get('auditLog')].reverse();
   const area = document.getElementById('contentArea');
+  if (!area) return;
+
   area.innerHTML = `
   <div class="page-header">
-    <div class="page-header-left"><h2>Audit Log</h2><p>Track all admin actions and system events.</p></div>
+    <div class="page-header-left">
+      <h2>Audit Log</h2>
+      <p>Track all admin actions and system events.</p>
+    </div>
     <div class="page-header-actions">
-      <button class="btn btn-danger btn-sm" onclick="clearAuditLog()">Clear Log</button>
+      <div class="audit-count-badge" id="auditLogCountBadge">
+        <svg width="14" height="14" style="color:var(--teal-600);"><use href="#ico-log"/></svg>
+        <span>Loading...</span>
+      </div>
     </div>
   </div>
   <div class="section-card">
     <div class="section-card-header">
-      <div class="search-box"><span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span><input id="logSearch" type="text" placeholder="Search actions..."/></div>
+      <div class="filters-row" style="align-items:center;">
+        <div class="search-box">
+          <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
+          <input id="logSearch" type="text" placeholder="Search actions, details, or admin..." oninput="filterAuditLogs()"/>
+        </div>
+        <select class="filter-select" id="auditLogFilter" onchange="onAuditLogFilterChange()">
+          <option value="all">All Logs</option>
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+          <option value="date">Choose Date</option>
+          <option value="range">Date Range</option>
+        </select>
+        <div id="auditLogDateWrap" class="date-input-group" style="display:none;">
+          <input type="date" class="filter-select" id="auditLogDate" onchange="filterAuditLogs()" title="Select specific date"/>
+        </div>
+        <div id="auditLogRangeWrap" class="date-input-group" style="display:none;">
+          <input type="date" class="filter-select" id="auditLogStartDate" onchange="filterAuditLogs()" title="Start date" placeholder="Start Date"/>
+          <span class="date-range-sep">to</span>
+          <input type="date" class="filter-select" id="auditLogEndDate" onchange="filterAuditLogs()" title="End date" placeholder="End Date"/>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="auditLogResetBtn" onclick="resetAuditLogFilters()" title="Reset all filters">
+          Reset
+        </button>
+      </div>
     </div>
-    <div class="section-card-body" id="logBody">
-      ${logs.map(l => `
-        <div class="log-item">
-          <div class="log-dot"></div>
-          <div>
-            <div class="log-text">${l.action}</div>
-            <div class="log-time">${l.timestamp}</div>
-          </div>
-        </div>`).join('') || '<div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-log"/></svg>No log entries.</div>'}
+    <div class="section-card-body no-pad">
+      <div class="table-wrapper">
+        <table class="data-table" id="auditLogTable">
+          <thead>
+            <tr>
+              <th style="width:50px;">#</th>
+              <th>Action / Event</th>
+              <th style="width:180px;">Performed By</th>
+              <th style="width:170px;">Date & Time</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody"></tbody>
+        </table>
+      </div>
     </div>
+    <div id="auditLogPagination"></div>
   </div>`;
 
-  document.getElementById('logSearch')?.addEventListener('input', function() {
-    const q = this.value.toLowerCase();
-    const filtered = logs.filter(l => l.action.toLowerCase().includes(q));
-    document.getElementById('logBody').innerHTML = filtered.map(l => `
-      <div class="log-item"><div class="log-dot"></div><div>
-        <div class="log-text">${l.action}</div>
-        <div class="log-time">${l.timestamp}</div>
-      </div></div>`).join('') || '<div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-search"/></svg>No matching entries.</div>';
-  });
+  auditLogPaginationState.page = 1;
+  currentAuditLogFilteredList = null;
+  filterAuditLogs();
 }
 
-function clearAuditLog() {
-  openModal('Clear Audit Log', '<p>This will permanently clear all audit log entries. Are you sure?</p>', [
-    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    { label: 'Clear All', cls: 'btn-danger', action: () => { db.set('auditLog', []); closeModal(); showToast('success', 'Cleared', 'Audit log cleared.'); renderAuditLog(); } },
-  ]);
+function onAuditLogFilterChange() {
+  const mode = document.getElementById('auditLogFilter')?.value || 'all';
+  const dateWrap = document.getElementById('auditLogDateWrap');
+  const rangeWrap = document.getElementById('auditLogRangeWrap');
+  const dateInput = document.getElementById('auditLogDate');
+  const startInput = document.getElementById('auditLogStartDate');
+  const endInput = document.getElementById('auditLogEndDate');
+
+  if (dateWrap) dateWrap.style.display = (mode === 'date') ? 'inline-flex' : 'none';
+  if (rangeWrap) rangeWrap.style.display = (mode === 'range') ? 'inline-flex' : 'none';
+
+  if (mode === 'date' && dateInput && !dateInput.value) {
+    dateInput.value = new Date().toISOString().split('T')[0];
+  }
+  if (mode === 'range') {
+    if (startInput && !startInput.value) {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      startInput.value = d.toISOString().split('T')[0];
+    }
+    if (endInput && !endInput.value) {
+      endInput.value = new Date().toISOString().split('T')[0];
+    }
+  }
+
+  filterAuditLogs();
 }
+window.onAuditLogFilterChange = onAuditLogFilterChange;
+
+function filterAuditLogs() {
+  const allLogs = [...db.get('auditLog')].reverse();
+  const filterMode = document.getElementById('auditLogFilter')?.value || 'all';
+  const query = (document.getElementById('logSearch')?.value || '').trim().toLowerCase();
+  const now = new Date();
+
+  const filtered = allLogs.filter(item => {
+    // 1. Text search
+    if (query) {
+      const actionMatch = (item.action || '').toLowerCase().includes(query);
+      const performer = getAuditPerformerName(item.adminId).toLowerCase();
+      const performerMatch = performer.includes(query) || (item.adminId || '').toLowerCase().includes(query);
+      const timeMatch = (item.timestamp || '').toLowerCase().includes(query);
+      if (!actionMatch && !performerMatch && !timeMatch) return false;
+    }
+
+    // 2. Date filter
+    if (filterMode === 'all') return true;
+
+    const logDate = parseLogTimestamp(item.timestamp);
+    if (!logDate) return false;
+
+    if (filterMode === 'today') {
+      return (
+        logDate.getFullYear() === now.getFullYear() &&
+        logDate.getMonth() === now.getMonth() &&
+        logDate.getDate() === now.getDate()
+      );
+    }
+
+    if (filterMode === 'week') {
+      const dayOfWeek = now.getDay();
+      const distanceToMonday = (dayOfWeek + 6) % 7;
+      const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday, 0, 0, 0, 0);
+      const endOfWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + 6, 23, 59, 59, 999);
+      return logDate >= startOfWeek && logDate <= endOfWeek;
+    }
+
+    if (filterMode === 'month') {
+      return (
+        logDate.getFullYear() === now.getFullYear() &&
+        logDate.getMonth() === now.getMonth()
+      );
+    }
+
+    if (filterMode === 'date') {
+      const dateVal = document.getElementById('auditLogDate')?.value;
+      if (!dateVal) return true;
+      const [y, m, d] = dateVal.split('-').map(Number);
+      return (
+        logDate.getFullYear() === y &&
+        logDate.getMonth() === m - 1 &&
+        logDate.getDate() === d
+      );
+    }
+
+    if (filterMode === 'range') {
+      const startVal = document.getElementById('auditLogStartDate')?.value;
+      const endVal = document.getElementById('auditLogEndDate')?.value;
+      if (startVal) {
+        const [sy, sm, sd] = startVal.split('-').map(Number);
+        const startDate = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+        if (logDate < startDate) return false;
+      }
+      if (endVal) {
+        const [ey, em, ed] = endVal.split('-').map(Number);
+        const endDate = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+        if (logDate > endDate) return false;
+      }
+      return true;
+    }
+
+    return true;
+  });
+
+  const badge = document.getElementById('auditLogCountBadge');
+  if (badge) {
+    if (filterMode === 'all' && !query) {
+      badge.innerHTML = `<svg width="14" height="14" style="color:var(--teal-600);"><use href="#ico-log"/></svg><span>${allLogs.length} total logs</span>`;
+    } else {
+      badge.innerHTML = `<svg width="14" height="14" style="color:var(--teal-600);"><use href="#ico-log"/></svg><span>Showing ${filtered.length} of ${allLogs.length} logs</span>`;
+    }
+  }
+
+  renderAuditLogRows(filtered, true);
+}
+window.filterAuditLogs = filterAuditLogs;
+
+function renderAuditLogRows(filtered = null, resetPage = false) {
+  const tbody = document.getElementById('logTableBody');
+  if (!tbody) return;
+
+  if (filtered !== null) {
+    currentAuditLogFilteredList = filtered;
+  } else if (currentAuditLogFilteredList === null) {
+    currentAuditLogFilteredList = [...db.get('auditLog')].reverse();
+  }
+  const logs = currentAuditLogFilteredList || [];
+
+  if (resetPage) auditLogPaginationState.page = 1;
+
+  const totalItems = logs.length;
+  const pageSize = auditLogPaginationState.pageSize || 10;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  if (auditLogPaginationState.page > totalPages) auditLogPaginationState.page = totalPages;
+  if (auditLogPaginationState.page < 1) auditLogPaginationState.page = 1;
+
+  if (!totalItems) {
+    tbody.innerHTML = `<tr><td colspan="4"><div class="no-results" style="padding:32px 16px;"><svg style="width:2rem;height:2rem;color:var(--text-3);"><use href="#ico-log"/></svg><p style="margin-top:8px;font-weight:500;">No audit log entries found.</p><p style="color:var(--text-3);font-size:0.8rem;margin-top:4px;">Try changing or resetting your date filters.</p></div></td></tr>`;
+    renderPaginationComponent({
+      containerId: 'auditLogPagination',
+      currentPage: 1,
+      pageSize,
+      totalItems: 0,
+      onPageChangeFn: 'changeAuditLogPage',
+      onPageSizeChangeFn: 'changeAuditLogPageSize',
+      itemLabel: 'logs',
+    });
+    return;
+  }
+
+  const startIdx = (auditLogPaginationState.page - 1) * pageSize;
+  const pageItems = logs.slice(startIdx, startIdx + pageSize);
+
+  tbody.innerHTML = pageItems.map((l, index) => {
+    const rowNum = startIdx + index + 1;
+    const performer = getAuditPerformerName(l.adminId);
+    return `
+      <tr>
+        <td style="color:var(--text-3);font-size:0.82rem;font-weight:600;">${rowNum}</td>
+        <td>
+          <div style="display:flex;align-items:flex-start;gap:10px;">
+            <div class="log-dot" style="margin-top:6px;"></div>
+            <div class="log-text" style="word-break:break-word;">${escapeHtml(l.action)}</div>
+          </div>
+        </td>
+        <td>
+          <span class="badge badge-gray" title="${escapeHtml(l.adminId || '')}">
+            ${escapeHtml(performer)}
+          </span>
+        </td>
+        <td>
+          <div class="log-time" style="font-size:0.8rem;color:var(--text-3);">${escapeHtml(l.timestamp || '')}</div>
+        </td>
+      </tr>
+    `;
+  }).join('');
+
+  renderPaginationComponent({
+    containerId: 'auditLogPagination',
+    currentPage: auditLogPaginationState.page,
+    pageSize,
+    totalItems,
+    onPageChangeFn: 'changeAuditLogPage',
+    onPageSizeChangeFn: 'changeAuditLogPageSize',
+    itemLabel: 'logs',
+  });
+}
+window.renderAuditLogRows = renderAuditLogRows;
+
+function resetAuditLogFilters() {
+  const searchInput = document.getElementById('logSearch');
+  if (searchInput) searchInput.value = '';
+
+  const filterSelect = document.getElementById('auditLogFilter');
+  if (filterSelect) filterSelect.value = 'all';
+
+  const dateWrap = document.getElementById('auditLogDateWrap');
+  if (dateWrap) dateWrap.style.display = 'none';
+
+  const rangeWrap = document.getElementById('auditLogRangeWrap');
+  if (rangeWrap) rangeWrap.style.display = 'none';
+
+  const dateInput = document.getElementById('auditLogDate');
+  if (dateInput) dateInput.value = '';
+
+  const startInput = document.getElementById('auditLogStartDate');
+  if (startInput) startInput.value = '';
+
+  const endInput = document.getElementById('auditLogEndDate');
+  if (endInput) endInput.value = '';
+
+  filterAuditLogs();
+}
+window.resetAuditLogFilters = resetAuditLogFilters;
 
 
 // SECTION 14: ADMIN — SETTINGS

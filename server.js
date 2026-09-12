@@ -1457,7 +1457,110 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'read');
   if (!allowed) return;
-  res.json(await getTableData(table));
+
+  const data = await getTableData(table);
+  if (table === 'auditLog' && (req.query.filter || req.query.date || req.query.startDate || req.query.endDate || req.query.q)) {
+    const filterMode = req.query.filter || 'all';
+    const query = (req.query.q || '').trim().toLowerCase();
+    const dateVal = req.query.date;
+    const startVal = req.query.startDate;
+    const endVal = req.query.endDate;
+    const now = new Date();
+
+    const parseLogTimestamp = (ts) => {
+      if (!ts) return null;
+      if (ts instanceof Date) return isNaN(ts.getTime()) ? null : ts;
+      const str = String(ts).trim();
+      const d = new Date(str);
+      if (!isNaN(d.getTime())) return d;
+      const m = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})(?:[,\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?(?:\s*(AM|PM))?)?/i);
+      if (m) {
+        let month = parseInt(m[1], 10) - 1;
+        let day = parseInt(m[2], 10);
+        let year = parseInt(m[3], 10);
+        if (year < 100) year += 2000;
+        let hour = m[4] ? parseInt(m[4], 10) : 0;
+        const min = m[5] ? parseInt(m[5], 10) : 0;
+        const sec = m[6] ? parseInt(m[6], 10) : 0;
+        const ampm = (m[7] || '').toUpperCase();
+        if (ampm === 'PM' && hour < 12) hour += 12;
+        if (ampm === 'AM' && hour === 12) hour = 0;
+        return new Date(year, month, day, hour, min, sec);
+      }
+      const m2 = str.match(/^(\d{4})[\/\-](\d{1,2})[\/\-](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{2})(?::(\d{2}))?)?/i);
+      if (m2) {
+        const year = parseInt(m2[1], 10);
+        const month = parseInt(m2[2], 10) - 1;
+        const day = parseInt(m2[3], 10);
+        const hour = m2[4] ? parseInt(m2[4], 10) : 0;
+        const min = m2[5] ? parseInt(m2[5], 10) : 0;
+        const sec = m2[6] ? parseInt(m2[6], 10) : 0;
+        return new Date(year, month, day, hour, min, sec);
+      }
+      return null;
+    };
+
+    const filtered = data.filter(item => {
+      if (query) {
+        const actionMatch = (item.action || '').toLowerCase().includes(query);
+        const performerMatch = (item.adminId || '').toLowerCase().includes(query);
+        const timeMatch = (item.timestamp || '').toLowerCase().includes(query);
+        if (!actionMatch && !performerMatch && !timeMatch) return false;
+      }
+      if (filterMode === 'all' && !dateVal && !startVal && !endVal) return true;
+      const logDate = parseLogTimestamp(item.timestamp);
+      if (!logDate) return false;
+
+      if (filterMode === 'today') {
+        return (
+          logDate.getFullYear() === now.getFullYear() &&
+          logDate.getMonth() === now.getMonth() &&
+          logDate.getDate() === now.getDate()
+        );
+      }
+      if (filterMode === 'week') {
+        const dayOfWeek = now.getDay();
+        const distanceToMonday = (dayOfWeek + 6) % 7;
+        const startOfWeek = new Date(now.getFullYear(), now.getMonth(), now.getDate() - distanceToMonday, 0, 0, 0, 0);
+        const endOfWeek = new Date(startOfWeek.getFullYear(), startOfWeek.getMonth(), startOfWeek.getDate() + 6, 23, 59, 59, 999);
+        return logDate >= startOfWeek && logDate <= endOfWeek;
+      }
+      if (filterMode === 'month') {
+        return (
+          logDate.getFullYear() === now.getFullYear() &&
+          logDate.getMonth() === now.getMonth()
+        );
+      }
+      if (filterMode === 'date' || dateVal) {
+        const targetDate = dateVal;
+        if (!targetDate) return true;
+        const [y, m, d] = targetDate.split('-').map(Number);
+        return (
+          logDate.getFullYear() === y &&
+          logDate.getMonth() === m - 1 &&
+          logDate.getDate() === d
+        );
+      }
+      if (filterMode === 'range' || startVal || endVal) {
+        if (startVal) {
+          const [sy, sm, sd] = startVal.split('-').map(Number);
+          const startDate = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
+          if (logDate < startDate) return false;
+        }
+        if (endVal) {
+          const [ey, em, ed] = endVal.split('-').map(Number);
+          const endDate = new Date(ey, em - 1, ed, 23, 59, 59, 999);
+          if (logDate > endDate) return false;
+        }
+        return true;
+      }
+      return true;
+    });
+
+    return res.json(filtered);
+  }
+
+  res.json(data);
 }));
 
 app.put('/api/:table', asyncHandler(async (req, res) => {

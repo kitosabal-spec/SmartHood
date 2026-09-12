@@ -1312,6 +1312,35 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 }
 .filter-select:focus { outline: none; border-color: var(--teal-500); }
 
+.date-input-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.date-range-sep {
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: var(--text-3);
+  padding: 0 2px;
+}
+input[type="date"].filter-select {
+  font-family: inherit;
+  min-width: 135px;
+}
+.audit-count-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-size: 0.8rem;
+  color: var(--text-2);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
 .field-error { color: var(--red-600); font-size: 0.78rem; margin-top: 4px; }
 .input-error { border-color: var(--red-600) !important; }
 
