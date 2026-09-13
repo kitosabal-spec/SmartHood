@@ -28,6 +28,8 @@ const ANNOUNCEMENT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'annou
 fs.mkdirSync(ANNOUNCEMENT_UPLOAD_DIR, { recursive: true });
 const BOARD_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'board');
 fs.mkdirSync(BOARD_UPLOAD_DIR, { recursive: true });
+const COMPLAINT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'complaints');
+fs.mkdirSync(COMPLAINT_UPLOAD_DIR, { recursive: true });
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 const tableConfig = {
@@ -57,8 +59,8 @@ const tableConfig = {
     booleanColumns: [],
   },
   complaints: {
-    columns: ['id', 'homeownerId', 'category', 'description', 'status', 'adminResponse', 'dateFiled', 'updatedAt', 'resolvedAt', 'otherCategory'],
-    jsonColumns: [],
+    columns: ['id', 'homeownerId', 'category', 'description', 'status', 'adminResponse', 'dateFiled', 'updatedAt', 'resolvedAt', 'otherCategory', 'attachment', 'media_url', 'media_type', 'attachments'],
+    jsonColumns: ['attachments'],
     booleanColumns: [],
   },
   amenityBookings: {
@@ -507,6 +509,10 @@ async function createTables() {
     resolvedAt TEXT
   )`);
   await run('ALTER TABLE complaints ADD COLUMN otherCategory TEXT').catch(() => {});
+  await run('ALTER TABLE complaints ADD COLUMN attachment TEXT').catch(() => {});
+  await run('ALTER TABLE complaints ADD COLUMN media_url TEXT').catch(() => {});
+  await run('ALTER TABLE complaints ADD COLUMN media_type TEXT').catch(() => {});
+  await run('ALTER TABLE complaints ADD COLUMN attachments TEXT').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS amenityBookings (
     id VARCHAR(64) PRIMARY KEY,
@@ -729,6 +735,32 @@ const boardUpload = multer({
     const ext = path.extname(file.originalname || '').toLowerCase();
     if (!ALLOWED_PHOTO_MIMES[file.mimetype] || !ALLOWED_PHOTO_EXTS.has(ext)) {
       cb(new Error('Only JPG, PNG, or WebP images are allowed.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+const ALLOWED_COMPLAINT_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_COMPLAINT_VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm']);
+const ALLOWED_COMPLAINT_MEDIA_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.webm']);
+const MAX_COMPLAINT_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_COMPLAINT_VIDEO_BYTES = 30 * 1024 * 1024;
+
+const complaintUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, COMPLAINT_UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.bin';
+      const unique = `complaint-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+      cb(null, unique);
+    },
+  }),
+  limits: { fileSize: MAX_COMPLAINT_VIDEO_BYTES, files: 15 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ALLOWED_COMPLAINT_MEDIA_EXTS.has(ext)) {
+      cb(new Error('Unsupported file format. Allowed formats: JPG, JPEG, PNG, WEBP (Images) and MP4, MOV, WEBM (Videos).'));
       return;
     }
     cb(null, true);
@@ -1580,6 +1612,151 @@ app.put('/api/:table', asyncHandler(async (req, res) => {
   }
   res.json(await getTableData(table));
 }));
+
+// ── COMPLAINT MEDIA UPLOAD & CREATION APIS ──
+
+app.post('/api/complaints/upload', (req, res) => {
+  complaintUpload.any()(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message = uploadErr.code === 'LIMIT_FILE_SIZE'
+        ? 'A file exceeds the maximum allowed size (5 MB for images, 30 MB for videos).'
+        : (uploadErr.message || 'Invalid file upload.');
+      return res.status(400).json({ error: message });
+    }
+
+    const files = req.files || (req.file ? [req.file] : []);
+    if (!files.length) {
+      return res.status(400).json({ error: 'No media files received.' });
+    }
+
+    const oversized = [];
+    for (const file of files) {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
+
+      if (!isVideo && file.size > MAX_COMPLAINT_IMAGE_BYTES) {
+        oversized.push(`Image "${file.originalname}" exceeds the 5 MB size limit (${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
+      }
+      if (isVideo && file.size > MAX_COMPLAINT_VIDEO_BYTES) {
+        oversized.push(`Video "${file.originalname}" exceeds the 30 MB size limit (${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
+      }
+    }
+
+    if (oversized.length > 0) {
+      await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+      return res.status(400).json({ error: oversized.join(' ') });
+    }
+
+    const uploadedFiles = files.map(file => {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
+      const mediaUrl = `/uploads/complaints/${file.filename}`;
+      return {
+        url: mediaUrl,
+        media_url: mediaUrl,
+        attachment: mediaUrl,
+        media_type: isVideo ? 'video' : 'image',
+        filename: file.filename,
+        originalname: file.originalname,
+        size: file.size,
+      };
+    });
+
+    const primary = uploadedFiles[0] || {};
+    const hasImages = uploadedFiles.some(f => f.media_type === 'image');
+    const hasVideos = uploadedFiles.some(f => f.media_type === 'video');
+    const overallMediaType = (hasImages && hasVideos) ? 'mixed' : (hasVideos ? 'video' : 'image');
+
+    res.json({
+      ok: true,
+      files: uploadedFiles,
+      count: uploadedFiles.length,
+      url: primary.url || null,
+      media_url: primary.media_url || null,
+      attachment: primary.attachment || null,
+      media_type: overallMediaType,
+      filename: primary.filename || null,
+      originalname: primary.originalname || null,
+      size: primary.size || 0,
+    });
+  });
+});
+
+app.post('/api/complaints', (req, res, next) => {
+  if (req.is('multipart/form-data')) {
+    complaintUpload.any()(req, res, async (uploadErr) => {
+      if (uploadErr) {
+        const message = uploadErr.code === 'LIMIT_FILE_SIZE'
+          ? 'A file exceeds the maximum allowed size (5 MB for images, 30 MB for videos).'
+          : (uploadErr.message || 'Invalid file upload.');
+        return res.status(400).json({ error: message });
+      }
+
+      const files = req.files || (req.file ? [req.file] : []);
+
+      try {
+        const allowed = await checkTableAccess(req, res, 'complaints', 'create');
+        if (!allowed) {
+          if (files.length) await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+          return;
+        }
+
+        const oversized = [];
+        for (const file of files) {
+          const ext = path.extname(file.originalname || '').toLowerCase();
+          const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
+          if (!isVideo && file.size > MAX_COMPLAINT_IMAGE_BYTES) {
+            oversized.push(`Image "${file.originalname}" exceeds the 5 MB limit.`);
+          }
+          if (isVideo && file.size > MAX_COMPLAINT_VIDEO_BYTES) {
+            oversized.push(`Video "${file.originalname}" exceeds the 30 MB limit.`);
+          }
+        }
+        if (oversized.length > 0) {
+          await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+          return res.status(400).json({ error: oversized.join(' ') });
+        }
+
+        const uploadedFiles = files.map(file => {
+          const ext = path.extname(file.originalname || '').toLowerCase();
+          const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
+          const mediaUrl = `/uploads/complaints/${file.filename}`;
+          return {
+            url: mediaUrl,
+            media_url: mediaUrl,
+            attachment: mediaUrl,
+            media_type: isVideo ? 'video' : 'image',
+            filename: file.filename,
+            originalname: file.originalname,
+            size: file.size,
+          };
+        });
+
+        const body = { ...req.body };
+        if (uploadedFiles.length > 0) {
+          const primary = uploadedFiles[0];
+          body.attachment = primary.url;
+          body.media_url = primary.url;
+          body.media_type = uploadedFiles.length > 1
+            ? (uploadedFiles.every(f => f.media_type === 'image') ? 'image' : (uploadedFiles.every(f => f.media_type === 'video') ? 'video' : 'mixed'))
+            : primary.media_type;
+          body.attachments = uploadedFiles;
+        }
+        if (!body.id) {
+          body.id = 'c' + Date.now().toString(36).toUpperCase();
+        }
+        await saveRecord('complaints', body);
+        res.status(201).json(sanitizeRecord('complaints', body));
+      } catch (err) {
+        if (files.length) await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+        console.error(err);
+        res.status(500).json({ error: 'Could not save complaint.' });
+      }
+    });
+  } else {
+    next();
+  }
+});
 
 app.post('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
