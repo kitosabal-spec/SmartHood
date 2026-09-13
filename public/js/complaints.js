@@ -115,7 +115,7 @@ function renderAdminComplaintTable(filtered = null) {
     return `<tr>
       <td>${i + 1}</td>
       <td><div class="cell-user">${avatarHTML(ho, 'avatar-sm')}<div><strong>${ho ? ho.name : 'Unknown'}</strong><br><span style="font-size:0.75rem;color:var(--text-3)">${ho ? (ho.block || '') + ' ' + (ho.lot || '') : ''}</span></div></div></td>
-      <td>${complaintCategoryBadge(c.category)}</td>
+      <td>${complaintCategoryBadge(c.category, c.otherCategory)}</td>
       <td style="max-width:200px;font-size:0.85rem;color:var(--text-2)">${shortDesc}</td>
       <td>${c.dateFiled}</td>
       <td>${complaintStatusBadge(c.status)}</td>
@@ -132,13 +132,20 @@ function filterAdminComplaints() {
   const cat    = document.getElementById('cmpCatFilter')?.value || '';
   let complaints = db.get('complaints');
   if (status) complaints = complaints.filter(c => normalizeComplaintStatus(c.status) === status);
-  if (cat)    complaints = complaints.filter(c => c.category === cat);
+  if (cat) {
+    if (cat === 'Others') {
+      complaints = complaints.filter(c => c.category === 'Others' || (c.category && c.category.startsWith('Others')));
+    } else {
+      complaints = complaints.filter(c => c.category === cat);
+    }
+  }
   if (q) {
     complaints = complaints.filter(c => {
       const ho = db.getOne('users', c.homeownerId);
-      return c.description.toLowerCase().includes(q)
-        || c.category.toLowerCase().includes(q)
-        || (ho && ho.name.toLowerCase().includes(q));
+      return (c.description && c.description.toLowerCase().includes(q))
+        || (c.category && c.category.toLowerCase().includes(q))
+        || (c.otherCategory && c.otherCategory.toLowerCase().includes(q))
+        || (ho && ho.name && ho.name.toLowerCase().includes(q));
     });
   }
   renderAdminComplaintTable(complaints);
@@ -152,7 +159,7 @@ function openManageComplaint(id) {
     openModal(`Complaint - ${ho ? ho.name : 'Unknown'}`, `
       <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:18px">
         <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">
-          <div>${complaintCategoryBadge(c.category)}</div>
+          <div>${complaintCategoryBadge(c.category, c.otherCategory)}</div>
           <div>${complaintStatusBadge(c.status)}</div>
         </div>
         <p style="font-size:0.9rem;color:var(--text-2);line-height:1.6">${c.description}</p>
@@ -172,7 +179,7 @@ function openManageComplaint(id) {
       <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">
         <div>
           <span style="font-size:0.75rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em">Category</span><br>
-          ${complaintCategoryBadge(c.category)}
+          ${complaintCategoryBadge(c.category, c.otherCategory)}
         </div>
         <div style="text-align:right">
           <span style="font-size:0.75rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em">Date Filed</span><br>
@@ -309,7 +316,7 @@ function renderHOComplaintCards(complaints) {
       <div class="announcement-header">
         <div style="flex:1">
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
-            ${complaintCategoryBadge(c.category)}
+            ${complaintCategoryBadge(c.category, c.otherCategory)}
             ${complaintStatusBadge(c.status)}
             <span style="font-size:0.78rem;color:var(--text-3)">Filed: ${c.dateFiled}</span>
             ${c.updatedAt ? `<span style="font-size:0.78rem;color:var(--text-3)">· Updated: ${c.updatedAt}</span>` : ''}
@@ -330,6 +337,22 @@ function renderHOComplaintCards(complaints) {
     </div>`).join('');
 }
 
+function handleComplaintCategoryChange(select) {
+  const otherGroup = document.getElementById('hc_other_group');
+  const otherInput = document.getElementById('hc_other_category');
+  if (!otherGroup) return;
+  const isOther = select && select.value === 'Others';
+  if (isOther) {
+    otherGroup.classList.remove('hidden');
+    otherGroup.style.display = 'block';
+    if (otherInput) otherInput.focus();
+  } else {
+    otherGroup.classList.add('hidden');
+    otherGroup.style.display = 'none';
+    if (otherInput) otherInput.value = '';
+  }
+}
+
 function openFileComplaintForm() {
   openModal('File a Complaint', `
     <div style="background:var(--gold-50);border:1px solid var(--gold-100);border-left:3px solid var(--gold-400);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:18px;font-size:0.84rem;color:var(--text-2);line-height:1.6">
@@ -337,13 +360,17 @@ function openFileComplaintForm() {
     </div>
     <div class="form-group">
       <label>Category *</label>
-      <select id="hc_category">
+      <select id="hc_category" onchange="handleComplaintCategoryChange(this)">
         <option value="">-- Select a category --</option>
         <option value="Maintenance">Maintenance</option>
         <option value="Noise">Noise</option>
         <option value="Security">Security</option>
         <option value="Others">Others</option>
       </select>
+    </div>
+    <div class="form-group hidden" id="hc_other_group" style="display:none">
+      <label>Specify Complaint *</label>
+      <input type="text" id="hc_other_category" placeholder="Please specify your complaint…" />
     </div>
     <div class="form-group">
       <label>Description *</label>
@@ -360,6 +387,10 @@ function openFileComplaintForm() {
   ]);
 
   setTimeout(() => {
+    const catSelect = document.getElementById('hc_category');
+    if (catSelect) {
+      catSelect.addEventListener('change', () => handleComplaintCategoryChange(catSelect));
+    }
     const ta = document.getElementById('hc_description');
     const counter = document.getElementById('hc_charCount');
     if (ta && counter) {
@@ -374,11 +405,19 @@ function openFileComplaintForm() {
 }
 
 function confirmSubmitComplaint() {
-  const category    = document.getElementById('hc_category').value;
-  const description = document.getElementById('hc_description').value.trim();
+  const categorySelect = document.getElementById('hc_category');
+  const category       = (categorySelect?.value || '').trim();
+  const otherInput     = document.getElementById('hc_other_category');
+  const otherText      = (otherInput?.value || '').trim();
+  const description    = (document.getElementById('hc_description')?.value || '').trim();
 
   if (!category) {
     showToast('error', 'Category Required', 'Please select a complaint category.');
+    return;
+  }
+  if (category === 'Others' && !otherText) {
+    showToast('error', 'Specification Required', 'Please specify your complaint.');
+    if (otherInput) otherInput.focus();
     return;
   }
   if (!description) {
@@ -390,18 +429,23 @@ function confirmSubmitComplaint() {
     return;
   }
 
+  const finalCategory = (category === 'Others' && otherText) ? `Others: ${otherText}` : category;
+  const safeFinalCategory = typeof escapeHtml === 'function' ? escapeHtml(finalCategory) : finalCategory;
+
   openConfirm(
     'Submit Complaint',
-    `Are you sure you want to submit this <strong>${category}</strong> complaint? It will be sent to the HOA administration for review.`,
-    () => submitHOComplaint(category, description)
+    `Are you sure you want to submit this <strong>${safeFinalCategory}</strong> complaint? It will be sent to the HOA administration for review.`,
+    () => submitHOComplaint(finalCategory, description, otherText)
   );
 }
 
-function submitHOComplaint(category, description) {
+function submitHOComplaint(category, description, otherText = '') {
+  const derivedOther = otherText || (category && category.startsWith('Others: ') ? category.substring(8).trim() : (category === 'Others' ? '' : null));
   const complaint = {
     id:            db.newId('c'),
     homeownerId:   currentUser.id,
     category,
+    otherCategory: derivedOther || null,
     description,
     status:        'Reviewed',
     adminResponse: '',
@@ -442,13 +486,20 @@ function normalizeComplaintStatus(status) {
   return status === 'Open' ? 'Reviewed' : status;
 }
 
-function complaintCategoryBadge(category) {
+function complaintCategoryBadge(category, otherCategory = '') {
+  const safeText = typeof escapeHtml === 'function' ? escapeHtml : (str) => String(str ?? '');
   const map = {
     'Maintenance': '<span class="badge badge-blue">Maintenance</span>',
     'Noise':       '<span class="badge badge-amber">Noise</span>',
     'Security':    '<span class="badge" style="background:var(--teal-100);color:var(--teal-700)">Security</span>',
     'Others':      '<span class="badge badge-gray">Others</span>',
   };
-  return map[category] || `<span class="badge badge-gray">${category}</span>`;
+  if (category === 'Others' && otherCategory) {
+    return `<span class="badge badge-gray">${safeText(`Others: ${otherCategory}`)}</span>`;
+  }
+  if (category && category.startsWith('Others')) {
+    return `<span class="badge badge-gray">${safeText(category)}</span>`;
+  }
+  return map[category] || `<span class="badge badge-gray">${safeText(category || 'Others')}</span>`;
 }
 

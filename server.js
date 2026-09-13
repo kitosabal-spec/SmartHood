@@ -57,7 +57,7 @@ const tableConfig = {
     booleanColumns: [],
   },
   complaints: {
-    columns: ['id', 'homeownerId', 'category', 'description', 'status', 'adminResponse', 'dateFiled', 'updatedAt', 'resolvedAt'],
+    columns: ['id', 'homeownerId', 'category', 'description', 'status', 'adminResponse', 'dateFiled', 'updatedAt', 'resolvedAt', 'otherCategory'],
     jsonColumns: [],
     booleanColumns: [],
   },
@@ -506,6 +506,7 @@ async function createTables() {
     updatedAt TEXT,
     resolvedAt TEXT
   )`);
+  await run('ALTER TABLE complaints ADD COLUMN otherCategory TEXT').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS amenityBookings (
     id VARCHAR(64) PRIMARY KEY,
