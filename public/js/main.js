@@ -2741,41 +2741,6 @@ function renderNotificationList() {
     </div>`).join('') : '<p class="empty-note">No notifications</p>';
 }
 
-function openAllNotificationsModal() {
-  const panel = document.getElementById('notifPanel');
-  if (panel) panel.classList.add('hidden');
-
-  const notifs = getAllVisibleNotifications();
-  const bodyHtml = notifs.length ? `
-    <div class="all-notifs-modal-list" style="max-height: 60vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; padding-right: 2px;">
-      ${notifs.map(n => `
-        <div class="notif-item" style="border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; background: var(--surface);">
-          <strong style="color: var(--text); font-size: 0.9rem; margin-bottom: 3px;">${escapeHtml(n.title || '')}</strong>
-          <div style="color: var(--text-2); font-size: 0.84rem; line-height: 1.5;">${escapeHtml(n.message || '')}</div>
-          <div class="notif-time" style="font-size: 0.75rem; color: var(--text-3); margin-top: 5px;">${escapeHtml(n.time || '')}</div>
-        </div>`).join('')}
-    </div>` : '<p class="empty-note" style="text-align: center; padding: 28px 0;">No notifications</p>';
-
-  const buttons = [];
-  if (notifs.length > 0) {
-    buttons.push({
-      label: 'Clear All',
-      cls: 'btn-secondary',
-      action: () => {
-        clearNotifications();
-        closeModal();
-      }
-    });
-  }
-  buttons.push({
-    label: 'Close',
-    cls: 'btn-primary',
-    action: closeModal
-  });
-
-  openModal('All Notifications', bodyHtml, buttons);
-}
-
 function updateNotifBadge() {
   const badge = document.getElementById('notifBadge');
   if (!badge) return;
@@ -2834,7 +2799,8 @@ function clearNotifications() {
     return { ...notification, dismissedBy: [...new Set([...dismissedBy, currentUser.id])] };
   });
   db.set('notifications', stored);
-  document.getElementById('notifList').innerHTML = '<p class="empty-note">No notifications</p>';
+  const list = document.getElementById('notifList');
+  if (list) list.innerHTML = '<p class="empty-note">No notifications</p>';
   updateNotifBadge();
 }
 
