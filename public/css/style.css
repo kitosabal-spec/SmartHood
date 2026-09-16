@@ -1148,7 +1148,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   top: calc(100% + 8px);
   right: 22px;
   width: 310px;
-  max-height: 380px;
+  max-height: 480px;
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
@@ -1198,7 +1198,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 .notif-list,
 #notifList {
   flex: 1 1 auto;
-  max-height: 280px;
+  max-height: 380px;
   overflow-y: auto;
   overscroll-behavior: contain;
   scrollbar-width: thin;
@@ -1710,7 +1710,7 @@ input[type="date"].filter-select {
     right: -8px;
     width: min(310px, calc(100vw - 20px));
     max-width: calc(100vw - 20px);
-    max-height: min(400px, calc(100vh - 80px));
+    max-height: min(500px, calc(100vh - 80px));
   }
   .notif-panel::before {
     right: 48px;
