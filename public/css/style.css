@@ -1228,12 +1228,41 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   color: var(--text-2);
   line-height: 1.5;
   transition: background var(--transition);
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.notif-item-content {
+  flex: 1;
+  min-width: 0;
 }
 .notif-item:last-child { border-bottom: none; }
 .notif-item:hover {
   background: var(--surface-2);
 }
 .notif-item strong { color: var(--text); display: block; margin-bottom: 2px; }
+.notif-delete-btn {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  color: var(--text-3);
+  opacity: 0;
+  transition: opacity 0.2s ease, color 0.2s ease, background 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2px;
+}
+.notif-item:hover .notif-delete-btn {
+  opacity: 1;
+}
+.notif-delete-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.1);
+}
 .notif-time { font-size: 0.75rem; color: var(--text-3); margin-top: 4px; }
 .empty-note { padding: 20px 16px; color: var(--text-3); font-size: 0.85rem; }
 
