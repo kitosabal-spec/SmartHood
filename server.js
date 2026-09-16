@@ -704,20 +704,65 @@ function getRequestUserId(req) {
   return req.get('x-user-id') || req.body.userId || req.query.userId || null;
 }
 
+const ALLOWED_ANNOUNCEMENT_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_ANNOUNCEMENT_VIDEO_EXTS = new Set(['.mp4', '.mov', '.webm']);
+const ALLOWED_ANNOUNCEMENT_MEDIA_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', '.mp4', '.mov', '.webm']);
+const MAX_ANNOUNCEMENT_IMAGE_BYTES = 5 * 1024 * 1024;
+const MAX_ANNOUNCEMENT_VIDEO_BYTES = 30 * 1024 * 1024;
+
+function getAnnouncementMediaExt(file) {
+  const origExt = path.extname(file.originalname || '').toLowerCase();
+  if (ALLOWED_ANNOUNCEMENT_MEDIA_EXTS.has(origExt)) {
+    return origExt === '.jpeg' ? '.jpg' : origExt;
+  }
+  if (file.mimetype === 'video/mp4') return '.mp4';
+  if (file.mimetype === 'video/quicktime') return '.mov';
+  if (file.mimetype === 'video/webm') return '.webm';
+  if (ALLOWED_PHOTO_MIMES[file.mimetype]) return ALLOWED_PHOTO_MIMES[file.mimetype];
+  return '.bin';
+}
+
+function isValidVideoBuffer(buffer, ext) {
+  if (!buffer || buffer.length < 8) return false;
+  // MP4/MOV: usually has 'ftyp' at offset 4
+  if (buffer.length >= 12 && buffer.toString('ascii', 4, 8) === 'ftyp') return true;
+  // WebM: EBML header 0x1A 0x45 0xDF 0xA3
+  if (buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) return true;
+  // QuickTime / MP4 common atoms or container signature
+  if (['.mp4', '.mov', '.webm'].includes(ext)) {
+    const headerStr = buffer.slice(0, 32).toString('ascii');
+    if (headerStr.includes('moov') || headerStr.includes('mdat') || headerStr.includes('wide') || headerStr.includes('skip') || headerStr.includes('pnot') || headerStr.includes('ftyp')) return true;
+    return true;
+  }
+  return false;
+}
+
+function isValidAnnouncementMediaBuffer(buffer, ext) {
+  if (ALLOWED_ANNOUNCEMENT_IMAGE_EXTS.has(ext)) {
+    return isValidImageBuffer(buffer);
+  }
+  if (ALLOWED_ANNOUNCEMENT_VIDEO_EXTS.has(ext)) {
+    return isValidVideoBuffer(buffer, ext);
+  }
+  return false;
+}
+
 const announcementUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, ANNOUNCEMENT_UPLOAD_DIR),
     filename: (req, file, cb) => {
-      const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || '.jpg';
+      const ext = getAnnouncementMediaExt(file);
       const unique = `announcement-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${ext}`;
       cb(null, unique);
     },
   }),
-  limits: { fileSize: MAX_PHOTO_BYTES, files: 10 },
+  limits: { fileSize: MAX_ANNOUNCEMENT_VIDEO_BYTES, files: 10 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
-    if (!ALLOWED_PHOTO_MIMES[file.mimetype] || !ALLOWED_PHOTO_EXTS.has(ext)) {
-      cb(new Error('Only JPG, PNG, or WebP images are allowed.'));
+    const isVideoMime = file.mimetype && (file.mimetype.startsWith('video/') || file.mimetype === 'video/quicktime');
+    const isImageMime = file.mimetype && file.mimetype.startsWith('image/');
+    if (!ALLOWED_ANNOUNCEMENT_MEDIA_EXTS.has(ext) && !isVideoMime && !isImageMime) {
+      cb(new Error('Unsupported file format. Allowed formats: JPG, PNG, WebP (Images) and MP4, MOV, WebM (Videos).'));
       return;
     }
     cb(null, true);
@@ -726,7 +771,10 @@ const announcementUpload = multer({
 
 const announcementUploadMiddleware = announcementUpload.fields([
   { name: 'images', maxCount: 10 },
-  { name: 'image', maxCount: 1 }
+  { name: 'image', maxCount: 1 },
+  { name: 'videos', maxCount: 10 },
+  { name: 'video', maxCount: 1 },
+  { name: 'media', maxCount: 10 },
 ]);
 
 const boardUpload = multer({
@@ -1000,14 +1048,17 @@ app.post('/api/announcements', (req, res) => {
     announcementUploadMiddleware(req, res, async (uploadErr) => {
       if (uploadErr) {
         const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
-          ? 'Image must be 5 MB or smaller.'
-          : (uploadErr.message || 'Invalid image upload.');
+          ? 'A file exceeds the maximum allowed size (5 MB for photos, 30 MB for videos).'
+          : (uploadErr.message || 'Invalid media upload.');
         return res.status(400).json({ error: msg });
       }
 
       const uploadedFiles = [
         ...((req.files && req.files.images) || []),
         ...((req.files && req.files.image) || []),
+        ...((req.files && req.files.videos) || []),
+        ...((req.files && req.files.video) || []),
+        ...((req.files && req.files.media) || []),
       ];
 
       try {
@@ -1018,18 +1069,35 @@ app.post('/api/announcements', (req, res) => {
           return res.status(400).json({ error: 'Title and content are required.' });
         }
 
-        const imagePaths = [];
+        const oversized = [];
         for (const f of uploadedFiles) {
-          const buffer = await fs.promises.readFile(f.path);
-          if (!isValidImageBuffer(buffer)) {
-            for (const uf of uploadedFiles) await fs.promises.unlink(uf.path).catch(() => {});
-            return res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
+          const ext = path.extname(f.originalname || '').toLowerCase();
+          const isVideo = ALLOWED_ANNOUNCEMENT_VIDEO_EXTS.has(ext) || (f.mimetype && f.mimetype.startsWith('video/'));
+          if (!isVideo && f.size > MAX_ANNOUNCEMENT_IMAGE_BYTES) {
+            oversized.push(`Image "${f.originalname}" exceeds the 5 MB limit.`);
           }
-          imagePaths.push(`/uploads/announcements/${f.filename}`);
+          if (isVideo && f.size > MAX_ANNOUNCEMENT_VIDEO_BYTES) {
+            oversized.push(`Video "${f.originalname}" exceeds the 30 MB limit.`);
+          }
+        }
+        if (oversized.length > 0) {
+          for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+          return res.status(400).json({ error: oversized.join(' ') });
         }
 
-        const primaryImage = imagePaths[0] || null;
-        const imagesJson = JSON.stringify(imagePaths);
+        const mediaPaths = [];
+        for (const f of uploadedFiles) {
+          const ext = path.extname(f.filename || f.originalname || '').toLowerCase();
+          const buffer = await fs.promises.readFile(f.path);
+          if (!isValidAnnouncementMediaBuffer(buffer, ext)) {
+            for (const uf of uploadedFiles) await fs.promises.unlink(uf.path).catch(() => {});
+            return res.status(400).json({ error: `Uploaded file "${f.originalname}" is not a valid JPG, PNG, WebP image or MP4, MOV, WebM video.` });
+          }
+          mediaPaths.push(`/uploads/announcements/${f.filename}`);
+        }
+
+        const primaryMedia = mediaPaths[0] || null;
+        const mediaJson = JSON.stringify(mediaPaths);
 
         const id = req.body.id || ('a' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex'));
         const nowIso = new Date().toISOString();
@@ -1041,7 +1109,7 @@ app.post('/api/announcements', (req, res) => {
         await run(
           `INSERT INTO announcements (id, title, description, content, category, date, urgent, createdBy, user_id, image_path, images, created_at, updated_at)
            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-          [id, title, contentText, contentText, category, dateStr, urgent, createdBy, createdBy, primaryImage, imagesJson, nowIso, nowIso]
+          [id, title, contentText, contentText, category, dateStr, urgent, createdBy, createdBy, primaryMedia, mediaJson, nowIso, nowIso]
         );
 
         const created = await get('SELECT * FROM announcements WHERE id = ?', [id]);
@@ -1065,14 +1133,17 @@ app.put('/api/announcements/:id', (req, res) => {
     announcementUploadMiddleware(req, res, async (uploadErr) => {
       if (uploadErr) {
         const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
-          ? 'Image must be 5 MB or smaller.'
-          : (uploadErr.message || 'Invalid image upload.');
+          ? 'A file exceeds the maximum allowed size (5 MB for photos, 30 MB for videos).'
+          : (uploadErr.message || 'Invalid media upload.');
         return res.status(400).json({ error: msg });
       }
 
       const uploadedFiles = [
         ...((req.files && req.files.images) || []),
         ...((req.files && req.files.image) || []),
+        ...((req.files && req.files.videos) || []),
+        ...((req.files && req.files.video) || []),
+        ...((req.files && req.files.media) || []),
       ];
 
       try {
@@ -1092,7 +1163,23 @@ app.put('/api/announcements/:id', (req, res) => {
           return res.status(400).json({ error: 'Title and content are required.' });
         }
 
-        // Determine existing images to keep
+        const oversized = [];
+        for (const f of uploadedFiles) {
+          const ext = path.extname(f.originalname || '').toLowerCase();
+          const isVideo = ALLOWED_ANNOUNCEMENT_VIDEO_EXTS.has(ext) || (f.mimetype && f.mimetype.startsWith('video/'));
+          if (!isVideo && f.size > MAX_ANNOUNCEMENT_IMAGE_BYTES) {
+            oversized.push(`Image "${f.originalname}" exceeds the 5 MB limit.`);
+          }
+          if (isVideo && f.size > MAX_ANNOUNCEMENT_VIDEO_BYTES) {
+            oversized.push(`Video "${f.originalname}" exceeds the 30 MB limit.`);
+          }
+        }
+        if (oversized.length > 0) {
+          for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+          return res.status(400).json({ error: oversized.join(' ') });
+        }
+
+        // Determine existing media to keep
         let currentImages = [];
         if (existing.images) {
           try {
@@ -1127,18 +1214,19 @@ app.put('/api/announcements/:id', (req, res) => {
           currentImages = keptImages;
         }
 
-        // Process newly uploaded images
+        // Process newly uploaded media files
         for (const f of uploadedFiles) {
+          const ext = path.extname(f.filename || f.originalname || '').toLowerCase();
           const buffer = await fs.promises.readFile(f.path);
-          if (!isValidImageBuffer(buffer)) {
+          if (!isValidAnnouncementMediaBuffer(buffer, ext)) {
             for (const uf of uploadedFiles) await fs.promises.unlink(uf.path).catch(() => {});
-            return res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
+            return res.status(400).json({ error: `Uploaded file "${f.originalname}" is not a valid JPG, PNG, WebP image or MP4, MOV, WebM video.` });
           }
           currentImages.push(`/uploads/announcements/${f.filename}`);
         }
 
-        const primaryImage = currentImages[0] || null;
-        const imagesJson = JSON.stringify(currentImages);
+        const primaryMedia = currentImages[0] || null;
+        const mediaJson = JSON.stringify(currentImages);
 
         const category = req.body.category || existing.category;
         const dateStr = req.body.date || existing.date;
@@ -1147,7 +1235,7 @@ app.put('/api/announcements/:id', (req, res) => {
 
         await run(
           `UPDATE announcements SET title = ?, description = ?, content = ?, category = ?, date = ?, urgent = ?, image_path = ?, images = ?, updated_at = ? WHERE id = ?`,
-          [title, contentText, contentText, category, dateStr, urgent, primaryImage, imagesJson, nowIso, req.params.id]
+          [title, contentText, contentText, category, dateStr, urgent, primaryMedia, mediaJson, nowIso, req.params.id]
         );
 
         const updated = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);

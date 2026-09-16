@@ -44,7 +44,12 @@ function formatPostTime(isoStr) {
   }
 }
 
-// Extract array of images from announcement object
+function isVideoAnnouncementMedia(url) {
+  if (!url || typeof url !== 'string') return false;
+  return /\.(mp4|mov|webm)(\?.*)?$/i.test(url);
+}
+
+// Extract array of images/videos from announcement object
 function getAnnouncementImages(a) {
   if (!a) return [];
   if (Array.isArray(a.images) && a.images.length) {
@@ -62,11 +67,19 @@ function getAnnouncementImages(a) {
   return [];
 }
 
-// ── Facebook-Style Photo Collage Grid Generator ──
+// ── Facebook-Style Media Collage Grid Generator (Photos & Videos) ──
 function renderPhotoGridHTML(announcementId, images, title) {
   if (!images || !images.length) return '';
   const count = images.length;
-  const safeTitle = escapeHtml(title || 'Photo');
+  const safeTitle = escapeHtml(title || 'Announcement Media');
+
+  // Single video: render full-width HTML5 video player inline
+  if (count === 1 && isVideoAnnouncementMedia(images[0])) {
+    return `
+    <div class="community-post-video-wrap">
+      <video src="${escapeHtml(images[0])}" controls playsinline preload="metadata" class="community-post-video"></video>
+    </div>`;
+  }
 
   if (count === 1) {
     return `
@@ -77,40 +90,46 @@ function renderPhotoGridHTML(announcementId, images, title) {
     </div>`;
   }
 
+  function renderGridItem(img, i, extraOverlay = '') {
+    const isVid = isVideoAnnouncementMedia(img);
+    return `
+    <div class="photo-item ${isVid ? 'photo-item-video' : ''}" onclick="openAnnouncementLightbox('${announcementId}', ${i})">
+      ${isVid ? `
+        <video src="${escapeHtml(img)}#t=0.5" preload="metadata" muted playsinline class="photo-item-video-el"></video>
+        <div class="photo-item-video-overlay">
+          <div class="video-play-icon">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20 6 4"/></svg>
+          </div>
+        </div>
+      ` : `
+        <img src="${escapeHtml(img)}" alt="${safeTitle} (${i+1})" loading="lazy" />
+      `}
+      ${extraOverlay}
+    </div>`;
+  }
+
   if (count === 2) {
     return `
     <div class="community-photo-grid count-2">
-      ${images.map((img, i) => `
-        <div class="photo-item" onclick="openAnnouncementLightbox('${announcementId}', ${i})">
-          <img src="${escapeHtml(img)}" alt="${safeTitle} (${i+1})" loading="lazy" />
-        </div>
-      `).join('')}
+      ${images.map((img, i) => renderGridItem(img, i)).join('')}
     </div>`;
   }
 
   if (count === 3) {
     return `
     <div class="community-photo-grid count-3">
-      ${images.map((img, i) => `
-        <div class="photo-item" onclick="openAnnouncementLightbox('${announcementId}', ${i})">
-          <img src="${escapeHtml(img)}" alt="${safeTitle} (${i+1})" loading="lazy" />
-        </div>
-      `).join('')}
+      ${images.map((img, i) => renderGridItem(img, i)).join('')}
     </div>`;
   }
 
   if (count === 4) {
     return `
     <div class="community-photo-grid count-4">
-      ${images.map((img, i) => `
-        <div class="photo-item" onclick="openAnnouncementLightbox('${announcementId}', ${i})">
-          <img src="${escapeHtml(img)}" alt="${safeTitle} (${i+1})" loading="lazy" />
-        </div>
-      `).join('')}
+      ${images.map((img, i) => renderGridItem(img, i)).join('')}
     </div>`;
   }
 
-  // 5 or more photos: 2x2 grid with +N overlay on 4th photo
+  // 5 or more photos/videos: 2x2 grid with +N overlay on 4th photo
   const visible = images.slice(0, 4);
   const remaining = count - 4;
 
@@ -118,25 +137,29 @@ function renderPhotoGridHTML(announcementId, images, title) {
   <div class="community-photo-grid count-more">
     ${visible.map((img, i) => {
       const isFourth = i === 3;
-      return `
-      <div class="photo-item" onclick="openAnnouncementLightbox('${announcementId}', ${i})">
-        <img src="${escapeHtml(img)}" alt="${safeTitle} (${i+1})" loading="lazy" />
-        ${isFourth ? `<div class="photo-more-overlay">+${remaining}</div>` : ''}
-      </div>`;
+      const overlay = isFourth ? `<div class="photo-more-overlay">+${remaining}</div>` : '';
+      return renderGridItem(img, i, overlay);
     }).join('')}
   </div>`;
 }
 
-// ── Interactive Lightbox Gallery ──
+// ── Interactive Lightbox Gallery (Photos & Videos) ──
 let currentLightboxData = {
   images: [],
   activeIndex: 0,
   title: '',
 };
 
+function renderLightboxMediaElement(src, title) {
+  if (isVideoAnnouncementMedia(src)) {
+    return `<video id="lightboxMainMedia" class="lightbox-main-video" src="${escapeHtml(src)}" controls autoplay playsinline></video>`;
+  }
+  return `<img id="lightboxMainMedia" class="lightbox-main-img" src="${escapeHtml(src)}" alt="${escapeHtml(title)}" />`;
+}
+
 function openAnnouncementLightbox(announcementOrImages, initialIndex = 0, customTitle = '') {
   let images = [];
-  let title = customTitle || 'Announcement Photo';
+  let title = customTitle || '';
 
   if (Array.isArray(announcementOrImages)) {
     images = announcementOrImages;
@@ -144,13 +167,17 @@ function openAnnouncementLightbox(announcementOrImages, initialIndex = 0, custom
     const a = db.getOne('announcements', announcementOrImages);
     if (a) {
       images = getAnnouncementImages(a);
-      title = a.title || 'Announcement Photo';
+      title = a.title || '';
     } else if (announcementOrImages.startsWith('/') || announcementOrImages.startsWith('http')) {
       images = [announcementOrImages];
     }
   }
 
   if (!images || !images.length) return;
+
+  if (!title) {
+    title = isVideoAnnouncementMedia(images[initialIndex] || images[0]) ? 'Announcement Video' : 'Announcement Photo';
+  }
 
   currentLightboxData = {
     images,
@@ -174,6 +201,10 @@ function handleLightboxKeydown(e) {
 }
 
 function closeLightbox() {
+  const oldVideo = document.querySelector('.lightbox-main-video');
+  if (oldVideo && typeof oldVideo.pause === 'function') {
+    oldVideo.pause();
+  }
   document.removeEventListener('keydown', handleLightboxKeydown);
   closeModal();
 }
@@ -202,11 +233,17 @@ function goToLightboxPhoto(index) {
 
 function updateLightboxStage() {
   const { images, activeIndex, title } = currentLightboxData;
-  const imgEl = document.getElementById('lightboxMainImg');
+  const stageWrap = document.getElementById('lightboxMediaStage');
   const counterEl = document.getElementById('lightboxCounter');
-  if (imgEl) {
-    imgEl.src = images[activeIndex];
-    imgEl.alt = `${title} (${activeIndex + 1})`;
+  const currentSrc = images[activeIndex];
+
+  const oldVideo = document.querySelector('.lightbox-main-video');
+  if (oldVideo && typeof oldVideo.pause === 'function') {
+    oldVideo.pause();
+  }
+
+  if (stageWrap) {
+    stageWrap.innerHTML = renderLightboxMediaElement(currentSrc, `${title} (${activeIndex + 1})`);
   }
   if (counterEl) {
     counterEl.textContent = `${activeIndex + 1} of ${images.length}`;
@@ -219,16 +256,19 @@ function updateLightboxStage() {
 function renderLightboxModal() {
   const { images, activeIndex, title } = currentLightboxData;
   const hasMultiple = images.length > 1;
+  const currentSrc = images[activeIndex];
 
   openModal(title, `
     <div class="lightbox-viewer">
       <div class="lightbox-main-stage">
         ${hasMultiple ? `
-          <button type="button" class="lightbox-nav-btn prev" onclick="prevLightboxPhoto()" title="Previous Photo (Left Arrow)">&#8249;</button>
+          <button type="button" class="lightbox-nav-btn prev" onclick="prevLightboxPhoto()" title="Previous Media (Left Arrow)">&#8249;</button>
         ` : ''}
-        <img id="lightboxMainImg" class="lightbox-main-img" src="${escapeHtml(images[activeIndex])}" alt="${escapeHtml(title)}" />
+        <div id="lightboxMediaStage" style="display:flex;align-items:center;justify-content:center;width:100%;">
+          ${renderLightboxMediaElement(currentSrc, title)}
+        </div>
         ${hasMultiple ? `
-          <button type="button" class="lightbox-nav-btn next" onclick="nextLightboxPhoto()" title="Next Photo (Right Arrow)">&#8250;</button>
+          <button type="button" class="lightbox-nav-btn next" onclick="nextLightboxPhoto()" title="Next Media (Right Arrow)">&#8250;</button>
         ` : ''}
       </div>
       <div class="lightbox-bottom-bar">
@@ -241,11 +281,18 @@ function renderLightboxModal() {
       </div>
       ${hasMultiple ? `
         <div class="lightbox-thumb-strip">
-          ${images.map((img, i) => `
-            <div class="lightbox-thumb-item ${i === activeIndex ? 'active' : ''}" onclick="goToLightboxPhoto(${i})">
-              <img src="${escapeHtml(img)}" alt="thumb ${i+1}" />
-            </div>
-          `).join('')}
+          ${images.map((img, i) => {
+            const isVid = isVideoAnnouncementMedia(img);
+            return `
+            <div class="lightbox-thumb-item ${i === activeIndex ? 'active' : ''} ${isVid ? 'is-video' : ''}" onclick="goToLightboxPhoto(${i})">
+              ${isVid ? `
+                <video src="${escapeHtml(img)}#t=0.5" preload="metadata" muted playsinline></video>
+                <div class="lightbox-thumb-video-icon">▶</div>
+              ` : `
+                <img src="${escapeHtml(img)}" alt="thumb ${i+1}" />
+              `}
+            </div>`;
+          }).join('')}
         </div>
       ` : ''}
     </div>
@@ -647,7 +694,7 @@ function renderAnnouncements() {
       <div class="post-composer-actions">
         <button type="button" class="post-composer-action-btn" onclick="openAddAnnouncementModal(true)">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--green-600)"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          <span>Photos / Images</span>
+          <span>Photos / Videos</span>
         </button>
         <button type="button" class="post-composer-action-btn" onclick="openAddAnnouncementModal()">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color:var(--teal-600)"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
@@ -688,6 +735,17 @@ function communityPostCardHTML(a, isAdmin) {
   const accentColor = catColors[a.category] || '#177a80';
   const displayDate = formatCommunityDate(a.created_at || a.date);
   const images = getAnnouncementImages(a);
+
+  const photoCount = images.filter(x => !isVideoAnnouncementMedia(x)).length;
+  const videoCount = images.filter(x => isVideoAnnouncementMedia(x)).length;
+  let mediaStats = '';
+  if (photoCount > 0 && videoCount > 0) {
+    mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;">📷 ${photoCount} photo${photoCount > 1 ? 's' : ''} &bull; 🎥 ${videoCount} video${videoCount > 1 ? 's' : ''}</span>`;
+  } else if (photoCount > 1) {
+    mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;">📷 ${photoCount} photos</span>`;
+  } else if (videoCount > 0) {
+    mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;">🎥 ${videoCount} video${videoCount > 1 ? 's' : ''}</span>`;
+  }
 
   return `
   <div class="community-post-card" id="announcement-card-${a.id}">
@@ -737,7 +795,7 @@ function communityPostCardHTML(a, isAdmin) {
 
     <div class="community-post-stats">
       <span id="comm-count-${a.id}">💬 0 comments</span>
-      ${images.length > 1 ? `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;">📷 ${images.length} photos</span>` : ''}
+      ${mediaStats}
     </div>
 
     <div class="community-post-action-bar">
@@ -1001,16 +1059,16 @@ function openAddAnnouncementModal(triggerPhoto = false) {
     </div>
     <div class="form-group">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <label style="margin-bottom:0;">Photos / Images (Optional, up to 10 photos, max 5MB each)</label>
-        <span id="af_photos_count_badge" class="photo-count-badge hidden">0 photos</span>
+        <label style="margin-bottom:0;">Photos & Videos (Optional, up to 10 files, max 5MB for photos, 30MB for videos)</label>
+        <span id="af_photos_count_badge" class="photo-count-badge hidden">0 items</span>
       </div>
 
-      <input type="file" id="af_images_input" accept="image/jpeg,image/png,image/webp" multiple style="display:none" onchange="handleAnnouncementImagesSelect(event)" />
+      <input type="file" id="af_images_input" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" multiple style="display:none" onchange="handleAnnouncementImagesSelect(event)" />
       
       <div class="image-upload-dropzone" onclick="document.getElementById('af_images_input').click()">
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;color:var(--teal-600);font-weight:600;font-size:0.88rem">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          <span id="af_images_dropzone_label">Click to select photos (JPG, PNG, WebP)</span>
+          <span id="af_images_dropzone_label">Click to select photos or videos (JPG, PNG, WebP, MP4, MOV, WebM)</span>
         </div>
       </div>
 
@@ -1033,20 +1091,31 @@ function handleAnnouncementImagesSelect(event) {
   const files = Array.from(event.target.files || []);
   if (!files.length) return;
 
-  const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+  const allowedImageMimes = ['image/jpeg', 'image/png', 'image/webp'];
+  const allowedVideoMimes = ['video/mp4', 'video/quicktime', 'video/webm'];
+  const allowedImageExts = ['.jpg', '.jpeg', '.png', '.webp'];
+  const allowedVideoExts = ['.mp4', '.mov', '.webm'];
   const startIndex = selectedAnnouncementFiles.length;
 
   for (const f of files) {
     if (selectedAnnouncementFiles.length >= 10) {
-      showToast('error', 'Limit Reached', 'You can upload up to 10 photos per announcement.');
+      showToast('error', 'Limit Reached', 'You can upload up to 10 photos/videos per announcement.');
       break;
     }
-    if (f.size > 5 * 1024 * 1024) {
-      showToast('error', 'File Too Large', `"${f.name}" exceeds 5 MB.`);
+    const ext = (f.name ? f.name.substring(f.name.lastIndexOf('.')).toLowerCase() : '');
+    const isVid = allowedVideoExts.includes(ext) || allowedVideoMimes.includes(f.type) || (f.type && f.type.startsWith('video/'));
+    const isImg = allowedImageExts.includes(ext) || allowedImageMimes.includes(f.type) || (f.type && f.type.startsWith('image/'));
+
+    if (!isVid && !isImg) {
+      showToast('error', 'Invalid File Type', `"${f.name}" is not a supported image or video (JPG, PNG, WebP, MP4, MOV, WebM).`);
       continue;
     }
-    if (!allowed.includes(f.type)) {
-      showToast('error', 'Invalid File Type', `"${f.name}" is not a JPG, PNG, or WebP image.`);
+    if (isImg && f.size > 5 * 1024 * 1024) {
+      showToast('error', 'Image Too Large', `"${f.name}" exceeds 5 MB.`);
+      continue;
+    }
+    if (isVid && f.size > 30 * 1024 * 1024) {
+      showToast('error', 'Video Too Large', `"${f.name}" exceeds 30 MB.`);
       continue;
     }
     selectedAnnouncementFiles.push(f);
@@ -1057,13 +1126,22 @@ function handleAnnouncementImagesSelect(event) {
 
   // If user selected exactly 1 photo, automatically open the cropper for convenient editing
   if (files.length === 1 && selectedAnnouncementFiles.length > startIndex) {
-    openCropperForSelectedFile(startIndex);
+    const single = selectedAnnouncementFiles[startIndex];
+    const isVid = isVideoAnnouncementMedia(single.name) || (single.type && single.type.startsWith('video/'));
+    if (!isVid) {
+      openCropperForSelectedFile(startIndex);
+    }
   }
 }
 
 function openCropperForSelectedFile(index) {
   if (index < 0 || index >= selectedAnnouncementFiles.length) return;
   const file = selectedAnnouncementFiles[index];
+  const isVid = isVideoAnnouncementMedia(file.name) || (file.type && file.type.startsWith('video/'));
+  if (isVid) {
+    showToast('info', 'Video Attachment', 'Video files cannot be cropped.');
+    return;
+  }
   openPhotoCropper(file, (croppedFile) => {
     selectedAnnouncementFiles[index] = croppedFile;
     renderSelectedAnnouncementImagesPreviews();
@@ -1088,23 +1166,39 @@ function renderSelectedAnnouncementImagesPreviews() {
     wrap.innerHTML = '';
     wrap.classList.add('hidden');
     if (badge) badge.classList.add('hidden');
-    if (label) label.textContent = 'Click to select photos (JPG, PNG, WebP)';
+    if (label) label.textContent = 'Click to select photos or videos (JPG, PNG, WebP, MP4, MOV, WebM)';
     return;
   }
 
   wrap.classList.remove('hidden');
+  const photos = selectedAnnouncementFiles.filter(f => !isVideoAnnouncementMedia(f.name) && !(f.type && f.type.startsWith('video/'))).length;
+  const videos = selectedAnnouncementFiles.length - photos;
+  let badgeText = '';
+  if (photos && videos) badgeText = `📷 ${photos} photo${photos > 1 ? 's' : ''}, 🎥 ${videos} video${videos > 1 ? 's' : ''}`;
+  else if (videos) badgeText = `🎥 ${videos} video${videos > 1 ? 's' : ''}`;
+  else badgeText = `📷 ${photos} photo${photos > 1 ? 's' : ''}`;
+
   if (badge) {
-    badge.textContent = `📷 ${selectedAnnouncementFiles.length} photo${selectedAnnouncementFiles.length > 1 ? 's' : ''}`;
+    badge.textContent = badgeText;
     badge.classList.remove('hidden');
   }
   if (label) {
-    label.textContent = selectedAnnouncementFiles.length >= 10 ? 'Maximum 10 photos selected' : 'Add more photos (JPG, PNG, WebP)';
+    label.textContent = selectedAnnouncementFiles.length >= 10 ? 'Maximum 10 items selected' : 'Add more photos or videos';
   }
 
   wrap.innerHTML = selectedAnnouncementFiles.map((f, idx) => {
+    const isVid = isVideoAnnouncementMedia(f.name) || (f.type && f.type.startsWith('video/'));
     const url = URL.createObjectURL(f);
+    if (isVid) {
+      return `
+      <div class="multi-photo-thumb-wrap video-thumb" title="${escapeHtml(f.name)} (Video)">
+        <video src="${url}#t=0.5" preload="metadata" muted playsinline></video>
+        <div class="video-thumb-badge">🎥 Video</div>
+        <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeSelectedAnnouncementFile(${idx})" title="Remove video">&times;</button>
+      </div>`;
+    }
     return `
-    <div class="multi-photo-thumb-wrap" title="${escapeHtml(f.name)}" onclick="openCropperForSelectedFile(${idx})">
+    <div class="multi-photo-thumb-wrap" title="${escapeHtml(f.name)} (Click to crop)" onclick="openCropperForSelectedFile(${idx})">
       <img src="${url}" alt="Preview ${idx + 1}" />
       <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeSelectedAnnouncementFile(${idx})" title="Remove photo">&times;</button>
     </div>`;
@@ -1194,18 +1288,18 @@ function openEditAnnouncementModal(id) {
     </div>
     <div class="form-group">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-        <label style="margin-bottom:0;">Photos / Images (Optional, up to 10 photos)</label>
-        <span id="edit_photos_count_badge" class="photo-count-badge">0 photos</span>
+        <label style="margin-bottom:0;">Photos & Videos (Optional, up to 10 files, max 5MB for photos, 30MB for videos)</label>
+        <span id="edit_photos_count_badge" class="photo-count-badge">0 items</span>
       </div>
       
       <div id="edit_photos_container" class="multi-photo-preview-grid" style="margin-bottom:10px;"></div>
 
-      <input type="file" id="edit_af_images_input" accept="image/jpeg,image/png,image/webp" multiple style="display:none" onchange="handleEditImagesSelect(event)" />
+      <input type="file" id="edit_af_images_input" accept="image/jpeg,image/png,image/webp,video/mp4,video/quicktime,video/webm" multiple style="display:none" onchange="handleEditImagesSelect(event)" />
       
       <div class="image-upload-dropzone" onclick="document.getElementById('edit_af_images_input').click()">
         <div style="display:flex;align-items:center;justify-content:center;gap:8px;color:var(--teal-600);font-weight:600;font-size:0.88rem">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-          <span id="edit_af_images_label">Add more photos (JPG, PNG, WebP)</span>
+          <span id="edit_af_images_label">Add more photos or videos (JPG, PNG, WebP, MP4, MOV, WebM)</span>
         </div>
       </div>
     </div>
@@ -1221,20 +1315,31 @@ function handleEditImagesSelect(event) {
   const files = Array.from(event.target.files || []);
   if (!files.length) return;
 
-  const allowed = ['image/jpeg', 'image/png', 'image/webp'];
+  const allowedImageMimes = ['image/jpeg', 'image/png', 'image/webp'];
+  const allowedVideoMimes = ['video/mp4', 'video/quicktime', 'video/webm'];
+  const allowedImageExts = ['.jpg', '.jpeg', '.png', '.webp'];
+  const allowedVideoExts = ['.mp4', '.mov', '.webm'];
   const startIdx = editNewFiles.length;
 
   for (const f of files) {
     if (editExistingImages.length + editNewFiles.length >= 10) {
-      showToast('error', 'Limit Reached', 'You can have up to 10 photos per announcement.');
+      showToast('error', 'Limit Reached', 'You can have up to 10 photos/videos per announcement.');
       break;
     }
-    if (f.size > 5 * 1024 * 1024) {
-      showToast('error', 'File Too Large', `"${f.name}" exceeds 5 MB.`);
+    const ext = (f.name ? f.name.substring(f.name.lastIndexOf('.')).toLowerCase() : '');
+    const isVid = allowedVideoExts.includes(ext) || allowedVideoMimes.includes(f.type) || (f.type && f.type.startsWith('video/'));
+    const isImg = allowedImageExts.includes(ext) || allowedImageMimes.includes(f.type) || (f.type && f.type.startsWith('image/'));
+
+    if (!isVid && !isImg) {
+      showToast('error', 'Invalid File Type', `"${f.name}" is not a supported image or video.`);
       continue;
     }
-    if (!allowed.includes(f.type)) {
-      showToast('error', 'Invalid File Type', `"${f.name}" is not a JPG, PNG, or WebP image.`);
+    if (isImg && f.size > 5 * 1024 * 1024) {
+      showToast('error', 'Image Too Large', `"${f.name}" exceeds 5 MB.`);
+      continue;
+    }
+    if (isVid && f.size > 30 * 1024 * 1024) {
+      showToast('error', 'Video Too Large', `"${f.name}" exceeds 30 MB.`);
       continue;
     }
     editNewFiles.push(f);
@@ -1244,13 +1349,22 @@ function handleEditImagesSelect(event) {
   renderEditPhotosPreviews();
 
   if (files.length === 1 && editNewFiles.length > startIdx) {
-    openCropperForEditNewFile(startIdx);
+    const single = editNewFiles[startIdx];
+    const isVid = isVideoAnnouncementMedia(single.name) || (single.type && single.type.startsWith('video/'));
+    if (!isVid) {
+      openCropperForEditNewFile(startIdx);
+    }
   }
 }
 
 function openCropperForEditNewFile(index) {
   if (index < 0 || index >= editNewFiles.length) return;
   const file = editNewFiles[index];
+  const isVid = isVideoAnnouncementMedia(file.name) || (file.type && file.type.startsWith('video/'));
+  if (isVid) {
+    showToast('info', 'Video Attachment', 'Video files cannot be cropped.');
+    return;
+  }
   openPhotoCropper(file, (croppedFile) => {
     editNewFiles[index] = croppedFile;
     renderEditPhotosPreviews();
@@ -1261,6 +1375,10 @@ function openCropperForEditNewFile(index) {
 function openCropperForExistingImage(index) {
   if (index < 0 || index >= editExistingImages.length) return;
   const imgUrl = editExistingImages[index];
+  if (isVideoAnnouncementMedia(imgUrl)) {
+    showToast('info', 'Video Attachment', 'Video files cannot be cropped.');
+    return;
+  }
   openPhotoCropper(imgUrl, (croppedFile) => {
     // Remove the old server path and add the new cropped file to editNewFiles
     editExistingImages.splice(index, 1);
@@ -1291,34 +1409,67 @@ function renderEditPhotosPreviews() {
   if (!container) return;
 
   const total = editExistingImages.length + editNewFiles.length;
+  const existingPhotos = editExistingImages.filter(x => !isVideoAnnouncementMedia(x)).length;
+  const existingVideos = editExistingImages.filter(x => isVideoAnnouncementMedia(x)).length;
+  const newPhotos = editNewFiles.filter(f => !isVideoAnnouncementMedia(f.name) && !(f.type && f.type.startsWith('video/'))).length;
+  const newVideos = editNewFiles.length - newPhotos;
+  const totalPhotos = existingPhotos + newPhotos;
+  const totalVideos = existingVideos + newVideos;
+
   if (badge) {
-    badge.textContent = `📷 ${total} photo${total === 1 ? '' : 's'}`;
+    if (totalPhotos && totalVideos) {
+      badge.textContent = `📷 ${totalPhotos} photo${totalPhotos > 1 ? 's' : ''}, 🎥 ${totalVideos} video${totalVideos > 1 ? 's' : ''}`;
+    } else if (totalVideos) {
+      badge.textContent = `🎥 ${totalVideos} video${totalVideos > 1 ? 's' : ''}`;
+    } else {
+      badge.textContent = `📷 ${totalPhotos} photo${totalPhotos === 1 ? '' : 's'}`;
+    }
   }
   if (label) {
-    label.textContent = total >= 10 ? 'Maximum 10 photos reached' : 'Add more photos (JPG, PNG, WebP)';
+    label.textContent = total >= 10 ? 'Maximum 10 items reached' : 'Add more photos or videos (JPG, PNG, WebP, MP4, MOV, WebM)';
   }
 
   let html = '';
-  // Existing photos
+  // Existing media
   editExistingImages.forEach((img, idx) => {
-    html += `
-    <div class="multi-photo-thumb-wrap" title="Click to crop photo ${idx + 1}" onclick="openCropperForExistingImage(${idx})">
-      <img src="${escapeHtml(img)}" alt="Existing ${idx + 1}" />
-      <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeEditExistingImage(${idx})" title="Remove this photo">&times;</button>
-    </div>`;
+    const isVid = isVideoAnnouncementMedia(img);
+    if (isVid) {
+      html += `
+      <div class="multi-photo-thumb-wrap video-thumb" title="Existing Video ${idx + 1}" onclick="openAnnouncementLightbox(editExistingImages, ${idx})">
+        <video src="${escapeHtml(img)}#t=0.5" preload="metadata" muted playsinline></video>
+        <div class="video-thumb-badge">🎥 Video</div>
+        <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeEditExistingImage(${idx})" title="Remove this video">&times;</button>
+      </div>`;
+    } else {
+      html += `
+      <div class="multi-photo-thumb-wrap" title="Click to crop photo ${idx + 1}" onclick="openCropperForExistingImage(${idx})">
+        <img src="${escapeHtml(img)}" alt="Existing ${idx + 1}" />
+        <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeEditExistingImage(${idx})" title="Remove this photo">&times;</button>
+      </div>`;
+    }
   });
 
-  // Newly selected photos
+  // Newly selected media files
   editNewFiles.forEach((f, idx) => {
+    const isVid = isVideoAnnouncementMedia(f.name) || (f.type && f.type.startsWith('video/'));
     const url = URL.createObjectURL(f);
-    html += `
-    <div class="multi-photo-thumb-wrap" title="Click to crop: ${escapeHtml(f.name)}" onclick="openCropperForEditNewFile(${idx})" style="border-color:var(--teal-500);">
-      <img src="${url}" alt="New ${idx + 1}" />
-      <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeEditNewFile(${idx})" title="Cancel this photo">&times;</button>
-    </div>`;
+    if (isVid) {
+      html += `
+      <div class="multi-photo-thumb-wrap video-thumb" title="${escapeHtml(f.name)} (New Video)" style="border-color:var(--teal-500);">
+        <video src="${url}#t=0.5" preload="metadata" muted playsinline></video>
+        <div class="video-thumb-badge">🎥 Video</div>
+        <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeEditNewFile(${idx})" title="Cancel this video">&times;</button>
+      </div>`;
+    } else {
+      html += `
+      <div class="multi-photo-thumb-wrap" title="Click to crop: ${escapeHtml(f.name)}" onclick="openCropperForEditNewFile(${idx})" style="border-color:var(--teal-500);">
+        <img src="${url}" alt="New ${idx + 1}" />
+        <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeEditNewFile(${idx})" title="Cancel this photo">&times;</button>
+      </div>`;
+    }
   });
 
-  container.innerHTML = html || '<div style="font-size:0.82rem;color:var(--text-3);padding:6px 0;">No photos currently attached.</div>';
+  container.innerHTML = html || '<div style="font-size:0.82rem;color:var(--text-3);padding:6px 0;">No photos or videos currently attached.</div>';
 }
 
 async function updateAnnouncement(id) {
@@ -1447,6 +1598,9 @@ function renderPublicAnnouncements() {
     const accentColor = catColors[a.category] || '#177a80';
     const images = getAnnouncementImages(a);
     const hasImages = images.length > 0;
+    const isFirstVideo = hasImages && isVideoAnnouncementMedia(images[0]);
+    const hasAnyVideo = hasImages && images.some(isVideoAnnouncementMedia);
+
     return `
     <div class="pub-ann-card" style="--ann-color:${accentColor}">
       <div class="pub-ann-card-top">
@@ -1454,11 +1608,18 @@ function renderPublicAnnouncements() {
         <div style="flex-shrink:0">${a.urgent ? '<span class="badge badge-red">Urgent</span>' : ''}</div>
       </div>
       ${hasImages ? `
-        <div style="position:relative;width:100%;height:150px;overflow:hidden;border-radius:6px;margin:10px 0;cursor:pointer;" onclick="openAnnouncementLightbox('${a.id}', 0)">
-          <img src="${escapeHtml(images[0])}" alt="${escapeHtml(a.title)}" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy" />
+        <div style="position:relative;width:100%;height:150px;overflow:hidden;border-radius:6px;margin:10px 0;cursor:pointer;background:#091a1c;" onclick="openAnnouncementLightbox('${a.id}', 0)">
+          ${isFirstVideo ? `
+            <video src="${escapeHtml(images[0])}#t=0.5" preload="metadata" muted playsinline style="width:100%;height:100%;object-fit:cover;display:block;"></video>
+            <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.35);">
+              <div style="width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,0.72);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;border:1.5px solid #fff;">▶</div>
+            </div>
+          ` : `
+            <img src="${escapeHtml(images[0])}" alt="${escapeHtml(a.title)}" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy" />
+          `}
           ${images.length > 1 ? `
             <div style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:10px;">
-              📷 ${images.length} photos
+              ${hasAnyVideo ? `🎬 ${images.length} media` : `📷 ${images.length} photos`}
             </div>
           ` : ''}
         </div>
