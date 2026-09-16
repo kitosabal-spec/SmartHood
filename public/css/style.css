@@ -2179,6 +2179,31 @@ input[type="date"].filter-select {
   user-select: none;
 }
 
+.chart-card .table-pagination-wrapper {
+  padding: 10px 0 0 0;
+  background: transparent;
+  border-top: 1px solid var(--border);
+  margin-top: auto;
+  gap: 10px;
+}
+.chart-card .table-pagination-info {
+  font-size: 0.78rem;
+}
+.chart-card .table-pagination-btn {
+  min-width: 26px;
+  height: 26px;
+  padding: 0 6px;
+  font-size: 0.76rem;
+}
+.chart-card .table-pagination-size {
+  font-size: 0.76rem;
+}
+.chart-card .table-pagination-size-select {
+  padding: 2px 6px;
+  font-size: 0.76rem;
+}
+
+
 @media (max-width: 680px) {
   .table-pagination-wrapper {
     flex-direction: column;

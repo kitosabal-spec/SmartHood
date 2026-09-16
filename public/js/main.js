@@ -913,8 +913,110 @@ function setupSidebarOverlay() {
 
 
 
-// SECTION 12: ADMIN — REPORTS
+// SECTION 12: ADMIN — REPORTS & CSV EXPORTS
 
+function csvEscape(val) {
+  if (val === null || val === undefined) return '';
+  const str = String(val);
+  if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
+    return `"${str.replace(/"/g, '""')}"`;
+  }
+  return str;
+}
+
+function csvRow(cells) {
+  return cells.map(csvEscape).join(',');
+}
+
+function downloadCSVFile(filename, csvContent, successMessage) {
+  try {
+    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = filename;
+    link.style.display = 'none';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    showToast('success', 'Download Complete', successMessage || `${filename} downloaded successfully.`);
+    if (typeof logAction === 'function') {
+      logAction(`Downloaded report CSV: ${filename}`);
+    }
+  } catch (err) {
+    console.error('CSV download error:', err);
+    showToast('error', 'Download Failed', 'Could not generate CSV file: ' + (err.message || 'Unknown error'));
+  }
+}
+
+function exportReportsFinancialCSV() {
+  if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
+  syncHomeownerBalances();
+
+  const billings = db.get('billings') || [];
+  const payments = db.get('payments') || [];
+
+  const rows = [];
+  rows.push(csvRow([
+    'Billing Period/Month',
+    'Total Billed',
+    'Total Collected',
+    'Outstanding Balance',
+    'Number of Paid Accounts',
+    'Number of Unpaid Accounts'
+  ]));
+
+  let sumBilled = 0;
+  let sumCollected = 0;
+  let sumOutstanding = 0;
+  let sumPaid = 0;
+  let sumUnpaid = 0;
+
+  billings.forEach(b => {
+    const assignedIds = getAssignedHomeownerIds(b);
+    const billPayments = payments.filter(p => p.billingId === b.id && p.status === 'approved');
+    const paidHomeowners = new Set(billPayments.map(p => p.homeownerId));
+
+    const totalBilled = toMoneyNumber(b.amount) * assignedIds.length;
+    const totalCollected = billPayments.reduce((sum, p) => sum + toMoneyNumber(p.amount), 0);
+    const outstanding = Math.max(0, totalBilled - totalCollected);
+    const numPaid = paidHomeowners.size;
+    const numUnpaid = Math.max(0, assignedIds.length - numPaid);
+
+    sumBilled += totalBilled;
+    sumCollected += totalCollected;
+    sumOutstanding += outstanding;
+    sumPaid += numPaid;
+    sumUnpaid += numUnpaid;
+
+    rows.push(csvRow([
+      b.title || 'General Dues',
+      totalBilled.toFixed(2),
+      totalCollected.toFixed(2),
+      outstanding.toFixed(2),
+      numPaid,
+      numUnpaid
+    ]));
+  });
+
+  // Summary row
+  rows.push(csvRow([
+    'Total',
+    sumBilled.toFixed(2),
+    sumCollected.toFixed(2),
+    sumOutstanding.toFixed(2),
+    sumPaid,
+    sumUnpaid
+  ]));
+
+  const filename = `Financial_Collection_Report_${getLocalDateValue()}.csv`;
+  downloadCSVFile(filename, rows.join('\r\n'), 'Financial & Collection CSV report downloaded.');
+}
+
+window.exportReportsFinancialCSV = exportReportsFinancialCSV;
+window.exportReportsCSV = exportReportsFinancialCSV;
+window.exportReportsSummaryCSV = exportReportsFinancialCSV;
 
 function renderReports() {
   if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
@@ -936,8 +1038,16 @@ function renderReports() {
   area.innerHTML = `
   <div class="page-header">
     <div class="page-header-left"><h2>Reports & Analytics</h2><p>Financial summaries and collection reports.</p></div>
-    <div class="page-header-actions"><button class="btn btn-secondary" onclick="window.print()">Print Report</button></div>
+    <div class="page-header-actions">
+      <button class="btn btn-primary" onclick="exportReportsFinancialCSV()" title="Download Financial & Collection CSV Report">
+        <svg width="15" height="15"><use href="#ico-download"/></svg> Download CSV
+      </button>
+      <button class="btn btn-secondary" onclick="window.print()">
+        <svg width="15" height="15"><use href="#ico-printer"/></svg> Print Report
+      </button>
+    </div>
   </div>
+
   <div class="report-summary-grid">
     <div class="report-summary-item"><div class="r-val">₱${totalDue.toLocaleString()}</div><div class="r-lbl">Total Billed</div></div>
     <div class="report-summary-item"><div class="r-val" style="color:var(--green-600)">₱${totalPaid.toLocaleString()}</div><div class="r-lbl">Total Collected</div></div>
@@ -972,30 +1082,15 @@ function renderReports() {
         ${monthlyData.map(d => `<div style="flex:1;text-align:center;font-size:0.72rem;color:var(--text-3)">${d.m}</div>`).join('')}
       </div>
     </div>
-    <div class="chart-card" style="flex:2">
-      <h4>Collection by Billing</h4>
-      <div class="table-wrapper"><table class="data-table">
+    <div class="chart-card" style="flex:2;display:flex;flex-direction:column">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px">
+        <h4 style="margin:0">Collection by Billing</h4>
+      </div>
+      <div class="table-wrapper" style="flex:1"><table class="data-table">
         <thead><tr><th>Billing</th><th>Assigned</th><th>Collected</th><th>Rate</th></tr></thead>
-        <tbody>
-          ${billings.map(b => {
-            const assignedIds = getAssignedHomeownerIds(b);
-            const billPayments = payments.filter(p => p.billingId === b.id && p.status === 'approved');
-            const paidHomeowners = new Set(billPayments.map(p => p.homeownerId));
-            const rate = assignedIds.length > 0 ? Math.round((paidHomeowners.size / assignedIds.length) * 100) : 0;
-            return `<tr>
-              <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${b.title}</td>
-              <td>${assignedIds.length}</td>
-              <td>${paidHomeowners.size}</td>
-              <td><div style="display:flex;align-items:center;gap:8px">
-                <div style="flex:1;height:6px;background:var(--border);border-radius:99px;overflow:hidden">
-                  <div style="height:100%;width:${rate}%;background:${rate >= 70 ? 'var(--green-600)' : rate >= 40 ? 'var(--amber-500)' : 'var(--red-600)'};border-radius:99px;transition:width 0.6s ease"></div>
-                </div>
-                <span style="font-size:0.78rem;font-weight:700;color:var(--text-2)">${rate}%</span>
-              </div></td>
-            </tr>`;
-          }).join('') || '<tr><td colspan="4"><div class="no-results">No billings on record.</div></td></tr>'}
-        </tbody>
+        <tbody id="billingCollectionTableBody"></tbody>
       </table></div>
+      <div id="billingCollectionPagination"></div>
     </div>
   </div>
 
@@ -1029,7 +1124,9 @@ function renderReports() {
   </div>
 
   <div class="section-card">
-    <div class="section-card-header"><div><h3>Complaint Summary</h3></div></div>
+    <div class="section-card-header">
+      <div><h3>Complaint Summary</h3></div>
+    </div>
     <div class="section-card-body no-pad">
       <table class="data-table">
         <thead><tr><th>Homeowner</th><th>Category</th><th>Date Filed</th><th>Status</th></tr></thead>
@@ -1065,10 +1162,91 @@ function renderReports() {
     { value: complaints.filter(c=>c.status==='Rejected').length,    color: '#dc2626' },
   ], cmpTotal, 'Complaints', complaints.length);
 
+  billingCollectionPaginationState.page = 1;
+  renderBillingCollectionTable();
+
   hoBalancePaginationState.page = 1;
   currentHOBalanceFiltered = null;
   renderHOBalanceReportTable();
 }
+
+let billingCollectionPaginationState = { page: 1, pageSize: 5 };
+
+function changeBillingCollectionPage(page) {
+  billingCollectionPaginationState.page = page;
+  renderBillingCollectionTable();
+}
+window.changeBillingCollectionPage = changeBillingCollectionPage;
+
+function changeBillingCollectionPageSize(size) {
+  billingCollectionPaginationState.pageSize = size;
+  billingCollectionPaginationState.page = 1;
+  renderBillingCollectionTable();
+}
+window.changeBillingCollectionPageSize = changeBillingCollectionPageSize;
+
+function renderBillingCollectionTable() {
+  const tbody = document.getElementById('billingCollectionTableBody');
+  if (!tbody) return;
+
+  const billings = db.get('billings') || [];
+  const payments = db.get('payments') || [];
+  const totalItems = billings.length;
+  const pageSize = billingCollectionPaginationState.pageSize || 5;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+
+  if (billingCollectionPaginationState.page > totalPages) billingCollectionPaginationState.page = totalPages;
+  if (billingCollectionPaginationState.page < 1) billingCollectionPaginationState.page = 1;
+
+  if (!totalItems) {
+    tbody.innerHTML = '<tr><td colspan="4"><div class="no-results" style="padding:16px;">No billings on record.</div></td></tr>';
+    renderPaginationComponent({
+      containerId: 'billingCollectionPagination',
+      currentPage: 1,
+      pageSize,
+      totalItems: 0,
+      pageSizeOptions: [5, 10, 20, 50],
+      onPageChangeFn: 'changeBillingCollectionPage',
+      onPageSizeChangeFn: 'changeBillingCollectionPageSize',
+      itemLabel: 'billings',
+    });
+    return;
+  }
+
+  const startIndex = (billingCollectionPaginationState.page - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const pageItems = billings.slice(startIndex, endIndex);
+
+  tbody.innerHTML = pageItems.map(b => {
+    const assignedIds = getAssignedHomeownerIds(b);
+    const billPayments = payments.filter(p => p.billingId === b.id && p.status === 'approved');
+    const paidHomeowners = new Set(billPayments.map(p => p.homeownerId));
+    const rate = assignedIds.length > 0 ? Math.round((paidHomeowners.size / assignedIds.length) * 100) : 0;
+    return `<tr>
+      <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(b.title)}">${escapeHtml(b.title)}</td>
+      <td>${assignedIds.length}</td>
+      <td>${paidHomeowners.size}</td>
+      <td><div style="display:flex;align-items:center;gap:8px">
+        <div style="flex:1;height:6px;background:var(--border);border-radius:99px;overflow:hidden">
+          <div style="height:100%;width:${rate}%;background:${rate >= 70 ? 'var(--green-600)' : rate >= 40 ? 'var(--amber-500)' : 'var(--red-600)'};border-radius:99px;transition:width 0.6s ease"></div>
+        </div>
+        <span style="font-size:0.78rem;font-weight:700;color:var(--text-2)">${rate}%</span>
+      </div></td>
+    </tr>`;
+  }).join('');
+
+  renderPaginationComponent({
+    containerId: 'billingCollectionPagination',
+    currentPage: billingCollectionPaginationState.page,
+    pageSize,
+    totalItems,
+    pageSizeOptions: [5, 10, 20, 50],
+    onPageChangeFn: 'changeBillingCollectionPage',
+    onPageSizeChangeFn: 'changeBillingCollectionPageSize',
+    itemLabel: 'billings',
+  });
+}
+window.renderBillingCollectionTable = renderBillingCollectionTable;
 
 let hoBalancePaginationState = { page: 1, pageSize: 10 };
 let currentHOBalanceFiltered = null;

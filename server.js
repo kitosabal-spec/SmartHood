@@ -13,6 +13,9 @@ const DB_CONFIG = {
   user: process.env.MYSQL_USER || 'root',
   password: process.env.MYSQL_PASSWORD || '',
   database: process.env.MYSQL_DATABASE || 'san_alfonso_homes',
+  ssl: (process.env.MYSQL_SSL === 'true' || (process.env.MYSQL_HOST && process.env.MYSQL_HOST !== 'localhost'))
+    ? { rejectUnauthorized: false }
+    : undefined,
 };
 
 let db;
@@ -283,19 +286,24 @@ function tableName(table) {
 }
 
 async function ensureDatabase() {
-  const setupPool = mysql.createPool({
-    host: DB_CONFIG.host,
-    port: DB_CONFIG.port,
-    user: DB_CONFIG.user,
-    password: DB_CONFIG.password,
-    waitForConnections: true,
-    connectionLimit: 2,
-  });
+  try {
+    const setupPool = mysql.createPool({
+      host: DB_CONFIG.host,
+      port: DB_CONFIG.port,
+      user: DB_CONFIG.user,
+      password: DB_CONFIG.password,
+      ssl: DB_CONFIG.ssl,
+      waitForConnections: true,
+      connectionLimit: 2,
+    });
 
-  await setupPool.query(
-    `CREATE DATABASE IF NOT EXISTS ${quoteIdentifier(DB_CONFIG.database)} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
-  );
-  await setupPool.end();
+    await setupPool.query(
+      `CREATE DATABASE IF NOT EXISTS ${quoteIdentifier(DB_CONFIG.database)} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    );
+    await setupPool.end();
+  } catch (err) {
+    console.warn(`[Database Notice] Could not run CREATE DATABASE (${err.message}). Connecting directly to ${DB_CONFIG.database}...`);
+  }
 
   db = mysql.createPool({
     ...DB_CONFIG,
