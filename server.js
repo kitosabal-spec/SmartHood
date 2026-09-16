@@ -33,6 +33,8 @@ const BOARD_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'board');
 fs.mkdirSync(BOARD_UPLOAD_DIR, { recursive: true });
 const COMPLAINT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'complaints');
 fs.mkdirSync(COMPLAINT_UPLOAD_DIR, { recursive: true });
+const LOSTFOUND_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'lostfound');
+fs.mkdirSync(LOSTFOUND_UPLOAD_DIR, { recursive: true });
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 const tableConfig = {
@@ -77,8 +79,8 @@ const tableConfig = {
     booleanColumns: [],
   },
   lostFound: {
-    columns: ['id', 'reportType', 'itemType', 'itemName', 'description', 'location', 'eventDate', 'contactName', 'contactNumber', 'image', 'status', 'remarks', 'createdAt', 'updatedAt', 'claimedAt'],
-    jsonColumns: [],
+    columns: ['id', 'reportType', 'itemType', 'itemName', 'description', 'location', 'eventDate', 'contactName', 'contactNumber', 'image', 'images', 'media_type', 'status', 'remarks', 'createdAt', 'updatedAt', 'claimedAt'],
+    jsonColumns: ['images'],
     booleanColumns: [],
   },
   auditLog: {
@@ -572,6 +574,8 @@ async function createTables() {
     updatedAt TEXT,
     claimedAt TEXT
   )`);
+  await run('ALTER TABLE lostFound ADD COLUMN media_type TEXT').catch(() => {});
+  await run('ALTER TABLE lostFound ADD COLUMN images LONGTEXT').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS auditLog (
     id VARCHAR(64) PRIMARY KEY,
@@ -823,6 +827,26 @@ const complaintUpload = multer({
   },
 });
 
+const lostFoundUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, LOSTFOUND_UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname || '').toLowerCase() || '.bin';
+      const unique = `lf-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+      cb(null, unique);
+    },
+  }),
+  limits: { fileSize: MAX_COMPLAINT_VIDEO_BYTES, files: 10 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ALLOWED_COMPLAINT_MEDIA_EXTS.has(ext)) {
+      cb(new Error('Unsupported file format. Allowed formats: JPG, JPEG, PNG, WEBP (Images) and MP4, MOV, WEBM (Videos).'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
 async function getRequester(req) {
   const userId = getRequestUserId(req);
   if (!userId) return null;
@@ -870,6 +894,7 @@ async function checkTableAccess(req, res, table, action = 'read') {
   const requester = await getRequester(req);
   if (!requester) {
     if (action === 'read' && (table === 'announcements' || table === 'lostFound' || table === 'board_of_directors')) return true;
+    if (action === 'create' && table === 'lostFound') return true;
     res.status(401).json({ error: 'Login required.' });
     return null;
   }
@@ -1778,6 +1803,87 @@ app.post('/api/complaints/upload', (req, res) => {
   });
 });
 
+// ── LOST & FOUND MEDIA UPLOAD API ──
+
+const handleLostFoundUpload = (req, res) => {
+  lostFoundUpload.any()(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message = uploadErr.code === 'LIMIT_FILE_SIZE'
+        ? 'A file exceeds the maximum allowed size (5 MB for images, 30 MB for videos).'
+        : (uploadErr.message || 'Invalid file upload.');
+      return res.status(400).json({ error: message });
+    }
+
+    const files = req.files || (req.file ? [req.file] : []);
+    if (!files.length) {
+      return res.status(400).json({ error: 'No media files received.' });
+    }
+
+    const oversized = [];
+    for (const file of files) {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
+
+      if (!isVideo && file.size > MAX_COMPLAINT_IMAGE_BYTES) {
+        oversized.push(`Image "${file.originalname}" exceeds the 5 MB size limit (${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
+      }
+      if (isVideo && file.size > MAX_COMPLAINT_VIDEO_BYTES) {
+        oversized.push(`Video "${file.originalname}" exceeds the 30 MB size limit (${(file.size / (1024 * 1024)).toFixed(1)} MB).`);
+      }
+    }
+
+    if (oversized.length > 0) {
+      await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+      return res.status(400).json({ error: oversized.join(' ') });
+    }
+
+    for (const file of files) {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const buffer = await fs.promises.readFile(file.path);
+      if (!isValidAnnouncementMediaBuffer(buffer, ext)) {
+        await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+        return res.status(400).json({ error: `Uploaded file "${file.originalname}" is not a valid JPG, PNG, WebP image or MP4, MOV, WebM video.` });
+      }
+    }
+
+    const uploadedFiles = files.map(file => {
+      const ext = path.extname(file.originalname || '').toLowerCase();
+      const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
+      const mediaUrl = `/uploads/lostfound/${file.filename}`;
+      return {
+        url: mediaUrl,
+        media_url: mediaUrl,
+        image: mediaUrl,
+        media_type: isVideo ? 'video' : 'image',
+        filename: file.filename,
+        originalname: file.originalname,
+        size: file.size,
+      };
+    });
+
+    const primary = uploadedFiles[0] || {};
+    const hasImages = uploadedFiles.some(f => f.media_type === 'image');
+    const hasVideos = uploadedFiles.some(f => f.media_type === 'video');
+    const overallMediaType = (hasImages && hasVideos) ? 'mixed' : (hasVideos ? 'video' : 'image');
+
+    res.json({
+      ok: true,
+      files: uploadedFiles,
+      count: uploadedFiles.length,
+      url: primary.url || null,
+      media_url: primary.media_url || null,
+      image: primary.image || null,
+      media_type: overallMediaType,
+      filename: primary.filename || null,
+      originalname: primary.originalname || null,
+      size: primary.size || 0,
+    });
+  });
+};
+
+app.post('/api/lostfound/upload', handleLostFoundUpload);
+app.post('/api/lost-found/upload', handleLostFoundUpload);
+
 app.post('/api/complaints', (req, res, next) => {
   if (req.is('multipart/form-data')) {
     complaintUpload.any()(req, res, async (uploadErr) => {
@@ -1893,6 +1999,33 @@ app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
 
   if (table === 'users' && req.params.id === 'u001') {
     return res.status(400).json({ error: 'Primary Administrator account cannot be deleted.' });
+  }
+
+  if (table === 'lostFound') {
+    const existing = await get('SELECT image, images FROM lostFound WHERE id = ?', [req.params.id]);
+    if (existing) {
+      const filesToDelete = [];
+      if (existing.image && existing.image.startsWith('/uploads/lostfound/')) {
+        filesToDelete.push(existing.image);
+      }
+      if (existing.images) {
+        try {
+          const parsed = typeof existing.images === 'string' ? JSON.parse(existing.images) : existing.images;
+          if (Array.isArray(parsed)) {
+            for (const img of parsed) {
+              const url = typeof img === 'string' ? img : (img?.url || img?.image || img?.media_url);
+              if (url && url.startsWith('/uploads/lostfound/') && !filesToDelete.includes(url)) {
+                filesToDelete.push(url);
+              }
+            }
+          }
+        } catch {}
+      }
+      for (const f of filesToDelete) {
+        const filePath = path.join(__dirname, 'public', f);
+        fs.promises.unlink(filePath).catch(() => {});
+      }
+    }
   }
 
   await run(`DELETE FROM ${tableName(table)} WHERE \`id\` = ?`, [req.params.id]);

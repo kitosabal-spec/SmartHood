@@ -731,8 +731,9 @@ function renderAnnouncementCards() {
 
 function communityPostCardHTML(a, isAdmin) {
   const author = db.getOne('users', a.user_id || a.createdBy) || { name: 'Administrator', role: 'admin' };
-  const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#177a80' };
-  const accentColor = catColors[a.category] || '#177a80';
+  const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#177a80', Others: '#7c3aed' };
+  const baseCat = (a.category || '').startsWith('Others') ? 'Others' : (a.category || 'General');
+  const accentColor = catColors[baseCat] || '#7c3aed';
   const displayDate = formatCommunityDate(a.created_at || a.date);
   const images = getAnnouncementImages(a);
 
@@ -1024,6 +1025,22 @@ function confirmDeleteComment(announcementId, commentId) {
 // ── Admin Announcement Modals (Multi-Photo & Cropping) ──
 // ════════════════════════════════════════════════════════════
 
+function handleAnnouncementCategoryChange(select, prefix = 'af') {
+  const otherGroup = document.getElementById(`${prefix}_other_group`);
+  const otherInput = document.getElementById(`${prefix}_other_category`);
+  if (!otherGroup) return;
+  const isOther = select && select.value === 'Others';
+  if (isOther) {
+    otherGroup.classList.remove('hidden');
+    otherGroup.style.display = 'block';
+    if (otherInput) otherInput.focus();
+  } else {
+    otherGroup.classList.add('hidden');
+    otherGroup.style.display = 'none';
+    if (otherInput) otherInput.value = '';
+  }
+}
+
 let selectedAnnouncementFiles = [];
 
 function openAddAnnouncementModal(triggerPhoto = false) {
@@ -1035,19 +1052,24 @@ function openAddAnnouncementModal(triggerPhoto = false) {
     </div>
     <div class="grid-2">
       <div class="form-group">
-        <label>Category</label>
-        <select id="af_cat">
-          <option>General</option>
-          <option>Maintenance</option>
-          <option>Emergency</option>
-          <option>Events</option>
-          <option>Security</option>
+        <label>Category *</label>
+        <select id="af_cat" onchange="handleAnnouncementCategoryChange(this, 'af')">
+          <option value="General">General</option>
+          <option value="Maintenance">Maintenance</option>
+          <option value="Emergency">Emergency</option>
+          <option value="Events">Events</option>
+          <option value="Security">Security</option>
+          <option value="Others">Others</option>
         </select>
       </div>
       <div class="form-group">
         <label>Date</label>
         <input id="af_date" type="date" value="${getLocalDateValue()}"/>
       </div>
+    </div>
+    <div class="form-group hidden" id="af_other_group" style="display:none">
+      <label>Specify Announcement *</label>
+      <input type="text" id="af_other_category" placeholder="Please specify announcement category..." />
     </div>
     <div class="form-group">
       <label>Content / Details *</label>
@@ -1208,7 +1230,10 @@ function renderSelectedAnnouncementImagesPreviews() {
 async function saveAnnouncement() {
   const title = (document.getElementById('af_title').value || '').trim();
   const content = (document.getElementById('af_content').value || '').trim();
-  const category = document.getElementById('af_cat').value;
+  const categorySelect = document.getElementById('af_cat');
+  const category = (categorySelect ? categorySelect.value : 'General').trim();
+  const otherInput = document.getElementById('af_other_category');
+  const otherText = (otherInput ? otherInput.value : '').trim();
   const date = document.getElementById('af_date').value;
   const urgent = document.getElementById('af_urgent').checked;
 
@@ -1217,10 +1242,18 @@ async function saveAnnouncement() {
     return;
   }
 
+  if (category === 'Others' && !otherText) {
+    showToast('error', 'Specification Required', 'Please specify your announcement.');
+    if (otherInput) otherInput.focus();
+    return;
+  }
+
+  const finalCategory = (category === 'Others' && otherText) ? `Others: ${otherText}` : category;
+
   const formData = new FormData();
   formData.append('title', title);
   formData.append('content', content);
-  formData.append('category', category);
+  formData.append('category', finalCategory);
   formData.append('date', date);
   formData.append('urgent', urgent ? 'true' : 'false');
   
@@ -1257,6 +1290,11 @@ function openEditAnnouncementModal(id) {
   editExistingImages = [...getAnnouncementImages(a)];
   editNewFiles = [];
 
+  const isCustomOrOther = a.category === 'Others' || (a.category && a.category.startsWith('Others:')) || (!['General', 'Maintenance', 'Emergency', 'Events', 'Security'].includes(a.category));
+  const otherVal = a.category && a.category.startsWith('Others:')
+    ? a.category.replace(/^Others:\s*/, '')
+    : (isCustomOrOther && a.category !== 'Others' ? a.category : '');
+
   openModal('Edit Announcement', `
     <div class="form-group">
       <label>Title *</label>
@@ -1264,19 +1302,24 @@ function openEditAnnouncementModal(id) {
     </div>
     <div class="grid-2">
       <div class="form-group">
-        <label>Category</label>
-        <select id="edit_af_cat">
-          <option ${a.category === 'General' ? 'selected' : ''}>General</option>
-          <option ${a.category === 'Maintenance' ? 'selected' : ''}>Maintenance</option>
-          <option ${a.category === 'Emergency' ? 'selected' : ''}>Emergency</option>
-          <option ${a.category === 'Events' ? 'selected' : ''}>Events</option>
-          <option ${a.category === 'Security' ? 'selected' : ''}>Security</option>
+        <label>Category *</label>
+        <select id="edit_af_cat" onchange="handleAnnouncementCategoryChange(this, 'edit_af')">
+          <option value="General" ${!isCustomOrOther && a.category === 'General' ? 'selected' : ''}>General</option>
+          <option value="Maintenance" ${!isCustomOrOther && a.category === 'Maintenance' ? 'selected' : ''}>Maintenance</option>
+          <option value="Emergency" ${!isCustomOrOther && a.category === 'Emergency' ? 'selected' : ''}>Emergency</option>
+          <option value="Events" ${!isCustomOrOther && a.category === 'Events' ? 'selected' : ''}>Events</option>
+          <option value="Security" ${!isCustomOrOther && a.category === 'Security' ? 'selected' : ''}>Security</option>
+          <option value="Others" ${isCustomOrOther ? 'selected' : ''}>Others</option>
         </select>
       </div>
       <div class="form-group">
         <label>Date</label>
         <input id="edit_af_date" type="date" value="${a.date || getLocalDateValue()}"/>
       </div>
+    </div>
+    <div class="form-group ${isCustomOrOther ? '' : 'hidden'}" id="edit_af_other_group" style="display:${isCustomOrOther ? 'block' : 'none'}">
+      <label>Specify Announcement *</label>
+      <input type="text" id="edit_af_other_category" value="${escapeHtml(otherVal)}" placeholder="Please specify announcement category..." />
     </div>
     <div class="form-group">
       <label>Content / Details *</label>
@@ -1475,7 +1518,10 @@ function renderEditPhotosPreviews() {
 async function updateAnnouncement(id) {
   const title = (document.getElementById('edit_af_title').value || '').trim();
   const content = (document.getElementById('edit_af_content').value || '').trim();
-  const category = document.getElementById('edit_af_cat').value;
+  const categorySelect = document.getElementById('edit_af_cat');
+  const category = (categorySelect ? categorySelect.value : 'General').trim();
+  const otherInput = document.getElementById('edit_af_other_category');
+  const otherText = (otherInput ? otherInput.value : '').trim();
   const date = document.getElementById('edit_af_date').value;
   const urgent = document.getElementById('edit_af_urgent').checked;
 
@@ -1484,10 +1530,18 @@ async function updateAnnouncement(id) {
     return;
   }
 
+  if (category === 'Others' && !otherText) {
+    showToast('error', 'Specification Required', 'Please specify your announcement.');
+    if (otherInput) otherInput.focus();
+    return;
+  }
+
+  const finalCategory = (category === 'Others' && otherText) ? `Others: ${otherText}` : category;
+
   const formData = new FormData();
   formData.append('title', title);
   formData.append('content', content);
-  formData.append('category', category);
+  formData.append('category', finalCategory);
   formData.append('date', date);
   formData.append('urgent', urgent ? 'true' : 'false');
   
@@ -1589,13 +1643,14 @@ function renderPublicAnnouncements() {
   const grid = document.getElementById('pubAnnGrid');
   if (!grid) return;
   const announcements = db.get('announcements').slice(-6).reverse();
-  const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#177a80' };
+  const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#177a80', Others: '#7c3aed' };
   if (!announcements.length) {
     grid.innerHTML = `<div class="no-results" style="grid-column:1/-1"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-megaphone"/></svg>No announcements at this time.</div>`;
     return;
   }
   grid.innerHTML = announcements.map(a => {
-    const accentColor = catColors[a.category] || '#177a80';
+    const baseCat = (a.category || '').startsWith('Others') ? 'Others' : (a.category || 'General');
+    const accentColor = catColors[baseCat] || '#7c3aed';
     const images = getAnnouncementImages(a);
     const hasImages = images.length > 0;
     const isFirstVideo = hasImages && isVideoAnnouncementMedia(images[0]);
