@@ -517,7 +517,7 @@
       <div class="topbar-actions">
         <div class="notif-bell" onclick="toggleNotifPanel()">
           <svg width="20" height="20"><use href="#ico-bell"/></svg>
-          <span class="notif-badge" id="notifBadge">0</span>
+          <span class="notif-badge hidden" id="notifBadge"></span>
         </div>
         <div class="topbar-user" onclick="navigate('settings')">
           <div class="topbar-avatar" id="topbarAvatar">A</div>
@@ -531,7 +531,10 @@
         <strong>Notifications</strong>
         <button onclick="clearNotifications()">Clear all</button>
       </div>
-      <div id="notifList"><p class="empty-note">No notifications</p></div>
+      <div id="notifList" class="notif-list"><p class="empty-note">No notifications</p></div>
+      <div class="notif-panel-footer">
+        <button type="button" class="notif-see-all-btn" onclick="openAllNotificationsModal()">See All</button>
+      </div>
     </div>
 
     <main class="content-area" id="contentArea"></main>
