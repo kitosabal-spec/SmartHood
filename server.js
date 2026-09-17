@@ -122,72 +122,7 @@ const adminUser = {
   status: 'active',
 };
 
-const staffUsers = [
-  {
-    id: 'staff-president',
-    username: 'president',
-    password: 'president123',
-    role: 'president',
-    name: 'HOA President',
-    email: 'president@sanalfonsohomes.com',
-    block: null,
-    lot: null,
-    lotArea: null,
-    contact: null,
-    balance: 0,
-    profile_photo: null,
-    permissions: ['complaints'],
-    status: 'active',
-  },
-  {
-    id: 'staff-security',
-    username: 'security',
-    password: 'security123',
-    role: 'security',
-    name: 'Security Guard',
-    email: 'security@sanalfonsohomes.com',
-    block: null,
-    lot: null,
-    lotArea: null,
-    contact: null,
-    balance: 0,
-    profile_photo: null,
-    permissions: ['complaints', 'vehicles', 'lostfound'],
-    status: 'active',
-  },
-  {
-    id: 'staff-treasurer',
-    username: 'treasurer',
-    password: 'treasurer123',
-    role: 'treasurer',
-    name: 'HOA Treasurer',
-    email: 'treasurer@sanalfonsohomes.com',
-    block: null,
-    lot: null,
-    lotArea: null,
-    contact: null,
-    balance: 0,
-    profile_photo: null,
-    permissions: ['payments', 'reports'],
-    status: 'active',
-  },
-  {
-    id: 'staff-auditor',
-    username: 'auditor',
-    password: 'auditor123',
-    role: 'auditor',
-    name: 'HOA Auditor',
-    email: 'auditor@sanalfonsohomes.com',
-    block: null,
-    lot: null,
-    lotArea: null,
-    contact: null,
-    balance: 0,
-    profile_photo: null,
-    permissions: ['billing', 'reports'],
-    status: 'active',
-  },
-];
+
 
 function loadHomeownerSeed() {
   const seedPath = path.join(__dirname, 'data', 'homeowners.seed.json');
@@ -207,7 +142,7 @@ function loadHomeownerSeed() {
 }
 
 const seed = {
-  users: [adminUser, ...staffUsers, ...loadHomeownerSeed()],
+  users: [adminUser, ...loadHomeownerSeed()],
   billings: [],
   payments: [],
   announcements: [],
@@ -361,13 +296,10 @@ function deserializeRow(table, row) {
         'ho-dashboard', 'ho-billing', 'ho-payments', 'ho-history', 'ho-amenities', 'ho-vehicles', 'ho-complaints', 'ho-announcements', 'ho-profile'
       ];
     } else if (!Array.isArray(output.permissions) || !output.permissions.length) {
-      const staffDefaults = {
-        president: ['complaints'],
-        security: ['complaints', 'vehicles', 'lostfound'],
-        treasurer: ['payments', 'reports'],
-        auditor: ['billing', 'reports'],
-      };
-      output.permissions = staffDefaults[output.role] || ['dashboard'];
+      // For any other role (legacy staff records), fall back to homeowner defaults
+      output.permissions = [
+        'ho-dashboard', 'ho-billing', 'ho-payments', 'ho-history', 'ho-amenities', 'ho-vehicles', 'ho-complaints', 'ho-announcements', 'ho-profile'
+      ];
     }
     output.status = output.status || 'active';
   }
@@ -633,19 +565,17 @@ async function seedIfEmpty() {
   }
 }
 
-async function ensureStaffUsers() {
-  for (const user of [adminUser, ...staffUsers]) {
-    const existing = await get('SELECT id, permissions, status FROM users WHERE username = ?', [user.username]);
-    if (!existing) {
-      await saveRecord('users', user);
-    } else {
-      if (!existing.permissions || !existing.status) {
-        await saveRecord('users', {
-          id: existing.id,
-          permissions: existing.permissions ? JSON.parse(existing.permissions) : user.permissions,
-          status: existing.status || 'active',
-        });
-      }
+async function ensureAdminUser() {
+  const existing = await get('SELECT id, permissions, status FROM users WHERE username = ?', [adminUser.username]);
+  if (!existing) {
+    await saveRecord('users', adminUser);
+  } else {
+    if (!existing.permissions || !existing.status) {
+      await saveRecord('users', {
+        id: existing.id,
+        permissions: existing.permissions ? JSON.parse(existing.permissions) : adminUser.permissions,
+        status: existing.status || 'active',
+      });
     }
   }
 }
@@ -2049,7 +1979,7 @@ app.use((err, req, res, next) => {
 ensureDatabase()
   .then(createTables)
   .then(seedIfEmpty)
-  .then(ensureStaffUsers)
+  .then(ensureAdminUser)
   .then(() => {
     app.listen(PORT, () => {
       console.log(`SmartHood is running at http://localhost:${PORT}`);

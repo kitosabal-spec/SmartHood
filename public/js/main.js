@@ -18,11 +18,6 @@ const VEHICLE_TYPES = ['Car', 'Motorcycle', 'Tricycle', 'Van', 'Truck', 'SUV', '
 const VEHICLE_REGISTRATION_FEES = { homeowner: 200, nonHomeowner: 250 };
 const ROLE_LABELS = {
   admin: 'Administrator',
-  president: 'President',
-  security: 'Security Guard',
-  treasurer: 'Treasurer',
-  auditor: 'Auditor',
-  staff: 'Staff Member',
   homeowner: 'Homeowner',
 };
 
@@ -36,7 +31,6 @@ const MODULE_PERMISSIONS = [
   { id: 'amenities',      label: 'Amenity Bookings',     section: 'MANAGEMENT',  icon: 'ico-building',   desc: 'Facility reservation approvals and schedules' },
   { id: 'vehicles',       label: 'Vehicle Management',   section: 'MANAGEMENT',  icon: 'ico-parking',    desc: 'Approve vehicle registrations and RFID stickers' },
   { id: 'lostfound',      label: 'Lost and Found',        section: 'MANAGEMENT',  icon: 'ico-search',     desc: 'Manage community lost & found listings' },
-  { id: 'announcements',  label: 'Announcements',        section: 'MANAGEMENT',  icon: 'ico-megaphone',  desc: 'Post notices, multi-photo updates, comments' },
   { id: 'board',          label: 'Board of Directors',   section: 'MANAGEMENT',  icon: 'ico-users',      desc: 'Manage elected HOA officers, terms, and leadership' },
   { id: 'reports',        label: 'Reports',              section: 'ANALYTICS',   icon: 'ico-chart',      desc: 'Financial summaries, payment collection charts' },
   { id: 'auditlog',       label: 'Audit Log',            section: 'ANALYTICS',   icon: 'ico-log',        desc: 'Audit trail of administrative system actions' },
@@ -73,25 +67,8 @@ const HOMEOWNER_NAV = [
   { id: 'ho-profile',       icon: 'ico-user',       label: 'My Profile',      section: 'ACCOUNT' },
 ];
 
-const PRESIDENT_NAV = [
-  { id: 'complaints', icon: 'ico-flag', label: 'Complaints', section: 'MANAGEMENT' },
-];
 
-const SECURITY_NAV = [
-  { id: 'complaints', icon: 'ico-flag', label: 'Complaints', section: 'VIEW' },
-  { id: 'vehicles',   icon: 'ico-parking', label: 'Vehicle Management', section: 'VIEW' },
-  { id: 'lostfound',  icon: 'ico-search', label: 'Lost and Found', section: 'VIEW' },
-];
 
-const TREASURER_NAV = [
-  { id: 'payments', icon: 'ico-credit', label: 'Payment Records', section: 'FINANCE' },
-  { id: 'reports',  icon: 'ico-chart',  label: 'Financial Reports', section: 'FINANCE' },
-];
-
-const AUDITOR_NAV = [
-  { id: 'reports', icon: 'ico-chart', label: 'Financial Reports', section: 'AUDIT' },
-  { id: 'billing', icon: 'ico-file',  label: 'Billing Status',     section: 'AUDIT' },
-];
 
 
 // SECTION 2: SEED DATA
@@ -416,23 +393,20 @@ function getNavForRole(role) {
   if (currentUser && Array.isArray(currentUser.permissions) && currentUser.permissions.length > 0) {
     if (role === 'homeowner') {
       const perms = currentUser.permissions;
-      return HOMEOWNER_NAV.filter(item => perms.includes(item.id) || perms.includes('*'));
+      // Resident features are base access for every resident
+      const baseNav = [...HOMEOWNER_NAV];
+      // Include any additional modules granted via module access permissions
+      const additionalNav = ADMIN_NAV.filter(item => perms.includes(item.id) || perms.includes('*'));
+      return [...baseNav, ...additionalNav];
     }
     const perms = currentUser.permissions;
     const permittedNav = ADMIN_NAV.filter(item => perms.includes(item.id) || perms.includes('*'));
     if (permittedNav.length > 0) return permittedNav;
   }
 
-  const navMap = {
-    admin: ADMIN_NAV,
-    homeowner: HOMEOWNER_NAV,
-    president: PRESIDENT_NAV,
-    security: SECURITY_NAV,
-    treasurer: TREASURER_NAV,
-    auditor: AUDITOR_NAV,
-    staff: ADMIN_NAV.filter(item => ['dashboard'].includes(item.id)),
-  };
-  return navMap[role] || HOMEOWNER_NAV;
+  // Default fallback
+  if (role === 'admin') return ADMIN_NAV;
+  return HOMEOWNER_NAV;
 }
 
 function getDefaultViewForRole(role) {
@@ -453,13 +427,13 @@ function userHasModulePermission(moduleId) {
 }
 
 function isAdmin() { return currentUser?.role === 'admin'; }
-function canManageComplaints() { return isAdmin() || userHasModulePermission('complaints') || ['president'].includes(currentUser?.role); }
-function canViewAdminComplaints() { return isAdmin() || userHasModulePermission('complaints') || ['president', 'security'].includes(currentUser?.role); }
+function canManageComplaints() { return isAdmin() || userHasModulePermission('complaints'); }
+function canViewAdminComplaints() { return isAdmin() || userHasModulePermission('complaints'); }
 function canManagePayments() { return isAdmin() || userHasModulePermission('payments'); }
-function canViewPayments() { return isAdmin() || userHasModulePermission('payments') || ['treasurer'].includes(currentUser?.role); }
+function canViewPayments() { return isAdmin() || userHasModulePermission('payments'); }
 function canManageBilling() { return isAdmin() || userHasModulePermission('billing'); }
-function canViewBillingStatus() { return isAdmin() || userHasModulePermission('billing') || ['auditor'].includes(currentUser?.role); }
-function canViewReports() { return isAdmin() || userHasModulePermission('reports') || ['treasurer', 'auditor'].includes(currentUser?.role); }
+function canViewBillingStatus() { return isAdmin() || userHasModulePermission('billing'); }
+function canViewReports() { return isAdmin() || userHasModulePermission('reports'); }
 
 function canAccessView(viewId) {
   if (!currentUser) return false;
@@ -552,12 +526,8 @@ function getSidebarBadgeItems(viewId) {
     'ho-announcements': () => db.get('announcements'),
   };
 
-  if (role === 'treasurer' && viewId === 'reports') {
-    return normalizeSidebarBadgeIds(payments.filter(payment => payment.status === 'pending'));
-  }
-  if (role === 'auditor' && viewId === 'reports') {
-    return normalizeSidebarBadgeIds(billings.filter(billing => getBillingCollectionStatus(billing) !== 'paid'));
-  }
+
+
   if (!itemMap[viewId]) return [];
   return normalizeSidebarBadgeIds(itemMap[viewId]());
 }
@@ -649,7 +619,7 @@ function navigate(viewId) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === viewId);
   });
-  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV, ...PRESIDENT_NAV, ...SECURITY_NAV, ...TREASURER_NAV, ...AUDITOR_NAV];
+  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV];
   const navItem = allNav.find(n => n.id === viewId);
   document.getElementById('topbarTitle').textContent = navItem ? navItem.label : 'Dashboard';
   renderView(viewId);
@@ -665,7 +635,7 @@ function renderAccessDenied(viewId) {
   document.getElementById('topbarTitle').textContent = 'Access Denied';
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
 
-  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV, ...PRESIDENT_NAV, ...SECURITY_NAV, ...TREASURER_NAV, ...AUDITOR_NAV];
+  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV];
   const targetItem = allNav.find(n => n.id === viewId);
   const targetLabel = targetItem ? targetItem.label : viewId;
   const defaultView = getDefaultViewForRole(currentUser ? currentUser.role : 'homeowner');
@@ -1790,8 +1760,8 @@ function renderUserManagement() {
 
   const users = db.get('users');
   const activeCount = users.filter(u => (u.status || 'active') === 'active').length;
-  const staffCount = users.filter(u => u.role !== 'homeowner').length;
-  const hoCount = users.filter(u => u.role === 'homeowner').length;
+  const adminCount = users.filter(u => u.role === 'admin').length;
+  const hoCount = users.filter(u => u.role !== 'admin').length;
 
   area.innerHTML = `
   <div class="page-header">
@@ -1820,8 +1790,8 @@ function renderUserManagement() {
     </div>
     <div class="stat-card">
       <div class="stat-icon" style="background:#e0f2fe;color:#0284c7;"><svg width="22" height="22"><use href="#ico-user"/></svg></div>
-      <div class="stat-value">${staffCount}</div>
-      <div class="stat-label">Staff / Admin Accounts</div>
+      <div class="stat-value">${adminCount}</div>
+      <div class="stat-label">Admin Accounts</div>
     </div>
     <div class="stat-card">
       <div class="stat-icon" style="background:#fef3c7;color:#d97706;"><svg width="22" height="22"><use href="#ico-home"/></svg></div>
@@ -1840,11 +1810,6 @@ function renderUserManagement() {
         <select class="filter-select" id="userRoleFilter" onchange="filterUserManagementTable()">
           <option value="">All Roles</option>
           <option value="admin">Administrator</option>
-          <option value="president">President</option>
-          <option value="treasurer">Treasurer</option>
-          <option value="auditor">Auditor</option>
-          <option value="security">Security Guard</option>
-          <option value="staff">Staff Member</option>
           <option value="homeowner">Homeowner</option>
         </select>
         <select class="filter-select" id="userStatusFilter" onchange="filterUserManagementTable()">
@@ -1931,11 +1896,6 @@ function renderUserManagementRows(filteredUsers = null, resetPage = false) {
 
   const roleColors = {
     admin: '#dc2626',
-    president: '#177a80',
-    treasurer: '#059669',
-    auditor: '#7c3aed',
-    security: '#d97706',
-    staff: '#0284c7',
     homeowner: '#64748b',
   };
 
@@ -1979,7 +1939,9 @@ function renderUserManagementRows(filteredUsers = null, resetPage = false) {
           ${avatarHTML(u, 'avatar-sm')}
           <div>
             <div style="font-weight:700;color:var(--text);font-size:0.88rem;">${escapeHtml(u.name)}</div>
-            ${u.contact ? `<div style="font-size:0.75rem;color:var(--text-3);">${escapeHtml(u.contact)}</div>` : ''}
+            <div style="font-size:0.75rem;color:var(--text-3);">
+              ${[u.block, u.lot].filter(Boolean).join(', ')}${u.contact ? ` &bull; ${escapeHtml(u.contact)}` : ''}
+            </div>
           </div>
         </div>
       </td>
@@ -2085,13 +2047,8 @@ function openCreateAccountModal() {
       <div class="form-group">
         <label>User Role *</label>
         <select id="ca_role" onchange="handleCreateAccountRoleChange()">
-          <option value="staff" selected>Staff Member</option>
+          <option value="homeowner" selected>Homeowner / Resident</option>
           <option value="admin">Administrator (Full Access)</option>
-          <option value="president">President</option>
-          <option value="treasurer">Treasurer</option>
-          <option value="auditor">Auditor</option>
-          <option value="security">Security Guard</option>
-          <option value="homeowner">Homeowner / Resident</option>
         </select>
       </div>
       <div class="form-group">
@@ -2100,8 +2057,8 @@ function openCreateAccountModal() {
       </div>
     </div>
 
-    <!-- Homeowner-specific inputs (hidden by default) -->
-    <div id="ca_ho_fields" class="hidden">
+    <!-- Homeowner-specific inputs (shown by default) -->
+    <div id="ca_ho_fields">
       <div class="grid-2">
         <div class="form-group"><label>Block</label><input id="ca_block" placeholder="e.g. Block 2"/></div>
         <div class="form-group"><label>Lot</label><input id="ca_lot" placeholder="e.g. Lot 5"/></div>
@@ -2157,7 +2114,7 @@ function handleCreateAccountRoleChange() {
   const btnSelectAll = document.getElementById('btnSelectAllPerms');
   if (!role) return;
 
-  if (hoFields) hoFields.classList.toggle('hidden', role !== 'homeowner');
+  if (hoFields) hoFields.classList.toggle('hidden', role === 'admin');
 
   const checkboxes = document.querySelectorAll('#ca_perms_grid .perm-checkbox');
 
@@ -2176,19 +2133,9 @@ function handleCreateAccountRoleChange() {
   if (btnSelectAll) btnSelectAll.disabled = false;
   checkboxes.forEach(cb => { cb.disabled = false; });
 
-  // Recommended role defaults
-  const roleDefaults = {
-    staff: ['dashboard', 'announcements', 'complaints'],
-    president: ['complaints', 'announcements'],
-    treasurer: ['payments', 'reports'],
-    auditor: ['billing', 'reports'],
-    security: ['complaints', 'vehicles', 'lostfound'],
-    homeowner: ['announcements', 'lostfound'],
-  };
-
-  const defaults = roleDefaults[role] || ['dashboard'];
+  // Homeowner default: no extra modules pre-selected (Resident access is implicit)
   checkboxes.forEach(cb => {
-    cb.checked = defaults.includes(cb.value);
+    cb.checked = false;
     updatePermissionCardState(cb);
   });
 }
@@ -2264,7 +2211,7 @@ async function saveCreateAccount() {
     profile_photo: null,
   };
 
-  if (role === 'homeowner') {
+  if (role !== 'admin') {
     newUser.block = formatLocationPart(document.getElementById('ca_block')?.value, 'Block');
     newUser.lot = formatLocationPart(document.getElementById('ca_lot')?.value, 'Lot');
     const lotAreaVal = document.getElementById('ca_lotArea')?.value;
@@ -2301,12 +2248,13 @@ function openEditUserPermissionsModal(userId) {
       ${avatarHTML(u, 'avatar-md')}
       <div style="flex:1;">
         <div style="font-weight:700;font-size:1rem;color:var(--text);">${escapeHtml(u.name)}</div>
-        <div style="font-size:0.8rem;color:var(--text-3);">@${escapeHtml(u.username)} &bull; ${escapeHtml(u.email)}</div>
+        <div style="font-size:0.8rem;color:var(--text-3);">@${escapeHtml(u.username)} &bull; ${escapeHtml(u.email || 'No email')}${u.block || u.lot ? ` &bull; ${escapeHtml([u.block, u.lot].filter(Boolean).join(', '))}` : ''}</div>
         <div style="margin-top:4px;">
           <span class="badge badge-teal" style="font-size:0.72rem;font-weight:700;">${escapeHtml(roleLabel)}</span>
           <span class="${(u.status || 'active') === 'active' ? 'badge-status-active' : 'badge-status-inactive'}" style="margin-left:6px;">
             ● ${(u.status || 'active') === 'active' ? 'Active' : 'Deactivated'}
           </span>
+          ${u.role !== 'admin' ? `<span class="badge" style="background:var(--teal-50);color:var(--teal-700);margin-left:6px;font-size:0.72rem;font-weight:700;">Resident Access (Default)</span>` : ''}
         </div>
       </div>
     </div>
@@ -2387,7 +2335,7 @@ function openEditUserAccountModal(userId) {
   const u = db.getOne('users', userId);
   if (!u) return;
 
-  const isHomeowner = u.role === 'homeowner';
+  const isHomeowner = u.role !== 'admin';
 
   openModal(`Edit Account: ${escapeHtml(u.name)}`, `
     <div class="grid-2">
@@ -2466,7 +2414,7 @@ async function saveEditUserAccount(userId) {
   u.email = email;
   u.contact = contact;
 
-  if (u.role === 'homeowner') {
+  if (u.role !== 'admin') {
     u.block = formatLocationPart(document.getElementById('ea_block')?.value, 'Block');
     u.lot = formatLocationPart(document.getElementById('ea_lot')?.value, 'Lot');
     const lotAreaVal = document.getElementById('ea_lotArea')?.value;
