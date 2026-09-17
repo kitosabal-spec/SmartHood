@@ -2908,17 +2908,29 @@ function closeLoginModalOutside(e) {
 
 function pubScrollTo(e, sectionId) {
   if (e && e.preventDefault) e.preventDefault();
-  const el = document.getElementById(sectionId);
-  if (el) {
-    const offset = 72;
-    const y = el.getBoundingClientRect().top + window.scrollY - offset;
-    window.scrollTo({ top: y, behavior: 'smooth' });
+  if (sectionId === 'hero') {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } else {
+    const el = document.getElementById(sectionId);
+    if (el) {
+      const offset = 72;
+      const y = el.getBoundingClientRect().top + window.scrollY - offset;
+      window.scrollTo({ top: y, behavior: 'smooth' });
+    }
   }
   document.querySelectorAll('.pub-nav-link').forEach(l => l.classList.remove('active'));
   const mapping = { hero: 0, announcements: 1, lostfound: 2, board: 3, about: 4, contact: 5 };
   const links = document.querySelectorAll('.pub-nav-link');
   const idx = mapping[sectionId];
   if (idx !== undefined && links[idx]) links[idx].classList.add('active');
+}
+
+function scrollToTopDashboard() {
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+  const ca = document.getElementById('contentArea');
+  if (ca) ca.scrollTo({ top: 0, behavior: 'smooth' });
+  const main = document.querySelector('.main-wrapper');
+  if (main) main.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function togglePubNav() {

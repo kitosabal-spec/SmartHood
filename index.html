@@ -163,16 +163,16 @@
   <!-- PUBLIC NAVBAR -->
   <nav class="pub-nav" id="pubNav">
     <div class="pub-nav-inner">
-      <div class="pub-nav-brand">
+      <a href="javascript:void(0)" class="pub-nav-brand" onclick="pubScrollTo(event,'hero')" title="SmartHood - Back to Top">
         <div class="pub-nav-logo">
           <img src="public/images/SH Logo.png" alt="SmartHood Logo" class="pub-nav-logo-img">
         </div>
  
         <div>
           <span class="pub-brand-name">SmartHood</span>
-          <span class="pub-brand-tag">Subdivision Management System</span>
+          <span class="pub-brand-tag">Resident Management System</span>
         </div>
-      </div>
+      </a>
 
       <div class="pub-nav-links" id="pubNavLinks">
         <a href="javascript:void(0)" class="pub-nav-link active" onclick="pubScrollTo(event,'hero')">Home</a>
@@ -473,10 +473,10 @@
   <!-- SIDEBAR -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <div class="sidebar-logo" title="San Alfonso Homes">
+      <div class="sidebar-logo" title="Back to top" onclick="scrollToTopDashboard()" style="cursor:pointer">
         <img src="public/images/SH Logo.png" alt="SmartHood Logo" class="sidebar-logo-img">
       </div>
-      <div class="sidebar-brand">
+      <div class="sidebar-brand" onclick="scrollToTopDashboard()" style="cursor:pointer">
         <span class="brand-name">San Alfonso</span>
         <span class="brand-tag">Homes Portal</span>
       </div>

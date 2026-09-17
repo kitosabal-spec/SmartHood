@@ -152,6 +152,15 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 .pub-nav-brand {
   display: flex; align-items: center; gap: 12px;
   text-decoration: none; flex-shrink: 0;
+  cursor: pointer;
+  user-select: none;
+  transition: opacity 0.2s ease;
+}
+.pub-nav-brand:hover {
+  opacity: 0.92;
+}
+.pub-nav-brand:hover .pub-nav-logo-img {
+  transform: scale(1.05);
 }
 .pub-nav-logo {
   width: 42px;
@@ -160,6 +169,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  cursor: pointer;
 }
 .pub-nav-logo img,
 .pub-nav-logo-img {
@@ -169,6 +179,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   object-fit: contain;
   display: block;
   filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.35));
+  transition: transform 0.2s ease;
 }
 .pub-nav-logo svg { width: 100%; height: 100%; }
 .pub-brand-name {
@@ -984,6 +995,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  cursor: pointer;
 }
 .sidebar-logo img,
 .sidebar-logo-img {
@@ -993,6 +1005,10 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   object-fit: contain;
   display: block;
   filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.3));
+  transition: transform 0.2s ease;
+}
+.sidebar-logo:hover .sidebar-logo-img {
+  transform: scale(1.08);
 }
 .sidebar-logo svg { width: 100%; height: 100%; }
 .sidebar-brand {
