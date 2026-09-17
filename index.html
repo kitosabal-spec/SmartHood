@@ -473,7 +473,7 @@
   <!-- SIDEBAR -->
   <aside class="sidebar" id="sidebar">
     <div class="sidebar-header">
-      <div class="sidebar-logo">
+      <div class="sidebar-logo" title="San Alfonso Homes">
         <div class="sh-monogram sh-monogram-sidebar">SH</div>
       </div>
       <div class="sidebar-brand">
@@ -485,7 +485,7 @@
       </button>
     </div>
 
-    <div class="sidebar-user">
+    <div class="sidebar-user" title="User Profile">
       <div class="user-avatar" id="sidebarAvatar">A</div>
       <div class="user-info">
         <div class="user-name" id="sidebarName">Admin</div>
@@ -496,12 +496,13 @@
     <nav class="sidebar-nav" id="sidebarNav"></nav>
 
     <div class="sidebar-footer">
-      <button class="dark-mode-toggle" onclick="toggleDarkMode()">
-        <svg width="16" height="16" id="darkModeIcon"><use href="#ico-moon"/></svg>
-        <span id="darkModeLabel">Dark Mode</span>
+      <button class="dark-mode-toggle" onclick="toggleDarkMode()" title="Dark Mode">
+        <span class="footer-icon"><svg width="16" height="16" id="darkModeIcon"><use href="#ico-moon"/></svg></span>
+        <span id="darkModeLabel" class="footer-label">Dark Mode</span>
       </button>
-      <button class="btn-logout" onclick="handleLogout()">
-        <svg width="16" height="16"><use href="#ico-logout"/></svg> Sign Out
+      <button class="btn-logout" onclick="handleLogout()" title="Sign Out">
+        <span class="footer-icon"><svg width="16" height="16"><use href="#ico-logout"/></svg></span>
+        <span class="footer-label">Sign Out</span>
       </button>
     </div>
   </aside>

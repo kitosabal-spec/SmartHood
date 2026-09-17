@@ -600,11 +600,12 @@ function buildSidebar() {
     const el = document.createElement('div');
     el.className = 'nav-item';
     el.dataset.view = item.id;
+    el.title = item.label;
 
     const badgeCount = getSidebarBadgeCount(item.id);
     const badgeHtml = badgeCount > 0 ? `<span class="nav-badge">${badgeCount > 99 ? '99+' : badgeCount}</span>` : '';
 
-    el.innerHTML = `<span class="nav-icon"><svg width="17" height="17"><use href="#${item.icon}"/></svg></span><span>${item.label}</span>${badgeHtml}`;
+    el.innerHTML = `<span class="nav-icon"><svg width="17" height="17"><use href="#${item.icon}"/></svg></span><span class="nav-label">${item.label}</span>${badgeHtml}`;
     el.addEventListener('click', () => navigate(item.id));
     navEl.appendChild(el);
   });
