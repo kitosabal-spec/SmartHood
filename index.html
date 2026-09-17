@@ -552,6 +552,38 @@
   </div>
 </div>
 
+<!-- BOARD MEMBER PHOTO CROPPER MODAL -->
+<div class="modal-overlay hidden" id="bodCropOverlay" style="z-index: 10001;" onclick="closeBodCropOutside(event)">
+  <div class="modal" style="max-width: 420px;">
+    <div class="modal-header">
+      <h3>Adjust Profile Photo</h3>
+      <button class="modal-close" onclick="closeBodCropModal()" aria-label="Close">
+        <svg width="14" height="14"><use href="#ico-x"/></svg>
+      </button>
+    </div>
+    <div class="modal-body">
+      <div class="crop-modal-content">
+        <p class="crop-modal-hint">Drag to position, use the slider to zoom, then save.</p>
+        <div id="bodCropEditor" class="crop-editor">
+          <div class="crop-viewport bod-crop-viewport" id="bodCropViewport">
+            <img id="bodCropImg" alt="Crop preview" draggable="false"/>
+          </div>
+          <div class="crop-controls">
+            <span aria-hidden="true">−</span>
+            <input type="range" id="bodCropZoom" min="1" max="2" step="0.01" value="1" aria-label="Zoom photo"/>
+            <span aria-hidden="true">+</span>
+          </div>
+        </div>
+        <div id="bodPhotoCropStatus" class="photo-upload-status" style="margin-top:10px;"></div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button type="button" class="btn btn-secondary" onclick="closeBodCropModal()">Cancel</button>
+      <button type="button" class="btn btn-primary" id="bodCropSaveBtn" onclick="applyBodPhotoCrop()">Save Photo</button>
+    </div>
+  </div>
+</div>
+
 <!-- PHOTO CROPPER MODAL -->
 <div class="photo-cropper-overlay hidden" id="photoCropperOverlay">
   <div class="photo-cropper-modal" id="photoCropperModal">

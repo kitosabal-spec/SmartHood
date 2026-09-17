@@ -282,27 +282,219 @@ function filterBoardMembers() {
 }
 
 let pendingBodPhotoFile = null;
+let pendingBodPhotoPreviewUrl = null;
+let bodCropState = null;
 
 function previewBodModalPhoto(input) {
-  const preview = document.getElementById('bodPhotoPreview');
-  const placeholder = document.getElementById('bodPreviewPlaceholder');
-  if (input.files && input.files[0]) {
-    const file = input.files[0];
-    if (file.size > 5 * 1024 * 1024) {
-      showToast('error', 'File Too Large', 'Photo must be 5MB or smaller.');
-      input.value = '';
-      return;
-    }
-    pendingBodPhotoFile = file;
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      if (preview) {
-        preview.src = e.target.result;
-        preview.classList.remove('hidden');
-      }
-      if (placeholder) placeholder.classList.add('hidden');
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const allowedTypes = ['image/jpeg', 'image/png', 'image/webp'];
+  if (!allowedTypes.includes(file.type)) {
+    showToast('error', 'Invalid File', 'Only JPG, PNG, or WebP images are allowed.');
+    input.value = '';
+    return;
+  }
+  if (file.size > 5 * 1024 * 1024) {
+    showToast('error', 'File Too Large', 'Photo must be 5MB or smaller.');
+    input.value = '';
+    return;
+  }
+
+  if (pendingBodPhotoPreviewUrl) {
+    URL.revokeObjectURL(pendingBodPhotoPreviewUrl);
+  }
+  pendingBodPhotoPreviewUrl = URL.createObjectURL(file);
+  openBodCropModal(pendingBodPhotoPreviewUrl, file.type, file.name);
+}
+
+function openBodCropModal(url, mime, filename) {
+  const overlay = document.getElementById('bodCropOverlay');
+  const viewport = document.getElementById('bodCropViewport');
+  const img = document.getElementById('bodCropImg');
+  const zoom = document.getElementById('bodCropZoom');
+  const statusEl = document.getElementById('bodPhotoCropStatus');
+  const saveBtn = document.getElementById('bodCropSaveBtn');
+
+  if (!overlay || !viewport || !img || !zoom) return;
+
+  if (statusEl) statusEl.textContent = '';
+  if (saveBtn) {
+    saveBtn.disabled = false;
+    saveBtn.textContent = 'Save Photo';
+  }
+
+  overlay.classList.remove('hidden');
+
+  bindBodCropViewport(viewport, zoom);
+
+  img.onload = () => {
+    const vw = viewport.clientWidth || 240;
+    const minScale = Math.max(vw / img.naturalWidth, vw / img.naturalHeight);
+    bodCropState = {
+      url, mime, filename, imgEl: img,
+      imgW: img.naturalWidth, imgH: img.naturalHeight, vw,
+      scale: minScale, minScale,
+      x: (vw - img.naturalWidth * minScale) / 2,
+      y: (vw - img.naturalHeight * minScale) / 2,
     };
-    reader.readAsDataURL(file);
+    zoom.min = String(minScale);
+    zoom.max = String(minScale * 4);
+    zoom.step = String(minScale / 50);
+    zoom.value = String(minScale);
+    applyBodCropTransform();
+  };
+  img.src = url;
+}
+
+function clampBodCropPosition(state) {
+  const w = state.imgW * state.scale;
+  const h = state.imgH * state.scale;
+  state.x = Math.min(0, Math.max(state.vw - w, state.x));
+  state.y = Math.min(0, Math.max(state.vw - h, state.y));
+}
+
+function applyBodCropTransform() {
+  if (!bodCropState) return;
+  const img = document.getElementById('bodCropImg');
+  if (!img) return;
+  clampBodCropPosition(bodCropState);
+  img.style.width = `${bodCropState.imgW * bodCropState.scale}px`;
+  img.style.height = 'auto';
+  img.style.transform = `translate(${bodCropState.x}px, ${bodCropState.y}px)`;
+}
+
+function bindBodCropViewport(viewport, zoom) {
+  if (viewport.dataset.cropBound) return;
+  viewport.dataset.cropBound = '1';
+  let dragging = false;
+  let lastX = 0;
+  let lastY = 0;
+
+  viewport.addEventListener('pointerdown', (e) => {
+    if (!bodCropState) return;
+    dragging = true;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    try { viewport.setPointerCapture(e.pointerId); } catch { /* noop */ }
+  });
+
+  viewport.addEventListener('pointermove', (e) => {
+    if (!dragging || !bodCropState) return;
+    bodCropState.x += e.clientX - lastX;
+    bodCropState.y += e.clientY - lastY;
+    lastX = e.clientX;
+    lastY = e.clientY;
+    applyBodCropTransform();
+  });
+
+  const endDrag = () => { dragging = false; };
+  viewport.addEventListener('pointerup', endDrag);
+  viewport.addEventListener('pointercancel', endDrag);
+
+  zoom.addEventListener('input', () => {
+    if (!bodCropState) return;
+    const newScale = Number(zoom.value);
+    if (!Number.isFinite(newScale) || newScale <= 0) return;
+    const cx = bodCropState.vw / 2;
+    const cy = bodCropState.vw / 2;
+    const ratio = newScale / bodCropState.scale;
+    bodCropState.x = cx - (cx - bodCropState.x) * ratio;
+    bodCropState.y = cy - (cy - bodCropState.y) * ratio;
+    bodCropState.scale = newScale;
+    applyBodCropTransform();
+  });
+
+  viewport.addEventListener('wheel', (e) => {
+    if (!bodCropState) return;
+    e.preventDefault();
+    const step = (Number(zoom.max) - Number(zoom.min)) / 20;
+    const delta = e.deltaY < 0 ? step : -step;
+    const newScale = Math.min(Number(zoom.max), Math.max(Number(zoom.min), bodCropState.scale + delta));
+    zoom.value = String(newScale);
+    zoom.dispatchEvent(new Event('input'));
+  }, { passive: false });
+}
+
+function closeBodCropModal() {
+  const overlay = document.getElementById('bodCropOverlay');
+  if (overlay) overlay.classList.add('hidden');
+  bodCropState = null;
+  const input = document.getElementById('bod_photo_input');
+  if (input) input.value = '';
+}
+
+function closeBodCropOutside(e) {
+  if (e.target === document.getElementById('bodCropOverlay')) {
+    closeBodCropModal();
+  }
+}
+
+async function applyBodPhotoCrop() {
+  if (!bodCropState || !bodCropState.imgEl) {
+    showToast('error', 'No Photo', 'Please choose a photo first.');
+    return;
+  }
+  const saveBtn = document.getElementById('bodCropSaveBtn');
+  if (saveBtn) {
+    saveBtn.disabled = true;
+    saveBtn.textContent = 'Processing...';
+  }
+
+  try {
+    const st = bodCropState;
+    const side = st.vw / st.scale;
+    const sx = -st.x / st.scale;
+    const sy = -st.y / st.scale;
+    const OUT = 512;
+    const canvas = document.createElement('canvas');
+    canvas.width = OUT;
+    canvas.height = OUT;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      throw new Error('Canvas cropping is not supported in this browser.');
+    }
+    ctx.drawImage(st.imgEl, sx, sy, side, side, 0, 0, OUT, OUT);
+
+    const mime = st.mime === 'image/png' ? 'image/png' : (st.mime === 'image/webp' ? 'image/webp' : 'image/jpeg');
+    const ext = mime === 'image/png' ? '.png' : (mime === 'image/webp' ? '.webp' : '.jpg');
+
+    const file = await new Promise((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob) {
+          reject(new Error('Could not process the cropped image.'));
+          return;
+        }
+        try {
+          resolve(new File([blob], `bod-${Date.now().toString(36)}${ext}`, { type: mime }));
+        } catch {
+          blob.name = `bod-${Date.now().toString(36)}${ext}`;
+          resolve(blob);
+        }
+      }, mime, 0.92);
+    });
+
+    pendingBodPhotoFile = file;
+
+    // Update modal preview
+    const preview = document.getElementById('bodPhotoPreview');
+    const placeholder = document.getElementById('bodPreviewPlaceholder');
+    if (preview) {
+      preview.src = canvas.toDataURL(mime, 0.92);
+      preview.classList.remove('hidden');
+    }
+    if (placeholder) {
+      placeholder.classList.add('hidden');
+    }
+
+    closeBodCropModal();
+    showToast('success', 'Photo Adjusted', 'Profile photo cropped and ready to save.');
+  } catch (err) {
+    console.error(err);
+    showToast('error', 'Crop Error', err.message || 'Failed to crop photo.');
+    if (saveBtn) {
+      saveBtn.disabled = false;
+      saveBtn.textContent = 'Save Photo';
+    }
   }
 }
 
@@ -319,6 +511,10 @@ function handleBodPositionChange(select) {
 
 function openAddBoardMemberModal() {
   pendingBodPhotoFile = null;
+  if (pendingBodPhotoPreviewUrl) {
+    URL.revokeObjectURL(pendingBodPhotoPreviewUrl);
+    pendingBodPhotoPreviewUrl = null;
+  }
   const bodyHtml = `
     <div style="display:flex;flex-direction:column;gap:16px;">
       <div class="form-group">
@@ -386,6 +582,10 @@ function openAddBoardMemberModal() {
 
 function openEditBoardMemberModal(memberId) {
   pendingBodPhotoFile = null;
+  if (pendingBodPhotoPreviewUrl) {
+    URL.revokeObjectURL(pendingBodPhotoPreviewUrl);
+    pendingBodPhotoPreviewUrl = null;
+  }
   const m = db.getOne('board_of_directors', memberId);
   if (!m) {
     showToast('error', 'Error', 'Board member not found.');
@@ -524,6 +724,11 @@ async function saveBoardMember(isEdit, memberId = null) {
     dbCache['board_of_directors'] = updatedList;
 
     closeModal();
+    pendingBodPhotoFile = null;
+    if (pendingBodPhotoPreviewUrl) {
+      URL.revokeObjectURL(pendingBodPhotoPreviewUrl);
+      pendingBodPhotoPreviewUrl = null;
+    }
     showToast('success', 'Success', isEdit ? 'Board member updated successfully.' : 'New board member added successfully.');
     renderBoardOfDirectorsManagement();
     renderPublicBoardOfDirectors();

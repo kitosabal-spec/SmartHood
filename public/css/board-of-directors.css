@@ -253,4 +253,9 @@
   }
 }
 
+/* ── Board Member Photo Cropper (Square profile photo) ── */
+.bod-crop-viewport::after {
+  border-radius: var(--radius-md, 8px) !important;
+}
+
 
