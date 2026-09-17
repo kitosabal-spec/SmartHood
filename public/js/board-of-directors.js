@@ -2,6 +2,10 @@
    Board of Directors: Public Homepage & Admin Management
 ════════════════════════════════════════════════════════════ */
 
+function getPositionBadgeClass(pos) {
+  return 'pub-board-pos-vp';
+}
+
 async function renderPublicBoardOfDirectors() {
   const container = document.getElementById('pubBoardContainer');
   if (!container) return;
@@ -41,16 +45,6 @@ async function renderPublicBoardOfDirectors() {
   // Find President
   const president = members.find(m => (m.position || '').trim().toLowerCase() === 'president') || members[0];
   const otherMembers = members.filter(m => m.id !== president.id);
-
-  function getPositionBadgeClass(pos) {
-    const p = (pos || '').toLowerCase();
-    if (p.includes('president') && !p.includes('vice')) return 'pub-board-pos-pres';
-    if (p.includes('vice')) return 'pub-board-pos-vp';
-    if (p.includes('secretary')) return 'pub-board-pos-sec';
-    if (p.includes('treasurer')) return 'pub-board-pos-treas';
-    if (p.includes('auditor')) return 'pub-board-pos-aud';
-    return 'pub-board-pos-default';
-  }
 
   function getPhotoHtml(m, isPres = false) {
     const photoUrl = m.photo ? escapeHtml(m.photo) : null;
@@ -115,27 +109,20 @@ async function renderPublicBoardOfDirectors() {
 
 // ── Admin Board of Directors Management ──
 
-function renderBoardOfDirectorsManagement(filtered = null) {
+function renderBoardOfDirectorsManagement() {
   const area = document.getElementById('contentArea');
   if (!area) return;
-
-  const members = filtered || db.get('board_of_directors') || [];
-  const sorted = [...members].sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0));
 
   const allMembers = db.get('board_of_directors') || [];
   const totalCount = allMembers.length;
   const sampleTerm = allMembers.find(m => m.term_years && m.term_years.trim())?.term_years || '2026 - 2028';
   const hasPres = allMembers.some(m => (m.position || '').toLowerCase().includes('president') && !(m.position || '').toLowerCase().includes('vice'));
 
-  function getPositionBadgeClass(pos) {
-    const p = (pos || '').toLowerCase();
-    if (p.includes('president') && !p.includes('vice')) return 'pub-board-pos-pres';
-    if (p.includes('vice')) return 'pub-board-pos-vp';
-    if (p.includes('secretary')) return 'pub-board-pos-sec';
-    if (p.includes('treasurer')) return 'pub-board-pos-treas';
-    if (p.includes('auditor')) return 'pub-board-pos-aud';
-    return 'pub-board-pos-default';
-  }
+  const standardPositions = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor'];
+  const allPositions = Array.from(new Set([
+    ...standardPositions,
+    ...allMembers.map(m => (m.position || '').trim()).filter(Boolean)
+  ]));
 
   area.innerHTML = `
     <div class="page-header">
@@ -184,11 +171,7 @@ function renderBoardOfDirectorsManagement(filtered = null) {
           </div>
           <select class="filter-select" id="bodPositionFilter" onchange="filterBoardMembers()">
             <option value="">All Positions</option>
-            <option value="President">President</option>
-            <option value="Vice President">Vice President</option>
-            <option value="Secretary">Secretary</option>
-            <option value="Treasurer">Treasurer</option>
-            <option value="Auditor">Auditor</option>
+            ${allPositions.map(pos => `<option value="${escapeHtml(pos)}">${escapeHtml(pos)}</option>`).join('')}
           </select>
         </div>
       </div>
@@ -206,62 +189,78 @@ function renderBoardOfDirectorsManagement(filtered = null) {
                 <th style="text-align:right;">Actions</th>
               </tr>
             </thead>
-            <tbody>
-              ${sorted.length ? sorted.map(m => {
-                const initial = (m.name || 'B').charAt(0).toUpperCase();
-                const photoHtml = m.photo
-                  ? `<img src="${escapeHtml(m.photo)}" alt="${escapeHtml(m.name)}" class="bod-table-avatar" onerror="this.outerHTML='<div class=\\'bod-table-avatar\\' style=\\'display:flex;align-items:center;justify-content:center;background:var(--teal-100);color:var(--teal-800);font-weight:700;\\'>${initial}</div>'" />`
-                  : `<div class="bod-table-avatar" style="display:flex;align-items:center;justify-content:center;background:var(--teal-100);color:var(--teal-800);font-weight:700;">${initial}</div>`;
-                return `
-                  <tr>
-                    <td>${photoHtml}</td>
-                    <td>
-                      <strong>${escapeHtml(m.name)}</strong>
-                    </td>
-                    <td>
-                      <span class="pub-board-pos-badge ${getPositionBadgeClass(m.position)}" style="margin-bottom:0;font-size:0.73rem;">
-                        ${escapeHtml(m.position)}
-                      </span>
-                    </td>
-                    <td>
-                      <span style="font-family:monospace;font-weight:600;color:var(--text-2);">${escapeHtml(m.contact_number || '—')}</span>
-                    </td>
-                    <td>
-                      <span class="badge badge-gray">${escapeHtml(m.term_years || '2026 - 2028')}</span>
-                    </td>
-                    <td>
-                      <span style="font-weight:700;color:var(--text-3);">${m.display_order ?? 0}</span>
-                    </td>
-                    <td style="text-align:right;">
-                      <div class="td-actions" style="justify-content:flex-end;">
-                        <button class="btn btn-secondary btn-sm" onclick="openEditBoardMemberModal('${m.id}')">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                          Edit
-                        </button>
-                        <button class="btn btn-danger btn-sm" onclick="confirmDeleteBoardMember('${m.id}')">
-                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
-                          Delete
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                `;
-              }).join('') : `
-                <tr>
-                  <td colspan="7">
-                    <div class="no-results" style="padding:32px;">
-                      <svg style="width:2rem;height:2rem;color:var(--text-3);"><use href="#ico-users"/></svg>
-                      No board members found. Click "Add Board Member" to create one.
-                    </div>
-                  </td>
-                </tr>
-              `}
+            <tbody id="bodTableBody">
             </tbody>
           </table>
         </div>
       </div>
     </div>
   `;
+
+  renderBoardMembersTable();
+}
+
+function renderBoardMembersTable(filtered = null) {
+  const tbody = document.getElementById('bodTableBody');
+  if (!tbody) return;
+
+  const members = filtered !== null ? filtered : (db.get('board_of_directors') || []);
+  const sorted = [...members].sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0));
+
+  if (!sorted.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="7">
+          <div class="no-results" style="padding:32px;">
+            <svg style="width:2rem;height:2rem;color:var(--text-3);"><use href="#ico-users"/></svg>
+            No board members found.
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = sorted.map(m => {
+    const initial = (m.name || 'B').charAt(0).toUpperCase();
+    const photoHtml = m.photo
+      ? `<img src="${escapeHtml(m.photo)}" alt="${escapeHtml(m.name)}" class="bod-table-avatar" onerror="this.outerHTML='<div class=\\'bod-table-avatar\\' style=\\'display:flex;align-items:center;justify-content:center;background:var(--teal-100);color:var(--teal-800);font-weight:700;\\'>${initial}</div>'" />`
+      : `<div class="bod-table-avatar" style="display:flex;align-items:center;justify-content:center;background:var(--teal-100);color:var(--teal-800);font-weight:700;">${initial}</div>`;
+    return `
+      <tr>
+        <td>${photoHtml}</td>
+        <td>
+          <strong>${escapeHtml(m.name)}</strong>
+        </td>
+        <td>
+          <span class="pub-board-pos-badge ${getPositionBadgeClass(m.position)}" style="margin-bottom:0;font-size:0.73rem;">
+            ${escapeHtml(m.position)}
+          </span>
+        </td>
+        <td>
+          <span style="font-family:monospace;font-weight:600;color:var(--text-2);">${escapeHtml(m.contact_number || '—')}</span>
+        </td>
+        <td>
+          <span class="badge badge-gray">${escapeHtml(m.term_years || '2026 - 2028')}</span>
+        </td>
+        <td>
+          <span style="font-weight:700;color:var(--text-3);">${m.display_order ?? 0}</span>
+        </td>
+        <td style="text-align:right;">
+          <div class="td-actions" style="justify-content:flex-end;">
+            <button class="btn btn-secondary btn-sm" onclick="openEditBoardMemberModal('${m.id}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+              Edit
+            </button>
+            <button class="btn btn-danger btn-sm" onclick="confirmDeleteBoardMember('${m.id}')">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
+              Delete
+            </button>
+          </div>
+        </td>
+      </tr>
+    `;
+  }).join('');
 }
 
 function filterBoardMembers() {
@@ -275,11 +274,11 @@ function filterBoardMembers() {
       (m.position || '').toLowerCase().includes(query) ||
       (m.contact_number || '').toLowerCase().includes(query) ||
       (m.term_years || '').toLowerCase().includes(query);
-    const matchesPos = !posFilter || (m.position || '').toLowerCase().includes(posFilter);
+    const matchesPos = !posFilter || (m.position || '').trim().toLowerCase() === posFilter;
     return matchesQuery && matchesPos;
   });
 
-  renderBoardOfDirectorsManagement(filtered);
+  renderBoardMembersTable(filtered);
 }
 
 let pendingBodPhotoFile = null;
