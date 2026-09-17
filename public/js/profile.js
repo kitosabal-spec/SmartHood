@@ -395,6 +395,7 @@ function confirmResetData() {
   openModal('Reset All Data', '<p style="color:var(--red-600)"><strong>Warning:</strong> This will delete all data and re-seed the system. You will be logged out.</p>', [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
     { label: 'Reset', cls: 'btn-danger', action: async () => {
+      sessionStorage.removeItem('sah_session');
       localStorage.removeItem('sah_session');
       await api.reset();
       closeModal();

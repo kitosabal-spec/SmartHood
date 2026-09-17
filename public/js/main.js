@@ -173,7 +173,16 @@ const api = {
 
     if (!response.ok) {
       const err = await response.json().catch(() => ({ error: 'Request failed.' }));
-      throw new Error(err.error || 'Request failed.');
+      const errMsg = err.error || 'Request failed.';
+      if (path !== '/api/login' && (response.status === 401 || (response.status === 403 && errMsg.toLowerCase().includes('deactivated')))) {
+        if (typeof performLogout === 'function' && typeof currentUser !== 'undefined' && currentUser) {
+          performLogout();
+          if (typeof showLoginError === 'function') {
+            showLoginError(errMsg || 'Your session has expired. Please sign in again.');
+          }
+        }
+      }
+      throw new Error(errMsg);
     }
 
     return response.json();
@@ -327,7 +336,16 @@ async function handleLogin() {
     hideLoading();
     currentRole = user.role;
     currentUser = db.getOne('users', user.id) || user;
-    localStorage.setItem('sah_session', JSON.stringify({ id: user.id, role: user.role }));
+
+    // Immediately wipe password from the input field
+    const passInput = document.getElementById('loginPass');
+    if (passInput) passInput.value = '';
+
+    // Store session exclusively in sessionStorage (destroyed on tab/browser close)
+    sessionStorage.setItem('sah_session', JSON.stringify({ id: user.id, role: user.role }));
+    // Wipe any legacy persistent session from localStorage
+    localStorage.removeItem('sah_session');
+
     closeLoginModal();
     document.getElementById('landingPage').classList.add('hidden');
     initApp();
@@ -354,21 +372,53 @@ function showLoginError(msg) {
 
 function restoreSession() {
   try {
-    const sess = JSON.parse(localStorage.getItem('sah_session'));
-    if (!sess) return false;
+    // Session is strictly tab/browser-session based (sessionStorage)
+    const raw = sessionStorage.getItem('sah_session');
+    if (!raw) {
+      currentUser = null;
+      currentRole = null;
+      return false;
+    }
+    const sess = JSON.parse(raw);
+    if (!sess || !sess.id) {
+      sessionStorage.removeItem('sah_session');
+      currentUser = null;
+      currentRole = null;
+      return false;
+    }
     const user = db.getOne('users', sess.id);
-    if (!user) return false;
+    if (!user) {
+      sessionStorage.removeItem('sah_session');
+      currentUser = null;
+      currentRole = null;
+      return false;
+    }
+    if (user.status === 'inactive' || user.status === 'deactivated') {
+      sessionStorage.removeItem('sah_session');
+      currentUser = null;
+      currentRole = null;
+      return false;
+    }
     currentUser = user;
     currentRole = user.role;
     return true;
-  } catch { return false; }
+  } catch {
+    try { sessionStorage.removeItem('sah_session'); } catch {}
+    currentUser = null;
+    currentRole = null;
+    return false;
+  }
 }
 
 
 // SECTION 5: APP INIT & NAV
 
 
-function initApp() {
+function initApp(targetView) {
+  if (!currentUser || !restoreSession()) {
+    performLogout();
+    return;
+  }
   const landing = document.getElementById('landingPage');
   if (landing) landing.classList.add('hidden');
   const loginModal = document.getElementById('loginModal');
@@ -377,11 +427,13 @@ function initApp() {
   document.body.style.overflow = '';
   buildSidebar();
   setupSidebarOverlay();
-  const defaultView = pendingPostLoginView && currentUser.role === 'homeowner'
-    ? pendingPostLoginView
-    : getDefaultViewForRole(currentUser.role);
+  const defaultView = (targetView && canAccessView(targetView))
+    ? targetView
+    : (pendingPostLoginView && currentUser.role === 'homeowner'
+        ? pendingPostLoginView
+        : getDefaultViewForRole(currentUser.role));
   pendingPostLoginView = null;
-  navigate(defaultView);
+  navigate(defaultView, false);
   updateNotifBadge();
   startNotificationRefresh();
 }
@@ -611,7 +663,11 @@ function buildSidebar() {
   });
 }
 
-function navigate(viewId) {
+function navigate(viewId, pushHistory = true) {
+  if (!currentUser || !restoreSession()) {
+    performLogout();
+    return;
+  }
   if (!canAccessView(viewId)) {
     renderAccessDenied(viewId);
     return;
@@ -628,6 +684,14 @@ function navigate(viewId) {
   updateSidebarBadges();
   if (window.innerWidth <= 900) closeSidebar();
   document.getElementById('notifPanel').classList.add('hidden');
+
+  if (pushHistory) {
+    try {
+      if (window.location.hash !== '#' + viewId) {
+        window.history.pushState({ auth: true, view: viewId }, '', '#' + viewId);
+      }
+    } catch {}
+  }
 }
 
 function renderAccessDenied(viewId) {
@@ -2899,6 +2963,8 @@ function openAmenityBookingLogin() {
 function closeLoginModal() {
   const lm = document.getElementById('loginModal');
   if (lm) lm.classList.add('hidden');
+  const lp = document.getElementById('loginPass');
+  if (lp) lp.value = '';
   document.body.style.overflow = '';
 }
 
@@ -2958,12 +3024,27 @@ function showLandingPage() {
 }
 
 function performLogout() {
-  localStorage.removeItem('sah_session');
+  try {
+    sessionStorage.removeItem('sah_session');
+    localStorage.removeItem('sah_session');
+  } catch {}
   stopNotificationRefresh();
   currentUser = null;
+  currentRole = null;
   updateNotifBadge();
+
+  // Wipe protected UI content from memory & DOM
+  const contentArea = document.getElementById('contentArea');
+  if (contentArea) contentArea.innerHTML = '';
+  const sidebarNav = document.getElementById('sidebarNav');
+  if (sidebarNav) sidebarNav.innerHTML = '';
+
   document.getElementById('appShell').classList.add('hidden');
   showLandingPage();
+  openLoginModal();
+  try {
+    window.history.replaceState({ auth: false }, '', window.location.pathname + '#login');
+  } catch {}
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -2977,8 +3058,14 @@ function handleLogout() {
 
 // SECTION 25: BOOTSTRAP
 
+const PUBLIC_HASHES = new Set(['hero', 'announcements', 'lostfound', 'board', 'about', 'contact', 'login']);
 
 async function init() {
+  // Always wipe any legacy persistent session from localStorage
+  try {
+    localStorage.removeItem('sah_session');
+  } catch {}
+
   try {
     await seedData();
   } catch (error) {
@@ -2992,23 +3079,71 @@ async function init() {
     return;
   }
   applyStoredTheme();
+
+  const currentHash = (window.location.hash || '').replace(/^#/, '');
+
   if (restoreSession()) {
+    const targetView = (!PUBLIC_HASHES.has(currentHash) && currentHash) ? currentHash : null;
     document.getElementById('landingPage').classList.add('hidden');
-    initApp();
+    initApp(targetView);
   } else {
+    currentUser = null;
+    currentRole = null;
+    const contentArea = document.getElementById('contentArea');
+    if (contentArea) contentArea.innerHTML = '';
+    const sidebarNav = document.getElementById('sidebarNav');
+    if (sidebarNav) sidebarNav.innerHTML = '';
+    document.getElementById('appShell').classList.add('hidden');
+
     showLandingPage();
-    if (window.location.hash) {
-      const hashSec = window.location.hash.replace('#', '');
-      const el = document.getElementById(hashSec);
-      if (el) {
-        const offset = 72;
-        const y = el.getBoundingClientRect().top + window.scrollY - offset;
-        window.scrollTo({ top: y, behavior: 'instant' });
+
+    if (currentHash && PUBLIC_HASHES.has(currentHash)) {
+      if (currentHash === 'login') {
+        openLoginModal();
+      } else {
+        const el = document.getElementById(currentHash);
+        if (el) {
+          const offset = 72;
+          const y = el.getBoundingClientRect().top + window.scrollY - offset;
+          window.scrollTo({ top: y, behavior: 'instant' });
+        }
+        pubScrollTo(null, currentHash);
       }
-      pubScrollTo(null, hashSec);
+    } else {
+      // Opening site cleanly or direct URL to protected page when unauthenticated:
+      // Immediately present the login modal/page!
+      openLoginModal();
+      if (currentHash) {
+        try {
+          window.history.replaceState({ auth: false }, '', window.location.pathname + '#login');
+        } catch {}
+      }
     }
   }
 }
+
+// Intercept browser Back/Forward navigation
+window.addEventListener('popstate', () => {
+  if (!restoreSession()) {
+    performLogout();
+    return;
+  }
+  const hash = (window.location.hash || '').replace(/^#/, '');
+  if (hash && canAccessView(hash)) {
+    navigate(hash, false);
+  } else {
+    navigate(getDefaultViewForRole(currentUser.role), false);
+  }
+});
+
+// Intercept page restore from back-forward cache (bfcache)
+window.addEventListener('pageshow', (e) => {
+  if (e.persisted) {
+    if (!restoreSession()) {
+      performLogout();
+    }
+  }
+});
 
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', init);

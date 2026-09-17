@@ -1520,6 +1520,9 @@ app.get('/api/health', asyncHandler(async (req, res) => {
 }));
 
 app.get('/api/data', asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.json(await loadAllData());
 }));
 
@@ -1969,6 +1972,9 @@ app.post('/api/reset', asyncHandler(async (req, res) => {
 }));
 
 app.get(['/', '/index.html'], (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
   res.sendFile(path.join(__dirname, 'index.html'));
 });
 
