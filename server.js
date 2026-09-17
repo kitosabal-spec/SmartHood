@@ -521,11 +521,11 @@ async function createTables() {
     title TEXT,
     message LONGTEXT,
     time TEXT,
-    audience TEXT DEFAULT 'all',
+    audience VARCHAR(255) DEFAULT 'all',
     targetIds LONGTEXT,
     dismissedBy LONGTEXT
   )`);
-  await run(`ALTER TABLE notifications ADD COLUMN audience TEXT DEFAULT 'all'`).catch(() => {});
+  await run(`ALTER TABLE notifications ADD COLUMN audience VARCHAR(255) DEFAULT 'all'`).catch(() => {});
   await run(`ALTER TABLE notifications ADD COLUMN targetIds LONGTEXT`).catch(() => {});
   await run(`ALTER TABLE notifications ADD COLUMN dismissedBy LONGTEXT`).catch(() => {});
 
