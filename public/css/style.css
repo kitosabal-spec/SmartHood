@@ -282,7 +282,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   text-decoration: none;
   cursor: pointer;
 }
-.pub-mobile-nav a:hover { background: rgba(255,255,255,0.07); color: #fff; }
+.pub-mobile-nav a:hover,
+.pub-mobile-nav a.active { background: rgba(255,255,255,0.12); color: #fff; }
 .pub-mobile-login-btn {
   margin-top: 4px; padding: 11px 14px;
   border-radius: var(--radius);

@@ -1,5 +1,9 @@
 'use strict';
 
+if ('scrollRestoration' in history) {
+  history.scrollRestoration = 'manual';
+}
+
 // SECTION 1: STATE & CONSTANTS
 let currentUser = null;
 let currentRole = 'admin';
@@ -2935,7 +2939,11 @@ document.addEventListener('click', e => {
 window.addEventListener('scroll', () => {
   const nav = document.getElementById('pubNav');
   if (nav) nav.classList.toggle('scrolled', window.scrollY > 40);
+  updateActivePubNavOnScroll();
 });
+
+window.addEventListener('wheel', () => { isManualPubScrolling = false; }, { passive: true });
+window.addEventListener('touchmove', () => { isManualPubScrolling = false; }, { passive: true });
 
 
 // SECTION 24: LANDING PAGE FUNCTIONS
@@ -2982,8 +2990,76 @@ function closeLoginModalOutside(e) {
   if (e.target === document.getElementById('loginModal')) closeLoginModal();
 }
 
+let isManualPubScrolling = false;
+let pubScrollTimer = null;
+
+function setActivePubNav(sectionId) {
+  const targetId = sectionId || 'hero';
+  const mapping = { hero: 0, announcements: 1, lostfound: 2, board: 3, about: 4, contact: 5 };
+  const links = document.querySelectorAll('.pub-nav-link');
+  links.forEach((l, idx) => {
+    const isTarget = l.getAttribute('data-pub-section')
+      ? l.getAttribute('data-pub-section') === targetId
+      : (mapping[targetId] !== undefined && idx === mapping[targetId]);
+    l.classList.toggle('active', isTarget);
+  });
+
+  const mobLinks = document.querySelectorAll('.pub-mobile-nav a[data-pub-section]');
+  mobLinks.forEach(l => {
+    l.classList.toggle('active', l.getAttribute('data-pub-section') === targetId);
+  });
+}
+
+function updateActivePubNavOnScroll() {
+  if (isManualPubScrolling) return;
+  const landingPage = document.getElementById('landingPage');
+  if (!landingPage || landingPage.classList.contains('hidden')) return;
+
+  const scrollY = window.scrollY || window.pageYOffset || 0;
+
+  if (scrollY < 100) {
+    setActivePubNav('hero');
+    return;
+  }
+
+  const scrollHeight = Math.max(
+    document.body.scrollHeight,
+    document.documentElement.scrollHeight,
+    document.body.offsetHeight,
+    document.documentElement.offsetHeight,
+    document.body.clientHeight,
+    document.documentElement.clientHeight
+  );
+  if ((window.innerHeight + scrollY) >= (scrollHeight - 60)) {
+    setActivePubNav('contact');
+    return;
+  }
+
+  const sectionIds = ['hero', 'announcements', 'lostfound', 'board', 'about', 'contact'];
+  const offset = 100;
+  let currentSection = 'hero';
+
+  for (const id of sectionIds) {
+    const el = document.getElementById(id);
+    if (el) {
+      const rect = el.getBoundingClientRect();
+      if (rect.top <= offset) {
+        currentSection = id;
+      }
+    }
+  }
+
+  setActivePubNav(currentSection);
+}
+
 function pubScrollTo(e, sectionId) {
   if (e && e.preventDefault) e.preventDefault();
+  isManualPubScrolling = true;
+  clearTimeout(pubScrollTimer);
+  pubScrollTimer = setTimeout(() => {
+    isManualPubScrolling = false;
+  }, 1000);
+
   if (sectionId === 'hero') {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   } else {
@@ -2994,11 +3070,7 @@ function pubScrollTo(e, sectionId) {
       window.scrollTo({ top: y, behavior: 'smooth' });
     }
   }
-  document.querySelectorAll('.pub-nav-link').forEach(l => l.classList.remove('active'));
-  const mapping = { hero: 0, announcements: 1, lostfound: 2, board: 3, about: 4, contact: 5 };
-  const links = document.querySelectorAll('.pub-nav-link');
-  const idx = mapping[sectionId];
-  if (idx !== undefined && links[idx]) links[idx].classList.add('active');
+  setActivePubNav(sectionId);
 }
 
 function scrollToTopDashboard() {
@@ -3031,6 +3103,7 @@ function showLandingPage() {
   renderPublicBoardOfDirectors();
   updateHeroStat();
   applyStoredTheme();
+  setActivePubNav('hero');
 }
 
 function performLogout() {
@@ -3109,23 +3182,21 @@ async function init() {
 
     showLandingPage();
 
-    if (!currentHash || currentHash === 'hero') {
-      // Clean site visit or hero section: Show normal public landing page.
-      // Do NOT automatically redirect to login or open login modal!
+    if (!currentHash || currentHash === 'hero' || PUBLIC_LANDING_SECTIONS.has(currentHash)) {
+      // Clean site visit, hero section, or public landing section:
+      // Always initialize Home as displayed section and set Home active!
       closeLoginModal();
-      if (currentHash === 'hero') {
-        pubScrollTo(null, 'hero');
+      if (currentHash && currentHash !== 'hero') {
+        try {
+          window.history.replaceState({ auth: false }, '', window.location.pathname);
+        } catch {}
       }
-    } else if (PUBLIC_LANDING_SECTIONS.has(currentHash)) {
-      // Public landing page sections: announcements, lostfound, board, about, contact
-      closeLoginModal();
-      const el = document.getElementById(currentHash);
-      if (el) {
-        const offset = 72;
-        const y = el.getBoundingClientRect().top + window.scrollY - offset;
-        window.scrollTo({ top: y, behavior: 'instant' });
-      }
-      pubScrollTo(null, currentHash);
+      setActivePubNav('hero');
+      window.scrollTo({ top: 0, behavior: 'instant' });
+      requestAnimationFrame(() => {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        setActivePubNav('hero');
+      });
     } else if (currentHash === 'login') {
       // Keep Login page available through its normal route/button
       openLoginModal();
@@ -3162,6 +3233,7 @@ window.addEventListener('popstate', () => {
         pubScrollTo(null, hash);
       } else {
         window.scrollTo({ top: 0, behavior: 'smooth' });
+        setActivePubNav('hero');
       }
     }
     return;
@@ -3182,7 +3254,26 @@ window.addEventListener('pageshow', (e) => {
       const wasInApp = appShell && !appShell.classList.contains('hidden');
       if (wasInApp) {
         performLogout();
+      } else {
+        window.scrollTo({ top: 0, behavior: 'instant' });
+        setActivePubNav('hero');
       }
+    }
+  }
+});
+
+window.addEventListener('beforeunload', () => {
+  if (!restoreSession()) {
+    window.scrollTo(0, 0);
+  }
+});
+
+window.addEventListener('load', () => {
+  if (!restoreSession()) {
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    if (!hash || hash === 'hero' || PUBLIC_LANDING_SECTIONS.has(hash)) {
+      window.scrollTo(0, 0);
+      setActivePubNav('hero');
     }
   }
 });

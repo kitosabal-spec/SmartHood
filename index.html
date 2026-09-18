@@ -18,6 +18,12 @@
   <link rel="stylesheet" href="public/css/board-of-directors.css" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400;1,600&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <script>
+    if ('scrollRestoration' in history) {
+      history.scrollRestoration = 'manual';
+    }
+    window.scrollTo(0, 0);
+  </script>
 </head>
 <body>
 
@@ -175,12 +181,12 @@
       </a>
 
       <div class="pub-nav-links" id="pubNavLinks">
-        <a href="javascript:void(0)" class="pub-nav-link active" onclick="pubScrollTo(event,'hero')">Home</a>
-        <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'announcements')">Announcements</a>
-        <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'lostfound')">Lost &amp; Found</a>
-        <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'board')">Board of Directors</a>
-        <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'about')">About</a>
-        <a href="javascript:void(0)" class="pub-nav-link" onclick="pubScrollTo(event,'contact')">Contact</a>
+        <a href="javascript:void(0)" class="pub-nav-link active" data-pub-section="hero" onclick="pubScrollTo(event,'hero')">Home</a>
+        <a href="javascript:void(0)" class="pub-nav-link" data-pub-section="announcements" onclick="pubScrollTo(event,'announcements')">Announcements</a>
+        <a href="javascript:void(0)" class="pub-nav-link" data-pub-section="lostfound" onclick="pubScrollTo(event,'lostfound')">Lost &amp; Found</a>
+        <a href="javascript:void(0)" class="pub-nav-link" data-pub-section="board" onclick="pubScrollTo(event,'board')">Board of Directors</a>
+        <a href="javascript:void(0)" class="pub-nav-link" data-pub-section="about" onclick="pubScrollTo(event,'about')">About</a>
+        <a href="javascript:void(0)" class="pub-nav-link" data-pub-section="contact" onclick="pubScrollTo(event,'contact')">Contact</a>
       </div>
 
       <div class="pub-nav-actions">
@@ -196,22 +202,22 @@
 
   <!-- MOBILE NAV DRAWER -->
   <div class="pub-mobile-nav hidden" id="pubMobileNav">
-    <a href="javascript:void(0)" onclick="pubScrollTo(event,'hero');togglePubNav()">
+    <a href="javascript:void(0)" data-pub-section="hero" onclick="pubScrollTo(event,'hero');togglePubNav()">
       <svg class="mob-ico"><use href="#ico-home"/></svg> Home
     </a>
-    <a href="javascript:void(0)" onclick="pubScrollTo(event,'announcements');togglePubNav()">
+    <a href="javascript:void(0)" data-pub-section="announcements" onclick="pubScrollTo(event,'announcements');togglePubNav()">
       <svg class="mob-ico"><use href="#ico-megaphone"/></svg> Announcements
     </a>
-    <a href="javascript:void(0)" onclick="pubScrollTo(event,'lostfound');togglePubNav()">
+    <a href="javascript:void(0)" data-pub-section="lostfound" onclick="pubScrollTo(event,'lostfound');togglePubNav()">
       <svg class="mob-ico"><use href="#ico-search"/></svg> Lost &amp; Found
     </a>
-    <a href="javascript:void(0)" onclick="pubScrollTo(event,'board');togglePubNav()">
+    <a href="javascript:void(0)" data-pub-section="board" onclick="pubScrollTo(event,'board');togglePubNav()">
       <svg class="mob-ico"><use href="#ico-users"/></svg> Board of Directors
     </a>
-    <a href="javascript:void(0)" onclick="pubScrollTo(event,'about');togglePubNav()">
+    <a href="javascript:void(0)" data-pub-section="about" onclick="pubScrollTo(event,'about');togglePubNav()">
       <svg class="mob-ico"><use href="#ico-building"/></svg> About
     </a>
-    <a href="javascript:void(0)" onclick="pubScrollTo(event,'contact');togglePubNav()">
+    <a href="javascript:void(0)" data-pub-section="contact" onclick="pubScrollTo(event,'contact');togglePubNav()">
       <svg class="mob-ico"><use href="#ico-phone"/></svg> Contact
     </a>
     <hr style="border-color:rgba(255,255,255,0.1);margin:8px 0">
