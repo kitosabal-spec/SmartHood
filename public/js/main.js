@@ -429,7 +429,7 @@ function initApp(targetView) {
   setupSidebarOverlay();
   const defaultView = (targetView && canAccessView(targetView))
     ? targetView
-    : (pendingPostLoginView && currentUser.role === 'homeowner'
+    : (pendingPostLoginView && canAccessView(pendingPostLoginView)
         ? pendingPostLoginView
         : getDefaultViewForRole(currentUser.role));
   pendingPostLoginView = null;
@@ -2952,6 +2952,11 @@ function openLoginModal(role) {
   if (lu) lu.placeholder = 'Enter your username';
   document.getElementById('loginModal').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
+  try {
+    if (window.location.hash !== '#login') {
+      window.history.pushState({ auth: false, modal: 'login' }, '', window.location.pathname + '#login');
+    }
+  } catch {}
   setTimeout(() => { if (lu) lu.focus(); }, 100);
 }
 
@@ -2966,6 +2971,11 @@ function closeLoginModal() {
   const lp = document.getElementById('loginPass');
   if (lp) lp.value = '';
   document.body.style.overflow = '';
+  try {
+    if (window.location.hash === '#login') {
+      window.history.replaceState({ auth: false }, '', window.location.pathname);
+    }
+  } catch {}
 }
 
 function closeLoginModalOutside(e) {
@@ -3058,6 +3068,7 @@ function handleLogout() {
 
 // SECTION 25: BOOTSTRAP
 
+const PUBLIC_LANDING_SECTIONS = new Set(['hero', 'announcements', 'lostfound', 'board', 'about', 'contact']);
 const PUBLIC_HASHES = new Set(['hero', 'announcements', 'lostfound', 'board', 'about', 'contact', 'login']);
 
 async function init() {
@@ -3083,7 +3094,8 @@ async function init() {
   const currentHash = (window.location.hash || '').replace(/^#/, '');
 
   if (restoreSession()) {
-    const targetView = (!PUBLIC_HASHES.has(currentHash) && currentHash) ? currentHash : null;
+    const isPublicOnlyHash = (currentHash === 'hero' || currentHash === 'about' || currentHash === 'contact' || currentHash === 'login');
+    const targetView = (!isPublicOnlyHash && currentHash && canAccessView(currentHash)) ? currentHash : null;
     document.getElementById('landingPage').classList.add('hidden');
     initApp(targetView);
   } else {
@@ -3097,27 +3109,34 @@ async function init() {
 
     showLandingPage();
 
-    if (currentHash && PUBLIC_HASHES.has(currentHash)) {
-      if (currentHash === 'login') {
-        openLoginModal();
-      } else {
-        const el = document.getElementById(currentHash);
-        if (el) {
-          const offset = 72;
-          const y = el.getBoundingClientRect().top + window.scrollY - offset;
-          window.scrollTo({ top: y, behavior: 'instant' });
-        }
-        pubScrollTo(null, currentHash);
+    if (!currentHash || currentHash === 'hero') {
+      // Clean site visit or hero section: Show normal public landing page.
+      // Do NOT automatically redirect to login or open login modal!
+      closeLoginModal();
+      if (currentHash === 'hero') {
+        pubScrollTo(null, 'hero');
       }
-    } else {
-      // Opening site cleanly or direct URL to protected page when unauthenticated:
-      // Immediately present the login modal/page!
+    } else if (PUBLIC_LANDING_SECTIONS.has(currentHash)) {
+      // Public landing page sections: announcements, lostfound, board, about, contact
+      closeLoginModal();
+      const el = document.getElementById(currentHash);
+      if (el) {
+        const offset = 72;
+        const y = el.getBoundingClientRect().top + window.scrollY - offset;
+        window.scrollTo({ top: y, behavior: 'instant' });
+      }
+      pubScrollTo(null, currentHash);
+    } else if (currentHash === 'login') {
+      // Keep Login page available through its normal route/button
       openLoginModal();
-      if (currentHash) {
-        try {
-          window.history.replaceState({ auth: false }, '', window.location.pathname + '#login');
-        } catch {}
-      }
+    } else {
+      // Unauthenticated visitor directly accessed a protected view (e.g. #dashboard, #reports, etc.)
+      // Redirect that user to the Login page and open the Login modal
+      pendingPostLoginView = currentHash;
+      try {
+        window.history.replaceState({ auth: false }, '', window.location.pathname + '#login');
+      } catch {}
+      openLoginModal();
     }
   }
 }
@@ -3125,7 +3144,26 @@ async function init() {
 // Intercept browser Back/Forward navigation
 window.addEventListener('popstate', () => {
   if (!restoreSession()) {
-    performLogout();
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    if (hash === 'login') {
+      openLoginModal();
+    } else if (hash && !PUBLIC_LANDING_SECTIONS.has(hash)) {
+      pendingPostLoginView = hash;
+      try {
+        window.history.replaceState({ auth: false }, '', window.location.pathname + '#login');
+      } catch {}
+      openLoginModal();
+    } else {
+      const lm = document.getElementById('loginModal');
+      if (lm) lm.classList.add('hidden');
+      document.body.style.overflow = '';
+      showLandingPage();
+      if (hash && hash !== 'hero' && document.getElementById(hash)) {
+        pubScrollTo(null, hash);
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }
     return;
   }
   const hash = (window.location.hash || '').replace(/^#/, '');
@@ -3140,7 +3178,11 @@ window.addEventListener('popstate', () => {
 window.addEventListener('pageshow', (e) => {
   if (e.persisted) {
     if (!restoreSession()) {
-      performLogout();
+      const appShell = document.getElementById('appShell');
+      const wasInApp = appShell && !appShell.classList.contains('hidden');
+      if (wasInApp) {
+        performLogout();
+      }
     }
   }
 });
