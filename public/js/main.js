@@ -762,6 +762,9 @@ function renderView(viewId) {
     'ho-profile':        renderHOProfile,
   };
   if (renders[viewId]) renders[viewId]();
+  if (typeof window.refreshSearchSlidingPlaceholders === 'function') {
+    window.refreshSearchSlidingPlaceholders();
+  }
 }
 
 function toMoneyNumber(value) {

@@ -95,6 +95,13 @@
   max-width: 260px;
   padding: 0 10px;
   width: 100%;
+  position: relative;
+}
+
+.billing-search svg {
+  position: relative;
+  z-index: 3;
+  flex-shrink: 0;
 }
 
 .billing-search input {

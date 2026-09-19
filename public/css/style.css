@@ -1612,6 +1612,81 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 .search-icon {
   position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
   color: var(--text-3); font-size: 0.9rem; pointer-events: none;
+  z-index: 3;
+}
+
+/* Sliding Search Bar Placeholder */
+.search-sliding-placeholder {
+  position: absolute;
+  pointer-events: none;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  user-select: none;
+  z-index: 2;
+  white-space: nowrap;
+}
+
+.search-sliding-text {
+  display: inline-block;
+  white-space: nowrap;
+  font-family: inherit;
+  font-size: inherit;
+  font-weight: 400;
+  color: var(--text-3);
+  will-change: transform;
+}
+
+input.has-sliding-placeholder::placeholder {
+  color: transparent !important;
+  opacity: 0 !important;
+}
+
+input.has-sliding-placeholder::-webkit-input-placeholder {
+  color: transparent !important;
+  opacity: 0 !important;
+}
+
+input.has-sliding-placeholder::-moz-placeholder {
+  color: transparent !important;
+  opacity: 0 !important;
+}
+
+input.has-sliding-placeholder:-ms-input-placeholder {
+  color: transparent !important;
+  opacity: 0 !important;
+}
+
+.search-box:has(input:not(:placeholder-shown)) .search-sliding-placeholder,
+.billing-search:has(input:not(:placeholder-shown)) .search-sliding-placeholder {
+  display: none !important;
+}
+
+.search-box:has(input:focus) .search-sliding-placeholder,
+.billing-search:has(input:focus) .search-sliding-placeholder {
+  opacity: 0.65;
+}
+
+@keyframes searchBarSlideMarquee {
+  0%, 20% {
+    transform: translateX(0);
+  }
+  50%, 70% {
+    transform: translateX(var(--slide-dist, 0px));
+  }
+  95%, 100% {
+    transform: translateX(0);
+  }
+}
+
+.search-sliding-text.is-sliding {
+  animation: searchBarSlideMarquee var(--slide-duration, 6s) cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search-sliding-text.is-sliding {
+    animation: none !important;
+  }
 }
 .filter-select {
   padding: 9px 12px;
