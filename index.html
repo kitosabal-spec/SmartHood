@@ -501,16 +501,6 @@
 
     <nav class="sidebar-nav" id="sidebarNav"></nav>
 
-    <div class="sidebar-footer">
-      <button class="dark-mode-toggle" onclick="toggleDarkMode()" title="Dark Mode">
-        <span class="footer-icon"><svg width="16" height="16" id="darkModeIcon"><use href="#ico-moon"/></svg></span>
-        <span id="darkModeLabel" class="footer-label">Dark Mode</span>
-      </button>
-      <button class="btn-logout" onclick="handleLogout()" title="Sign Out">
-        <span class="footer-icon"><svg width="16" height="16"><use href="#ico-logout"/></svg></span>
-        <span class="footer-label">Sign Out</span>
-      </button>
-    </div>
   </aside>
 
   <!-- MAIN CONTENT -->
@@ -525,8 +515,33 @@
           <svg width="20" height="20"><use href="#ico-bell"/></svg>
           <span class="notif-badge hidden" id="notifBadge"></span>
         </div>
-        <div class="topbar-user" onclick="navigate('settings')">
-          <div class="topbar-avatar" id="topbarAvatar">A</div>
+        <div class="topbar-user-menu" id="topbarUserMenu">
+          <button type="button" class="topbar-user-btn" id="topbarUserBtn" onclick="toggleProfileDropdown(event)" aria-expanded="false" aria-haspopup="true" title="User Menu">
+            <div class="topbar-avatar" id="topbarAvatar">A</div>
+            <span class="profile-chevron" id="profileChevron" aria-hidden="true">&#9660;</span>
+          </button>
+
+          <!-- PROFILE DROPDOWN MENU -->
+          <div class="profile-dropdown hidden" id="profileDropdown" role="menu">
+            <div class="profile-dropdown-header">
+              <div class="profile-dropdown-name" id="profileDropdownName">Admin</div>
+              <div class="profile-dropdown-role" id="profileDropdownRole">Administrator</div>
+            </div>
+            <div class="profile-dropdown-divider"></div>
+            <button type="button" class="profile-dropdown-item" onclick="handleProfileSettings(event)" role="menuitem">
+              <span class="profile-dropdown-icon"><svg width="16" height="16"><use href="#ico-settings"/></svg></span>
+              <span class="profile-dropdown-label">Settings</span>
+            </button>
+            <button type="button" class="profile-dropdown-item" id="profileDarkToggleBtn" onclick="handleProfileToggleDarkMode(event)" role="menuitem">
+              <span class="profile-dropdown-icon"><svg width="16" height="16" id="profileDarkIcon"><use href="#ico-moon"/></svg></span>
+              <span class="profile-dropdown-label" id="profileDarkLabel">Toggle Dark Mode</span>
+            </button>
+            <div class="profile-dropdown-divider"></div>
+            <button type="button" class="profile-dropdown-item danger" onclick="handleProfileLogout(event)" role="menuitem">
+              <span class="profile-dropdown-icon"><svg width="16" height="16"><use href="#ico-logout"/></svg></span>
+              <span class="profile-dropdown-label">Log Out</span>
+            </button>
+          </div>
         </div>
 
         <!-- NOTIFICATION PANEL -->

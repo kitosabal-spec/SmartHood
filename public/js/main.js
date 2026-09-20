@@ -56,7 +56,6 @@ const ADMIN_NAV = [
   { id: 'reports',        icon: 'ico-chart',       label: 'Reports',         section: 'ANALYTICS' },
   { id: 'auditlog',       icon: 'ico-log',         label: 'Audit Log',       section: 'ANALYTICS' },
   { id: 'users',          icon: 'ico-shield',      label: 'Accounts & Roles', section: 'SYSTEM' },
-  { id: 'settings',       icon: 'ico-settings',    label: 'Settings',        section: 'SYSTEM' },
 ];
 
 const HOMEOWNER_NAV = [
@@ -641,6 +640,11 @@ function buildSidebar() {
   document.getElementById('sidebarName').textContent = currentUser.name;
   document.getElementById('sidebarRole').textContent = ROLE_LABELS[currentUser.role] || currentUser.role;
 
+  const ddName = document.getElementById('profileDropdownName');
+  if (ddName) ddName.textContent = currentUser.name;
+  const ddRole = document.getElementById('profileDropdownRole');
+  if (ddRole) ddRole.textContent = ROLE_LABELS[currentUser.role] || currentUser.role;
+
   let lastSection = '';
   const navEl = document.getElementById('sidebarNav');
   navEl.innerHTML = '';
@@ -680,7 +684,7 @@ function navigate(viewId, pushHistory = true) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === viewId);
   });
-  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV];
+  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV, { id: 'settings', label: 'Settings' }];
   const navItem = allNav.find(n => n.id === viewId);
   document.getElementById('topbarTitle').textContent = navItem ? navItem.label : 'Dashboard';
   renderView(viewId);
@@ -688,6 +692,7 @@ function navigate(viewId, pushHistory = true) {
   updateSidebarBadges();
   if (window.innerWidth <= 900) closeSidebar();
   document.getElementById('notifPanel').classList.add('hidden');
+  closeProfileDropdown();
 
   if (pushHistory) {
     try {
@@ -704,7 +709,7 @@ function renderAccessDenied(viewId) {
   document.getElementById('topbarTitle').textContent = 'Access Denied';
   document.querySelectorAll('.nav-item').forEach(el => el.classList.remove('active'));
 
-  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV];
+  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV, { id: 'settings', label: 'Settings' }];
   const targetItem = allNav.find(n => n.id === viewId);
   const targetLabel = targetItem ? targetItem.label : viewId;
   const defaultView = getDefaultViewForRole(currentUser ? currentUser.role : 'homeowner');
@@ -2825,6 +2830,7 @@ function stopNotificationRefresh() {
 }
 
 function toggleNotifPanel() {
+  closeProfileDropdown();
   const panel = document.getElementById('notifPanel');
   panel.classList.toggle('hidden');
   if (!panel.classList.contains('hidden')) {
@@ -2884,6 +2890,116 @@ function badgeHtml(status) {
 function showLoading() { document.getElementById('loadingOverlay').classList.remove('hidden'); }
 function hideLoading() { document.getElementById('loadingOverlay').classList.add('hidden'); }
 
+// ── TOPBAR PROFILE MENU & DROPDOWN ──
+
+function updateProfileDarkModeUI() {
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  const icon = document.getElementById('profileDarkIcon');
+  const label = document.getElementById('profileDarkLabel');
+  if (icon) {
+    icon.innerHTML = isDark ? '<use href="#ico-sun"/>' : '<use href="#ico-moon"/>';
+  }
+  if (label) {
+    label.textContent = isDark ? 'Toggle Light Mode' : 'Toggle Dark Mode';
+  }
+}
+
+function adjustProfileDropdownPosition() {
+  const dropdown = document.getElementById('profileDropdown');
+  if (!dropdown || dropdown.classList.contains('hidden')) return;
+  dropdown.style.left = '';
+  dropdown.style.right = '0';
+  const rect = dropdown.getBoundingClientRect();
+  const pad = 12;
+  if (rect.right > window.innerWidth - pad) {
+    const overflowRight = rect.right - (window.innerWidth - pad);
+    dropdown.style.right = `${Math.max(0, overflowRight)}px`;
+  }
+  if (rect.left < pad) {
+    dropdown.style.right = 'auto';
+    dropdown.style.left = `${pad}px`;
+  }
+}
+
+function openProfileDropdown() {
+  const dropdown = document.getElementById('profileDropdown');
+  const btn = document.getElementById('topbarUserBtn');
+  const chevron = document.getElementById('profileChevron');
+  if (!dropdown) return;
+
+  const np = document.getElementById('notifPanel');
+  if (np) np.classList.add('hidden');
+
+  updateProfileDarkModeUI();
+  if (currentUser) {
+    const nameEl = document.getElementById('profileDropdownName');
+    if (nameEl) nameEl.textContent = currentUser.name || 'User';
+    const roleEl = document.getElementById('profileDropdownRole');
+    if (roleEl) roleEl.textContent = ROLE_LABELS[currentUser.role] || currentUser.role || 'Member';
+  }
+
+  dropdown.classList.remove('hidden');
+  if (btn) btn.setAttribute('aria-expanded', 'true');
+  if (chevron) chevron.textContent = '▲';
+  adjustProfileDropdownPosition();
+}
+
+function closeProfileDropdown() {
+  const dropdown = document.getElementById('profileDropdown');
+  const btn = document.getElementById('topbarUserBtn');
+  const chevron = document.getElementById('profileChevron');
+  if (!dropdown) return;
+
+  dropdown.classList.add('hidden');
+  if (btn) btn.setAttribute('aria-expanded', 'false');
+  if (chevron) chevron.textContent = '▼';
+}
+
+function toggleProfileDropdown(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  const dropdown = document.getElementById('profileDropdown');
+  if (!dropdown) return;
+  if (dropdown.classList.contains('hidden')) {
+    openProfileDropdown();
+  } else {
+    closeProfileDropdown();
+  }
+}
+
+function handleProfileSettings(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  closeProfileDropdown();
+  if (currentUser?.role === 'admin' || canAccessView('settings')) {
+    navigate('settings');
+  } else {
+    navigate('ho-profile');
+  }
+}
+
+function handleProfileToggleDarkMode(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  toggleDarkMode();
+  closeProfileDropdown();
+}
+
+function handleProfileLogout(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  closeProfileDropdown();
+  handleLogout();
+}
+
 function toggleDarkMode() {
   const html = document.documentElement;
   const isDark = html.dataset.theme === 'dark';
@@ -2895,6 +3011,7 @@ function toggleDarkMode() {
   if (label) label.textContent = isDark ? 'Dark Mode' : 'Light Mode';
   const toggleEl = document.getElementById('darkToggle');
   if (toggleEl) toggleEl.checked = !isDark;
+  updateProfileDarkModeUI();
 }
 
 function applyStoredTheme() {
@@ -2904,6 +3021,7 @@ function applyStoredTheme() {
   const label = document.getElementById('darkModeLabel');
   if (icon) { icon.innerHTML = t === 'dark' ? '<use href="#ico-sun"/>' : '<use href="#ico-moon"/>'; icon.setAttribute('width','16'); icon.setAttribute('height','16'); }
   if (label) label.textContent = t === 'dark' ? 'Light Mode' : 'Dark Mode';
+  updateProfileDarkModeUI();
 }
 
 
@@ -2912,6 +3030,7 @@ function applyStoredTheme() {
 
 document.addEventListener('keydown', e => {
   if (e.key === 'Escape') {
+    closeProfileDropdown();
     closeProfileAvatarMenu();
     closeModal();
     closeLoginModal();
@@ -2932,11 +3051,22 @@ document.addEventListener('click', e => {
       closeProfileAvatarMenu();
     }
   }
+  const userMenu = document.getElementById('topbarUserMenu');
+  const profileDropdown = document.getElementById('profileDropdown');
+  if (profileDropdown && !profileDropdown.classList.contains('hidden')) {
+    if (!userMenu || !userMenu.contains(e.target)) {
+      closeProfileDropdown();
+    }
+  }
   const panel = document.getElementById('notifPanel');
   const bell = document.querySelector('.notif-bell');
   if (panel && !panel.classList.contains('hidden') && !panel.contains(e.target) && bell && !bell.contains(e.target)) {
     panel.classList.add('hidden');
   }
+});
+
+window.addEventListener('resize', () => {
+  adjustProfileDropdownPosition();
 });
 
 window.addEventListener('scroll', () => {
@@ -3110,6 +3240,7 @@ function showLandingPage() {
 }
 
 function performLogout() {
+  closeProfileDropdown();
   try {
     sessionStorage.removeItem('sah_session');
     localStorage.removeItem('sah_session');

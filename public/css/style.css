@@ -1360,6 +1360,154 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   display: flex; align-items: center; justify-content: center;
   font-weight: 700; font-size: 0.88rem;
   cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* ── TOPBAR USER MENU & DROPDOWN ── */
+.topbar-user-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.topbar-user-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px 7px 2px 2px;
+  cursor: pointer;
+  color: var(--text);
+  font-family: inherit;
+  transition: all var(--transition);
+  outline: none;
+  user-select: none;
+}
+
+.topbar-user-btn:hover {
+  background: var(--bg);
+  border-color: var(--border);
+}
+
+.topbar-user-btn:focus-visible {
+  outline: 2px solid var(--teal-500);
+  outline-offset: 2px;
+}
+
+.profile-chevron {
+  font-size: 0.62rem;
+  color: var(--text-2);
+  line-height: 1;
+  display: inline-block;
+  user-select: none;
+  transition: color var(--transition);
+}
+
+.topbar-user-btn:hover .profile-chevron {
+  color: var(--text);
+}
+
+.profile-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  width: 220px;
+  max-width: calc(100vw - 24px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-lg);
+  z-index: 350;
+  display: flex;
+  flex-direction: column;
+  padding: 6px;
+  animation: popoverFadeIn 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+  transform-origin: top right;
+  box-sizing: border-box;
+}
+
+.profile-dropdown.hidden {
+  display: none !important;
+}
+
+.profile-dropdown-header {
+  padding: 8px 12px 6px;
+}
+
+.profile-dropdown-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+  color: var(--text);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.profile-dropdown-role {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  margin-top: 2px;
+  text-transform: capitalize;
+}
+
+.profile-dropdown-divider {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
+.profile-dropdown-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px;
+  border: none;
+  background: transparent;
+  border-radius: calc(var(--radius) - 3px);
+  color: var(--text);
+  font-size: 0.86rem;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s ease, color 0.15s ease;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.profile-dropdown-item:hover {
+  background: var(--surface-2);
+  color: var(--teal-600);
+}
+
+.profile-dropdown-item:active {
+  transform: scale(0.98);
+}
+
+.profile-dropdown-item.danger {
+  color: var(--red-600, #dc2626);
+}
+
+.profile-dropdown-item.danger:hover {
+  background: rgba(220, 38, 38, 0.08);
+  color: var(--red-600, #dc2626);
+}
+
+.profile-dropdown-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.profile-dropdown-icon svg {
+  display: block;
 }
 
 .notif-panel {
