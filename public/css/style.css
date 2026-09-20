@@ -1442,15 +1442,10 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
   height: 8px;
   display: block;
   color: #1a202c;
-  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 [data-theme="dark"] .profile-chevron-icon {
   color: var(--text);
-}
-
-.profile-chevron-badge.open .profile-chevron-icon {
-  transform: rotate(180deg);
 }
 
 .profile-dropdown {
