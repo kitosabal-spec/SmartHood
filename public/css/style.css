@@ -1352,15 +1352,30 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 .notif-badge:empty {
   display: none !important;
 }
+.topbar-avatar-wrapper {
+  position: relative;
+  width: 36px;
+  height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .topbar-avatar {
-  width: 34px; height: 34px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   background: var(--teal-600);
   color: #fff;
-  display: flex; align-items: center; justify-content: center;
-  font-weight: 700; font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  font-size: 0.88rem;
   cursor: pointer;
   flex-shrink: 0;
+  overflow: hidden;
 }
 
 /* ── TOPBAR USER MENU & DROPDOWN ── */
@@ -1373,40 +1388,69 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 .topbar-user-btn {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
   background: transparent;
-  border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 2px 7px 2px 2px;
+  border: none;
+  border-radius: 50%;
+  padding: 0;
   cursor: pointer;
-  color: var(--text);
-  font-family: inherit;
-  transition: all var(--transition);
   outline: none;
   user-select: none;
+  position: relative;
+  transition: transform var(--transition);
 }
 
 .topbar-user-btn:hover {
-  background: var(--bg);
-  border-color: var(--border);
+  transform: scale(1.05);
+}
+
+.topbar-user-btn:active {
+  transform: scale(0.95);
 }
 
 .topbar-user-btn:focus-visible {
   outline: 2px solid var(--teal-500);
-  outline-offset: 2px;
+  outline-offset: 3px;
 }
 
-.profile-chevron {
-  font-size: 0.62rem;
-  color: var(--text-2);
-  line-height: 1;
-  display: inline-block;
-  user-select: none;
-  transition: color var(--transition);
+.profile-chevron-badge {
+  position: absolute;
+  bottom: -1px;
+  right: -2px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: #ffffff;
+  border: 1.5px solid #ffffff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.22), 0 0 1px rgba(0, 0, 0, 0.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 2;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), background var(--transition), border-color var(--transition);
 }
 
-.topbar-user-btn:hover .profile-chevron {
+[data-theme="dark"] .profile-chevron-badge {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.5);
+}
+
+.profile-chevron-icon {
+  width: 8px;
+  height: 8px;
+  display: block;
+  color: #1a202c;
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+[data-theme="dark"] .profile-chevron-icon {
   color: var(--text);
+}
+
+.profile-chevron-badge.open .profile-chevron-icon {
+  transform: rotate(180deg);
 }
 
 .profile-dropdown {

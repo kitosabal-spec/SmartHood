@@ -2940,19 +2940,20 @@ function openProfileDropdown() {
 
   dropdown.classList.remove('hidden');
   if (btn) btn.setAttribute('aria-expanded', 'true');
-  if (chevron) chevron.textContent = '▲';
+  const badge = document.getElementById('profileChevronBadge');
+  if (badge) badge.classList.add('open');
   adjustProfileDropdownPosition();
 }
 
 function closeProfileDropdown() {
   const dropdown = document.getElementById('profileDropdown');
   const btn = document.getElementById('topbarUserBtn');
-  const chevron = document.getElementById('profileChevron');
+  const badge = document.getElementById('profileChevronBadge');
   if (!dropdown) return;
 
   dropdown.classList.add('hidden');
   if (btn) btn.setAttribute('aria-expanded', 'false');
-  if (chevron) chevron.textContent = '▼';
+  if (badge) badge.classList.remove('open');
 }
 
 function toggleProfileDropdown(e) {
@@ -2988,7 +2989,6 @@ function handleProfileToggleDarkMode(e) {
     e.stopPropagation();
   }
   toggleDarkMode();
-  closeProfileDropdown();
 }
 
 function handleProfileLogout(e) {

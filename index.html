@@ -517,8 +517,14 @@
         </div>
         <div class="topbar-user-menu" id="topbarUserMenu">
           <button type="button" class="topbar-user-btn" id="topbarUserBtn" onclick="toggleProfileDropdown(event)" aria-expanded="false" aria-haspopup="true" title="User Menu">
-            <div class="topbar-avatar" id="topbarAvatar">A</div>
-            <span class="profile-chevron" id="profileChevron" aria-hidden="true">&#9660;</span>
+            <div class="topbar-avatar-wrapper">
+              <div class="topbar-avatar" id="topbarAvatar">A</div>
+              <span class="profile-chevron-badge" id="profileChevronBadge" aria-hidden="true">
+                <svg class="profile-chevron-icon" id="profileChevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"></polyline>
+                </svg>
+              </span>
+            </div>
           </button>
 
           <!-- PROFILE DROPDOWN MENU -->
