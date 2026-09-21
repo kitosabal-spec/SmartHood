@@ -651,10 +651,13 @@ function buildSidebar() {
 
   nav.forEach(item => {
     if (item.section !== lastSection) {
-      const lbl = document.createElement('div');
-      lbl.className = 'nav-section-label';
-      lbl.textContent = item.section;
-      navEl.appendChild(lbl);
+      if (lastSection !== '') {
+        const divider = document.createElement('div');
+        divider.className = 'nav-section-divider nav-divider';
+        divider.setAttribute('role', 'separator');
+        divider.setAttribute('aria-orientation', 'horizontal');
+        navEl.appendChild(divider);
+      }
       lastSection = item.section;
     }
     const el = document.createElement('div');
