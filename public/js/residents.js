@@ -204,7 +204,7 @@ function openViewHO(id) {
   const u = db.getOne('users', id);
   if (!u) return;
   const payments = db.get('payments').filter(p => p.homeownerId === id);
-  const billings = db.get('billings').filter(b => b.assignedTo.includes(id));
+  const billings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(id));
   const complaints = db.get('complaints').filter(c => c.homeownerId === id);
   openModal(`Profile: ${u.name}`, `
     <div class="profile-card" style="margin-bottom:16px">

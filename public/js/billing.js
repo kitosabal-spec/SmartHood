@@ -237,19 +237,21 @@ function updateBillingAmountForMonthlyDues() {
 
   if (!monthlyDues) return;
 
-  if (selectedIds.length !== 1) {
-    amountInput.value = '';
-    amountInput.readOnly = true;
-    if (hint) hint.textContent = 'Select one homeowner to calculate from lot area.';
-    return;
+  if (selectedIds.length === 1) {
+    const user = db.getOne('users', selectedIds[0]);
+    const rate = getDuesRatePerSqm();
+    const amount = calculateMonthlyDues(user, rate);
+    if (!amountInput.value || amountInput.dataset.autofilled === 'true') {
+      amountInput.value = amount.toFixed(2);
+      amountInput.dataset.autofilled = 'true';
+    }
+    if (hint) hint.textContent = `${user?.lotArea || 0} sqm x PHP ${rate.toLocaleString()} per sqm`;
+  } else if (selectedIds.length > 1) {
+    if (amountInput.dataset.autofilled === 'true') {
+      delete amountInput.dataset.autofilled;
+    }
+    if (hint) hint.textContent = 'Enter the dues amount to apply to each selected homeowner.';
   }
-
-  const user = db.getOne('users', selectedIds[0]);
-  const rate = getDuesRatePerSqm();
-  const amount = calculateMonthlyDues(user, rate);
-  amountInput.value = amount.toFixed(2);
-  amountInput.readOnly = true;
-  if (hint) hint.textContent = `${user?.lotArea || 0} sqm x PHP ${rate.toLocaleString()} per sqm`;
 }
 
 async function saveAddBilling() {
@@ -259,11 +261,6 @@ async function saveAddBilling() {
   if (!title || !due || !billingMonth) { showToast('error', 'Missing Fields', 'Fill all required fields.'); return; }
   const checked = [...document.querySelectorAll('.ho-cb:checked')].map(c => c.value);
   if (!checked.length) { showToast('error', 'No Assignment', 'Select at least one homeowner.'); return; }
-  if (isMonthlyDuesTitle(title) && checked.length !== 1) {
-    showToast('error', 'Select One Homeowner', 'Monthly dues are calculated per homeowner from lot area.');
-    return;
-  }
-  updateBillingAmountForMonthlyDues();
   const amount = parseFloat(document.getElementById('bf_amount').value);
   if (isNaN(amount) || amount <= 0) { showToast('error', 'Invalid Amount', 'Enter a valid billing amount.'); return; }
   const finalTitle = title.toLowerCase().includes(billingMonth.toLowerCase()) ? title : `${title} - ${billingMonth}`;
@@ -281,11 +278,16 @@ async function saveAddBilling() {
 
   try {
     showLoading();
-    // Persist to MySQL and update in-memory dbCache
+    // 1. Persist to MySQL and wait for response
     await db.save('billings', bill);
 
+    // 2. Reload fresh data from backend
+    await api.loadAll();
+
+    // 3. Synchronize homeowner balances from actual billings and approved payments
     if (canManageBilling()) {
-      syncHomeownerBalances();
+      await syncHomeownerBalances();
+      await api.loadAll();
     }
 
     if (typeof logAction === 'function') {
@@ -336,7 +338,11 @@ function confirmDeleteBilling(id) {
       try {
         showLoading();
         await db.delete('billings', id);
-        syncHomeownerBalances();
+        await api.loadAll();
+        if (canManageBilling()) {
+          await syncHomeownerBalances();
+          await api.loadAll();
+        }
         logAction(`Deleted billing: ${b.title}`);
         closeModal();
         hideLoading();
@@ -363,7 +369,11 @@ async function autoGenerateMonthlyDues() {
   try {
     showLoading();
     await db.save('billings', bill);
-    syncHomeownerBalances();
+    await api.loadAll();
+    if (canManageBilling()) {
+      await syncHomeownerBalances();
+      await api.loadAll();
+    }
     logAction(`Auto-generated monthly dues: ${title}`);
     hideLoading();
     showToast('success', 'Generated', `${title} created for ${homeowners.length} homeowners.`);
@@ -413,7 +423,11 @@ async function autoGenerateLotAreaMonthlyDues() {
     for (const bill of toCreate) {
       await db.save('billings', bill);
     }
-    syncHomeownerBalances();
+    await api.loadAll();
+    if (canManageBilling()) {
+      await syncHomeownerBalances();
+      await api.loadAll();
+    }
     logAction(`Auto-generated monthly dues: ${title} at PHP ${rate}/sqm for ${toCreate.length} homeowner(s)`);
     hideLoading();
     showToast('success', 'Generated', `${title} created for ${toCreate.length} homeowner(s).`);

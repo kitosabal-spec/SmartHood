@@ -304,13 +304,37 @@ function serializeValue(table, column, value) {
   return value === undefined ? null : value;
 }
 
+function getAssignedHomeownerIds(billing) {
+  if (Array.isArray(billing?.assignedTo)) return billing.assignedTo;
+  if (!billing?.assignedTo) return [];
+  if (typeof billing.assignedTo !== 'string') return [String(billing.assignedTo)];
+  try {
+    let parsed = JSON.parse(billing.assignedTo);
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { parsed = parsed.split(',').map(id => id.trim()).filter(Boolean); }
+    }
+    return Array.isArray(parsed) ? parsed : (parsed ? [String(parsed)] : []);
+  } catch {
+    return billing.assignedTo.split(',').map(id => id.trim()).filter(Boolean);
+  }
+}
+
 function deserializeRow(table, row) {
   const config = tableConfig[table];
   const output = { ...row };
 
   for (const column of config.jsonColumns) {
     try {
-      let parsed = row[column] ? JSON.parse(row[column]) : [];
+      let parsed = [];
+      if (typeof row[column] === 'string' && row[column].trim()) {
+        try {
+          parsed = JSON.parse(row[column]);
+        } catch {
+          parsed = row[column].split(',').map(s => s.trim()).filter(Boolean);
+        }
+      } else if (Array.isArray(row[column])) {
+        parsed = row[column];
+      }
       if (typeof parsed === 'string') {
         try { parsed = JSON.parse(parsed); } catch { parsed = parsed.split(',').map(s => s.trim()).filter(Boolean); }
       }
@@ -345,6 +369,11 @@ function deserializeRow(table, row) {
 }
 
 function sanitizeRecord(table, item) {
+  if (table === 'billings') {
+    const output = { ...item };
+    output.assignedTo = getAssignedHomeownerIds(output);
+    return output;
+  }
   if (table !== 'users') return item;
   const output = { ...item };
   delete output.password;
@@ -409,12 +438,9 @@ async function loadAllData(requester = null) {
     if (!requester || !userHasPermission(requester, 'auditlog')) {
       data.auditLog = [];
     }
-    if (requester && userHasPermission(requester, 'resident') && !userHasPermission(requester, 'billing')) {
-      data.billings = (data.billings || []).filter(b => {
-        const assigned = Array.isArray(b.assignedTo) ? b.assignedTo : [];
-        return assigned.includes(requester.id);
-      });
-    } else if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'billing'))) {
+    if (requester && (userHasPermission(requester, 'resident') || requester.role === 'homeowner') && !userHasPermission(requester, 'billing')) {
+      data.billings = (data.billings || []).filter(b => getAssignedHomeownerIds(b).includes(requester.id));
+    } else if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'billing') && requester.role !== 'homeowner')) {
       data.billings = [];
     }
     if (requester && userHasPermission(requester, 'resident') && !userHasPermission(requester, 'payments')) {
@@ -2218,7 +2244,7 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
 
   let data = await getTableData(table);
   if (table === 'billings' && allowed.role !== 'admin' && !userHasPermission(allowed, 'billing')) {
-    data = data.filter(b => (Array.isArray(b.assignedTo) ? b.assignedTo : []).includes(allowed.id));
+    data = data.filter(b => getAssignedHomeownerIds(b).includes(allowed.id));
   }
   if (table === 'auditLog' && (req.query.filter || req.query.date || req.query.startDate || req.query.endDate || req.query.q)) {
     const filterMode = req.query.filter || 'all';

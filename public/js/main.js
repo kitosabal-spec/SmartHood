@@ -200,8 +200,18 @@ const api = {
     if (!(options.body instanceof FormData)) {
       if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
     }
-    if (typeof currentUser !== 'undefined' && currentUser && (currentUser.id || currentUser.user_id)) {
-      headers['X-User-Id'] = currentUser.id || currentUser.user_id;
+    const sessionUserId = (typeof currentUser !== 'undefined' && currentUser && (currentUser.id || currentUser.user_id))
+      ? (currentUser.id || currentUser.user_id)
+      : (() => {
+          try {
+            const raw = sessionStorage.getItem('sah_session');
+            return raw ? JSON.parse(raw)?.id : null;
+          } catch {
+            return null;
+          }
+        })();
+    if (sessionUserId) {
+      headers['X-User-Id'] = sessionUserId;
     }
     const response = await fetch(path, {
       ...options,
@@ -435,10 +445,8 @@ async function handleLogin() {
   showLoading();
   try {
     const user = await api.login(username, password);
-    await api.loadAll();
-    hideLoading();
     currentRole = user.role;
-    currentUser = db.getOne('users', user.id) || user;
+    currentUser = user;
 
     // Immediately wipe password from the input field
     const passInput = document.getElementById('loginPass');
@@ -448,6 +456,11 @@ async function handleLogin() {
     sessionStorage.setItem('sah_session', JSON.stringify({ id: user.id, role: user.role }));
     // Wipe any legacy persistent session from localStorage
     localStorage.removeItem('sah_session');
+
+    await api.loadAll();
+    currentUser = db.getOne('users', user.id) || user;
+    currentRole = currentUser.role || user.role;
+    hideLoading();
 
     closeLoginModal();
     document.getElementById('landingPage').classList.add('hidden');
@@ -922,11 +935,15 @@ function getLocalMonthValue(date = new Date()) {
 
 function getAssignedHomeownerIds(billing) {
   if (Array.isArray(billing?.assignedTo)) return billing.assignedTo;
-  if (typeof billing?.assignedTo !== 'string') return [];
+  if (!billing?.assignedTo) return [];
+  if (typeof billing.assignedTo !== 'string') return [String(billing.assignedTo)];
 
   try {
-    const parsed = JSON.parse(billing.assignedTo);
-    return Array.isArray(parsed) ? parsed : [];
+    let parsed = JSON.parse(billing.assignedTo);
+    if (typeof parsed === 'string') {
+      try { parsed = JSON.parse(parsed); } catch { parsed = parsed.split(',').map(id => id.trim()).filter(Boolean); }
+    }
+    return Array.isArray(parsed) ? parsed : (parsed ? [String(parsed)] : []);
   } catch {
     return billing.assignedTo.split(',').map(id => id.trim()).filter(Boolean);
   }
@@ -975,7 +992,7 @@ function calculateUserOutstandingBalance(userId) {
   return Math.max(0, Math.round((totalDue - totalPaid) * 100) / 100);
 }
 
-function syncHomeownerBalances() {
+async function syncHomeownerBalances() {
   if (!canManageBilling()) {
     if (currentUser && currentUser.role === 'homeowner') {
       const balance = calculateUserOutstandingBalance(currentUser.id);
@@ -983,16 +1000,22 @@ function syncHomeownerBalances() {
     }
     return;
   }
-  db.get('users')
-    .filter(user => user.role === 'homeowner')
-    .forEach(user => {
-      const balance = calculateUserOutstandingBalance(user.id);
-      if (toMoneyNumber(user.balance) !== balance) {
-        user.balance = balance;
-        db.save('users', user);
-      }
-      if (currentUser && currentUser.id === user.id) currentUser = user;
-    });
+  const homeowners = db.get('users').filter(user => user.role === 'homeowner');
+  const updates = [];
+  for (const user of homeowners) {
+    const balance = calculateUserOutstandingBalance(user.id);
+    if (toMoneyNumber(user.balance) !== balance) {
+      const updatedUser = { ...user, balance };
+      updates.push(
+        db.save('users', updatedUser).then(saved => {
+          if (currentUser && currentUser.id === user.id) currentUser = saved;
+        })
+      );
+    }
+  }
+  if (updates.length > 0) {
+    await Promise.all(updates);
+  }
 }
 
 function getRecordYear(...values) {
@@ -3646,6 +3669,18 @@ async function init() {
   // Always wipe any legacy persistent session from localStorage
   try {
     localStorage.removeItem('sah_session');
+  } catch {}
+
+  // Set provisional currentUser from sessionStorage so api.loadAll sends X-User-Id
+  try {
+    const raw = sessionStorage.getItem('sah_session');
+    if (raw) {
+      const sess = JSON.parse(raw);
+      if (sess && sess.id) {
+        currentUser = { id: sess.id, role: sess.role };
+        currentRole = sess.role;
+      }
+    }
   } catch {}
 
   try {

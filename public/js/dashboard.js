@@ -269,7 +269,7 @@ function renderPaginationComponent(config) {
 
 function renderHODashboard() {
   syncHomeownerBalances();
-  const myBillings = db.get('billings').filter(b => b.assignedTo.includes(currentUser.id));
+  const myBillings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(currentUser?.id));
   const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser.id);
   const myComplaints = db.get('complaints').filter(c => c.homeownerId === currentUser.id);
   const approved = myPayments.filter(p => p.status === 'approved');
