@@ -1304,6 +1304,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 
 .main-wrapper {
   flex: 1;
+  min-width: 0;
   margin-left: var(--sidebar-w-collapsed);
   display: flex;
   flex-direction: column;
@@ -1689,6 +1690,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 
 .content-area {
   flex: 1;
+  min-width: 0;
   padding: 28px;
   overflow-y: auto;
 }
@@ -2664,6 +2666,280 @@ input[type="date"].filter-select {
   border-radius: 6px;
   margin: 2px 3px 2px 0;
   white-space: nowrap;
+}
+
+/* Accounts & Roles Responsive Grid & Filters */
+.accounts-stats-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  margin-bottom: 20px;
+}
+@media (max-width: 1024px) {
+  .accounts-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+@media (max-width: 580px) {
+  .accounts-stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+.accounts-filters-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.accounts-filters-row .search-box {
+  flex: 1;
+  min-width: 220px;
+}
+.accounts-filters-row .filter-select {
+  min-width: 160px;
+}
+@media (max-width: 720px) {
+  .accounts-filters-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .accounts-filters-row .search-box,
+  .accounts-filters-row .filter-select {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
+/* Accounts Table User Cell & Block/Lot */
+.user-cell {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 170px;
+}
+.user-cell-meta {
+  min-width: 0;
+}
+.user-name {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.25;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
+}
+.user-sub {
+  font-size: 0.74rem;
+  color: var(--text-3);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+}
+.user-username {
+  font-weight: 600;
+  color: var(--text-2);
+}
+.user-dot {
+  font-size: 0.65rem;
+  color: var(--text-3);
+}
+.user-email {
+  color: var(--text-3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.block-lot-cell {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+}
+.protected-tag {
+  font-size: 0.74rem;
+  color: var(--text-3);
+  padding: 4px 8px;
+  font-style: italic;
+  display: inline-block;
+}
+
+/* Access Summary Badges */
+.access-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 99px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+  letter-spacing: 0.01em;
+}
+.access-pill.admin {
+  background: rgba(220, 38, 38, 0.09);
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.22);
+  font-weight: 700;
+}
+.access-pill.resident {
+  background: var(--surface-2);
+  color: var(--text-2);
+  border-color: var(--border);
+}
+.access-pill.extra {
+  background: rgba(23, 122, 128, 0.08);
+  color: var(--teal-700);
+  border-color: rgba(23, 122, 128, 0.25);
+  font-weight: 600;
+}
+
+/* Unified Edit Modal Layout */
+.modal-account-edit {
+  max-width: 600px;
+  width: 100%;
+}
+.modal-form-section {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+.modal-form-section:first-of-type {
+  margin-top: 10px;
+  padding-top: 0;
+  border-top: none;
+}
+.modal-section-title {
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-2);
+  margin-bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.modal-section-title::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--border);
+}
+.modal-user-summary-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin-bottom: 14px;
+}
+
+/* Compact Module Permissions Grid */
+.compact-perm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.compact-perm-subtitle {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  line-height: 1.35;
+}
+.compact-perm-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  max-height: 270px;
+  overflow-y: auto;
+  padding: 2px;
+}
+@media (max-width: 540px) {
+  .compact-perm-grid {
+    grid-template-columns: 1fr;
+  }
+}
+.compact-perm-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 10px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.compact-perm-card:hover {
+  border-color: var(--teal-400);
+  background: rgba(23, 122, 128, 0.03);
+}
+.compact-perm-card.selected {
+  border-color: var(--teal-600);
+  background: rgba(23, 122, 128, 0.08);
+}
+.compact-perm-card.base-default {
+  background: rgba(23, 122, 128, 0.05);
+  border-color: var(--teal-400);
+  cursor: default;
+}
+.compact-perm-card input[type="checkbox"] {
+  margin-top: 2px;
+  width: 15px;
+  height: 15px;
+  accent-color: var(--teal-600);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.compact-perm-card.base-default input[type="checkbox"] {
+  cursor: default;
+}
+.compact-perm-info {
+  min-width: 0;
+  flex: 1;
+}
+.compact-perm-name {
+  font-size: 0.81rem;
+  font-weight: 600;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  line-height: 1.25;
+}
+.compact-perm-desc {
+  font-size: 0.70rem;
+  color: var(--text-3);
+  margin-top: 2px;
+  line-height: 1.3;
+}
+.admin-fullaccess-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(22, 163, 74, 0.08);
+  border: 1px solid rgba(22, 163, 74, 0.25);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+  color: #15803d;
+  font-size: 0.83rem;
+  line-height: 1.45;
+}
+.admin-fullaccess-notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
 }
 
 /* Access Denied Page */

@@ -1919,7 +1919,7 @@ function renderUserManagement() {
     </div>
   </div>
 
-  <div class="stats-grid" style="grid-template-columns: repeat(4, 1fr); margin-bottom: 20px;">
+  <div class="stats-grid accounts-stats-grid">
     <div class="stat-card">
       <div class="stat-icon" style="background:var(--teal-50);color:var(--teal-600);"><svg width="22" height="22"><use href="#ico-users"/></svg></div>
       <div class="stat-value">${users.length}</div>
@@ -1944,7 +1944,7 @@ function renderUserManagement() {
 
   <div class="section-card">
     <div class="section-card-header">
-      <div class="filters-row">
+      <div class="filters-row accounts-filters-row">
         <div class="search-box">
           <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
           <input id="userMgmtSearch" type="text" placeholder="Search by name, username, email, role..." oninput="filterUserManagementTable()"/>
@@ -1966,11 +1966,10 @@ function renderUserManagement() {
         <table class="data-table">
           <thead>
             <tr>
-              <th>#</th>
               <th>User</th>
-              <th>Username / Email</th>
+              <th>Block/Lot</th>
               <th>Account Type</th>
-              <th>Access Permissions</th>
+              <th>Access</th>
               <th>Status</th>
               <th style="text-align:right">Actions</th>
             </tr>
@@ -2003,6 +2002,31 @@ function changeUserMgmtPageSize(size) {
 }
 window.changeUserMgmtPageSize = changeUserMgmtPageSize;
 
+function getUserAccessSummaryHtml(u) {
+  if (u.role === 'admin') {
+    return `<span class="access-pill admin" title="Full Unrestricted System Access"><svg width="12" height="12" style="vertical-align:-1px;"><use href="#ico-shield"/></svg> Full Access</span>`;
+  }
+
+  let perms = Array.isArray(u.permissions) ? [...u.permissions] : [];
+  const extraModules = perms.filter(p => !p.startsWith('ho-') && p !== '*' && p !== 'users' && p !== 'settings' && p !== 'resident');
+
+  if (extraModules.length === 0) {
+    return `<span class="access-pill resident">Resident</span>`;
+  }
+
+  if (extraModules.length === 1) {
+    const mod = MODULE_PERMISSIONS.find(m => m.id === extraModules[0]);
+    const label = mod ? mod.label : extraModules[0];
+    return `<span class="access-pill extra" title="Assigned module: ${escapeHtml(label)}">Resident + ${escapeHtml(label)}</span>`;
+  }
+
+  const moduleLabels = extraModules.map(pid => {
+    const mod = MODULE_PERMISSIONS.find(m => m.id === pid);
+    return mod ? mod.label : pid;
+  });
+  return `<span class="access-pill extra" title="Assigned modules: ${escapeHtml(moduleLabels.join(', '))}">Resident + ${extraModules.length} modules</span>`;
+}
+
 function renderUserManagementRows(filteredUsers = null, resetPage = false) {
   const tbody = document.getElementById('userMgmtTableBody');
   if (!tbody) return;
@@ -2023,7 +2047,7 @@ function renderUserManagementRows(filteredUsers = null, resetPage = false) {
   if (userMgmtPaginationState.page < 1) userMgmtPaginationState.page = 1;
 
   if (!totalItems) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="no-results" style="padding:30px;"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg><p style="margin-top:6px;">No accounts found matching your filters.</p></div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6"><div class="no-results" style="padding:30px;"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg><p style="margin-top:6px;">No accounts found matching your filters.</p></div></td></tr>`;
     renderPaginationComponent({
       containerId: 'userMgmtPagination',
       currentPage: 1,
@@ -2045,60 +2069,40 @@ function renderUserManagementRows(filteredUsers = null, resetPage = false) {
   const endIndex = Math.min(startIndex + pageSize, totalItems);
   const pageItems = users.slice(startIndex, endIndex);
 
-  tbody.innerHTML = pageItems.map((u, idx) => {
+  tbody.innerHTML = pageItems.map((u) => {
     const roleLabel = ROLE_LABELS[u.role] || u.role;
     const roleColor = roleColors[u.role] || '#177a80';
     const status = u.status || 'active';
     const isActive = status === 'active';
     const isPrimaryAdmin = u.id === 'u001';
 
-    // Format permissions preview
-    let permsHtml = '';
-    if (u.role === 'admin') {
-      permsHtml = '<span class="perm-pill" style="background:#16a34a18;color:#16a34a;border-color:#16a34a40;font-weight:700;">★ Full Access</span>';
-    } else {
-      let perms = Array.isArray(u.permissions) ? [...u.permissions] : [];
-      perms = perms.filter(p => !p.startsWith('ho-') && p !== '*' && p !== 'users' && p !== 'settings');
-
-      if (perms.length === 0) {
-        permsHtml = '<span class="perm-pill" style="color:var(--text-3);border-style:dashed;">No modules assigned</span>';
-      } else {
-        const visible = perms.slice(0, 3);
-        const remaining = perms.length - 3;
-        permsHtml = visible.map(pid => {
-          const mod = MODULE_PERMISSIONS.find(m => m.id === pid);
-          return `<span class="perm-pill">${escapeHtml(mod ? mod.label : (pid === 'resident' ? 'Resident' : pid))}</span>`;
-        }).join('');
-        if (remaining > 0) {
-          permsHtml += `<span class="perm-pill" style="color:var(--teal-600);font-weight:700;">+${remaining} more</span>`;
-        }
-      }
-    }
-
     return `
     <tr id="user-row-${u.id}">
-      <td>${startIndex + idx + 1}</td>
       <td>
-        <div style="display:flex;align-items:center;gap:10px;">
+        <div class="user-cell">
           ${avatarHTML(u, 'avatar-sm')}
-          <div>
-            <div style="font-weight:700;color:var(--text);font-size:0.88rem;">${escapeHtml(u.name)}</div>
-            <div style="font-size:0.75rem;color:var(--text-3);">
-              ${[u.block, u.lot].filter(Boolean).join(', ')}${u.contact ? ` &bull; ${escapeHtml(u.contact)}` : ''}
+          <div class="user-cell-meta">
+            <div class="user-name" title="${escapeHtml(u.name)}">${escapeHtml(u.name)}</div>
+            <div class="user-sub">
+              <span class="user-username">@${escapeHtml(u.username || '—')}</span>
+              ${u.email ? `<span class="user-dot">&bull;</span><span class="user-email" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</span>` : ''}
             </div>
           </div>
         </div>
       </td>
       <td>
-        <div style="font-size:0.84rem;font-weight:600;color:var(--text-2);">@${escapeHtml(u.username || '—')}</div>
-        <div style="font-size:0.75rem;color:var(--text-3);">${escapeHtml(u.email || '—')}</div>
+        <div class="block-lot-cell">
+          ${(u.block || u.lot) ? escapeHtml([u.block, u.lot].filter(Boolean).join(', ')) : '<span style="color:var(--text-3);">—</span>'}
+        </div>
       </td>
       <td>
         <span class="badge" style="background:${roleColor}18;color:${roleColor};font-weight:700;padding:3px 8px;border-radius:12px;font-size:0.73rem;">
           ${escapeHtml(roleLabel)}
         </span>
       </td>
-      <td>${permsHtml}</td>
+      <td>
+        ${getUserAccessSummaryHtml(u)}
+      </td>
       <td>
         <span class="${isActive ? 'badge-status-active' : 'badge-status-inactive'}">
           ● ${isActive ? 'Active' : 'Deactivated'}
@@ -2106,11 +2110,7 @@ function renderUserManagementRows(filteredUsers = null, resetPage = false) {
       </td>
       <td style="text-align:right;">
         <div class="td-actions" style="justify-content:flex-end;">
-          <button class="btn btn-secondary btn-sm" onclick="openEditUserPermissionsModal('${u.id}')" title="Configure Permissions">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" style="margin-right:3px;vertical-align:-1px;"><path d="M21 2l-2 2m-2-2l2 2m7 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0z"></path></svg>
-            Permissions
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="openEditUserAccountModal('${u.id}')" title="Edit Profile">
+          <button class="btn btn-secondary btn-sm" onclick="openEditUserAccountModal('${u.id}')" title="Edit Profile & Permissions">
             Edit
           </button>
           ${!isPrimaryAdmin ? `
@@ -2121,7 +2121,7 @@ function renderUserManagementRows(filteredUsers = null, resetPage = false) {
               <svg width="13" height="13"><use href="#ico-trash"/></svg>
             </button>
           ` : `
-            <span style="font-size:0.72rem;color:var(--text-3);padding:0 6px;font-style:italic;">Protected</span>
+            <span class="protected-tag">Protected</span>
           `}
         </div>
       </td>
@@ -2151,6 +2151,9 @@ function filterUserManagementTable() {
       || (u.username || '').toLowerCase().includes(q)
       || (u.email || '').toLowerCase().includes(q)
       || (ROLE_LABELS[u.role] || '').toLowerCase().includes(q)
+      || (u.block || '').toLowerCase().includes(q)
+      || (u.lot || '').toLowerCase().includes(q)
+      || (Array.isArray(u.permissions) && u.permissions.some(p => p.toLowerCase().includes(q)))
     );
   }
   if (roleFilter) {
@@ -2197,84 +2200,151 @@ function renderPermissionGroupsHTML(selectedPerms = [], prefix = 'ca') {
   `).join('');
 }
 
+function toggleCreateSelectAll(btn) {
+  const container = document.getElementById('ca_perms_grid');
+  if (!container) return;
+  const checkboxes = Array.from(container.querySelectorAll('.perm-checkbox:not(:disabled)'));
+  if (!checkboxes.length) return;
+  const allChecked = checkboxes.every(cb => cb.checked);
+  checkboxes.forEach(cb => {
+    cb.checked = !allChecked;
+    updateCompactCardState(cb);
+  });
+  if (btn) btn.textContent = allChecked ? 'Select All' : 'Deselect All';
+}
+
+function clearCreateAdditionalPermissions() {
+  const container = document.getElementById('ca_perms_grid');
+  if (!container) return;
+  const checkboxes = Array.from(container.querySelectorAll('.perm-checkbox:not(:disabled)'));
+  checkboxes.forEach(cb => {
+    cb.checked = false;
+    updateCompactCardState(cb);
+  });
+  const btn = document.getElementById('btnSelectAllPerms');
+  if (btn) btn.textContent = 'Select All';
+}
+
 function openCreateAccountModal() {
   openModal('Create New Account', `
     <div style="background:var(--teal-50, #f0fdfa);border:1px solid var(--teal-200, #99f6e4);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.83rem;color:var(--teal-800, #115e59);line-height:1.4;">
       <strong>Sign-In Credentials Note:</strong> The account holder will log in using their <strong>Username</strong> and <strong>Password</strong>. Full Name is used as their display name in directory and records.
     </div>
-    <div class="grid-2">
-      <div class="form-group">
-        <label>Full Name *</label>
-        <input id="ca_name" placeholder="e.g. Maria Santos" autocomplete="off"/>
-        <small style="font-size:0.75rem;color:var(--text-3);display:block;margin-top:2px;">Display name of the person</small>
-      </div>
-      <div class="form-group">
-        <label>Login Username *</label>
-        <input id="ca_user" placeholder="e.g. mariasantos" autocomplete="off"/>
-        <small style="font-size:0.75rem;color:var(--text-3);display:block;margin-top:2px;">Sign-in identifier (no spaces, min. 3 chars)</small>
-      </div>
-    </div>
-    <div class="grid-2">
-      <div class="form-group">
-        <label>Email Address *</label>
-        <input id="ca_email" type="email" placeholder="e.g. maria@example.com" autocomplete="off"/>
-        <small style="font-size:0.75rem;color:var(--text-3);display:block;margin-top:2px;">Must be a unique email address</small>
-      </div>
-      <div class="form-group">
-        <label>Initial Password *</label>
-        <input id="ca_pass" type="password" placeholder="Min. 6 characters" autocomplete="new-password"/>
-        <small style="font-size:0.75rem;color:var(--text-3);display:block;margin-top:2px;">Minimum 6 characters</small>
-      </div>
-    </div>
-    <div class="grid-2">
-      <div class="form-group">
-        <label>Account Type *</label>
-        <select id="ca_role" onchange="handleCreateAccountRoleChange()">
-          <option value="homeowner" selected>Resident</option>
-          <option value="admin">Administrator</option>
-        </select>
-      </div>
-      <div class="form-group">
-        <label>Contact Number (Optional)</label>
-        <input id="ca_contact" placeholder="e.g. 09171234567"/>
-      </div>
-    </div>
 
-    <!-- Homeowner-specific inputs (shown by default for Resident) -->
-    <div id="ca_ho_fields">
+    <!-- Section 1: Personal Information -->
+    <div class="modal-form-section">
+      <div class="modal-section-title">Personal Information</div>
       <div class="grid-2">
-        <div class="form-group"><label>Block</label><input id="ca_block" placeholder="e.g. Block 2"/></div>
-        <div class="form-group"><label>Lot</label><input id="ca_lot" placeholder="e.g. Lot 5"/></div>
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input id="ca_name" placeholder="e.g. Maria Santos" autocomplete="off"/>
+          <small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:2px;">Display name of the person</small>
+        </div>
+        <div class="form-group">
+          <label>Contact Number (Optional)</label>
+          <input id="ca_contact" placeholder="e.g. 09171234567"/>
+        </div>
       </div>
-      <div class="form-group"><label>Lot Area (sqm)</label><input id="ca_lotArea" type="number" min="0" step="0.01" placeholder="e.g. 120"/></div>
+
+      <!-- Homeowner-specific inputs (shown by default for Resident) -->
+      <div id="ca_ho_fields">
+        <div class="grid-2">
+          <div class="form-group"><label>Block</label><input id="ca_block" placeholder="e.g. Block 2"/></div>
+          <div class="form-group"><label>Lot</label><input id="ca_lot" placeholder="e.g. Lot 5"/></div>
+        </div>
+        <div class="form-group"><label>Lot Area (sqm)</label><input id="ca_lotArea" type="number" min="0" step="0.01" placeholder="e.g. 120"/></div>
+      </div>
     </div>
 
-    <!-- Module Access Permissions Section -->
-    <div class="permissions-section-wrap" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">
+    <!-- Section 2: Account Information -->
+    <div class="modal-form-section">
+      <div class="modal-section-title">Account Information</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Login Username *</label>
+          <input id="ca_user" placeholder="e.g. mariasantos" autocomplete="off"/>
+          <small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:2px;">Sign-in identifier (min. 3 chars)</small>
+        </div>
+        <div class="form-group">
+          <label>Email Address *</label>
+          <input id="ca_email" type="email" placeholder="e.g. maria@example.com" autocomplete="off"/>
+          <small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:2px;">Unique email address</small>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Account Type *</label>
+          <select id="ca_role" onchange="handleCreateAccountRoleChange()">
+            <option value="homeowner" selected>Resident</option>
+            <option value="admin">Administrator</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Initial Password *</label>
+          <input id="ca_pass" type="password" placeholder="Min. 6 characters" autocomplete="new-password"/>
+          <small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:2px;">Minimum 6 characters</small>
+        </div>
+      </div>
+    </div>
+
+    <!-- Section 3: Module Access Permissions -->
+    <div class="modal-form-section">
       <div id="ca_admin_notice" class="hidden" style="background:#16a34a12;border:1px solid #16a34a40;border-radius:8px;padding:14px 16px;margin-bottom:10px;color:#16a34a;font-size:0.85rem;font-weight:600;">
         ★ Administrator account has full unrestricted access to all system modules and settings. Module configuration is not required.
       </div>
 
       <div id="ca_resident_perms_wrap">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+        <div class="compact-perm-header">
           <div>
-            <label style="margin-bottom:2px;font-weight:700;font-size:0.92rem;color:var(--text);">Module Access Permissions</label>
-            <div style="font-size:0.76rem;color:var(--text-3);">Select specific module access permissions to grant to this account.</div>
+            <div class="modal-section-title" style="margin-bottom:2px;">Module Access Permissions</div>
+            <div class="compact-perm-subtitle">Resident portal is default access. Assign additional operational &amp; analytics modules below:</div>
           </div>
-          <button type="button" class="btn btn-secondary btn-xs" id="btnSelectAllPerms" onclick="toggleSelectAllPermissions('ca_resident_perms_wrap', this)">
-            Select All
-          </button>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="btn btn-secondary btn-xs" id="btnSelectAllPerms" onclick="toggleCreateSelectAll(this)">
+              Select All
+            </button>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="clearCreateAdditionalPermissions()">
+              Clear Extra
+            </button>
+          </div>
         </div>
 
-        <div id="ca_perms_grid">
-          ${renderPermissionGroupsHTML([], 'ca')}
+        <!-- Default Base Module Card (Resident) -->
+        <div class="compact-perm-card base-default selected" style="margin-top:8px;margin-bottom:8px;">
+          <input type="checkbox" checked disabled title="Default access for all resident accounts" />
+          <div class="compact-perm-info">
+            <div class="compact-perm-name">
+              <svg width="13" height="13" style="vertical-align:-1px;color:var(--teal-600);"><use href="#ico-home"/></svg>
+              Resident Portal <span class="badge badge-blue" style="font-size:0.65rem;padding:1px 6px;margin-left:4px;">Default Base Access</span>
+            </div>
+            <div class="compact-perm-desc">Homeowner portal: dues, payment submission, complaints, facility bookings, notices</div>
+          </div>
+        </div>
+
+        <div class="compact-perm-grid" id="ca_perms_grid">
+          ${RESIDENT_ASSIGNABLE_MODULES.map(m => `
+            <label class="compact-perm-card" for="ca_perm_${m.id}">
+              <input type="checkbox"
+                     id="ca_perm_${m.id}"
+                     value="${m.id}"
+                     class="perm-checkbox"
+                     onchange="updateCompactCardState(this)" />
+              <div class="compact-perm-info">
+                <div class="compact-perm-name">
+                  <svg width="13" height="13" style="vertical-align:-1px;"><use href="#${m.icon}"/></svg>
+                  ${escapeHtml(m.label)}
+                </div>
+                <div class="compact-perm-desc">${escapeHtml(m.desc)}</div>
+              </div>
+            </label>
+          `).join('')}
         </div>
       </div>
     </div>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
     { label: 'Create Account', cls: 'btn-primary', action: saveCreateAccount },
-  ]);
+  ], 'modal-account-edit');
 
   handleCreateAccountRoleChange();
 }
@@ -2297,31 +2367,23 @@ function handleCreateAccountRoleChange() {
   if (adminNotice) adminNotice.classList.add('hidden');
   if (residentPermsWrap) residentPermsWrap.classList.remove('hidden');
 
-  const checkboxes = document.querySelectorAll('#ca_resident_perms_wrap .perm-checkbox');
+  const checkboxes = document.querySelectorAll('#ca_perms_grid .perm-checkbox');
   checkboxes.forEach(cb => {
     cb.disabled = false;
-    updatePermissionCardState(cb);
+    updateCompactCardState(cb);
   });
-}
-
-function updatePermissionCardState(checkbox) {
-  const card = checkbox.closest('.permission-card');
-  if (card) {
-    card.classList.toggle('selected', checkbox.checked);
-  }
 }
 
 function toggleSelectAllPermissions(containerId, buttonEl) {
   const container = document.getElementById(containerId);
   if (!container) return;
-  // Select only non-disabled checkboxes (preserves locked Resident module)
   const checkboxes = Array.from(container.querySelectorAll('.perm-checkbox:not(:disabled)'));
   if (!checkboxes.length) return;
 
   const allChecked = checkboxes.every(cb => cb.checked);
   checkboxes.forEach(cb => {
     cb.checked = !allChecked;
-    updatePermissionCardState(cb);
+    updateCompactCardState(cb);
   });
 
   if (buttonEl) {
@@ -2376,21 +2438,17 @@ async function saveCreateAccount() {
     return;
   }
 
-  // Collect selected permissions
+  // Collect selected permissions (resident is default base access)
   let permissions = [];
   if (role === 'admin') {
     permissions = ['*'];
   } else {
-    document.querySelectorAll('#ca_resident_perms_wrap .perm-checkbox:checked').forEach(cb => {
+    permissions = ['resident'];
+    document.querySelectorAll('#ca_perms_grid .perm-checkbox:checked').forEach(cb => {
       if (cb.value && !permissions.includes(cb.value)) {
         permissions.push(cb.value);
       }
     });
-
-    if (permissions.length === 0) {
-      showToast('error', 'Module Selection Required', 'Please select at least one module access permission for this resident account.');
-      return;
-    }
   }
 
   const newUser = {
@@ -2433,63 +2491,206 @@ async function saveCreateAccount() {
   }
 }
 
-// ── Edit User Access Permissions Modal ──
+// ── Unified Edit Account & Permissions Modal ──
 
-function openEditUserPermissionsModal(userId) {
+const RESIDENT_ASSIGNABLE_MODULES = [
+  { id: 'billing',       label: 'Billing',            icon: 'ico-file',      desc: 'Invoices, auto-dues, rates' },
+  { id: 'payments',      label: 'Payments',           icon: 'ico-credit',    desc: 'Verify & approve payments' },
+  { id: 'complaints',    label: 'Complaints',         icon: 'ico-flag',      desc: 'Review & resolve complaints' },
+  { id: 'vehicles',      label: 'Vehicles',           icon: 'ico-parking',   desc: 'Vehicle & RFID stickers' },
+  { id: 'lostfound',     label: 'Lost & Found',       icon: 'ico-search',    desc: 'Lost & found directory' },
+  { id: 'announcements',  label: 'Announcements',      icon: 'ico-megaphone', desc: 'Post community notices' },
+  { id: 'amenities',     label: 'Amenity Management', icon: 'ico-building',  desc: 'Facility bookings & schedule' },
+  { id: 'reports',       label: 'Reports',            icon: 'ico-chart',     desc: 'Financial summaries & stats' },
+  { id: 'auditlog',      label: 'Audit Logs',         icon: 'ico-log',       desc: 'System actions audit trail' },
+];
+
+function updateCompactCardState(checkbox) {
+  const card = checkbox.closest('.compact-perm-card');
+  if (card) {
+    card.classList.toggle('selected', checkbox.checked);
+  }
+}
+
+function toggleEditSelectAll(btn) {
+  const container = document.getElementById('ea_perms_wrap');
+  if (!container) return;
+  const checkboxes = Array.from(container.querySelectorAll('.perm-checkbox:not(:disabled)'));
+  if (!checkboxes.length) return;
+  const allChecked = checkboxes.every(cb => cb.checked);
+  checkboxes.forEach(cb => {
+    cb.checked = !allChecked;
+    updateCompactCardState(cb);
+  });
+  if (btn) btn.textContent = allChecked ? 'Select All' : 'Deselect All';
+}
+
+function clearEditAdditionalPermissions() {
+  const container = document.getElementById('ea_perms_wrap');
+  if (!container) return;
+  const checkboxes = Array.from(container.querySelectorAll('.perm-checkbox:not(:disabled)'));
+  checkboxes.forEach(cb => {
+    cb.checked = false;
+    updateCompactCardState(cb);
+  });
+  const btn = document.getElementById('btnEditSelectAll');
+  if (btn) btn.textContent = 'Select All';
+}
+
+function openEditUserAccountModal(userId) {
   const u = db.getOne('users', userId);
   if (!u) return;
 
   const isAdminUser = u.role === 'admin';
   const roleLabel = ROLE_LABELS[u.role] || u.role;
+  const roleColor = isAdminUser ? '#dc2626' : '#177a80';
+  const isActive = (u.status || 'active') === 'active';
   const currentPerms = Array.isArray(u.permissions) ? u.permissions : [];
 
-  openModal(`Access Permissions: ${escapeHtml(u.name)}`, `
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);">
+  const bodyHtml = `
+    <!-- Top Account Banner -->
+    <div class="modal-user-summary-card">
       ${avatarHTML(u, 'avatar-md')}
-      <div style="flex:1;">
-        <div style="font-weight:700;font-size:1rem;color:var(--text);">${escapeHtml(u.name)}</div>
-        <div style="font-size:0.8rem;color:var(--text-3);">@${escapeHtml(u.username)} &bull; ${escapeHtml(u.email || 'No email')}${u.block || u.lot ? ` &bull; ${escapeHtml([u.block, u.lot].filter(Boolean).join(', '))}` : ''}</div>
-        <div style="margin-top:4px;">
-          <span class="badge ${isAdminUser ? 'badge-red' : 'badge-teal'}" style="font-size:0.72rem;font-weight:700;">${escapeHtml(roleLabel)}</span>
-          <span class="${(u.status || 'active') === 'active' ? 'badge-status-active' : 'badge-status-inactive'}" style="margin-left:6px;">
-            ● ${(u.status || 'active') === 'active' ? 'Active' : 'Deactivated'}
-          </span>
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <strong style="font-size:0.98rem;color:var(--text);">${escapeHtml(u.name)}</strong>
+          <span class="badge" style="background:${roleColor}18;color:${roleColor};font-size:0.72rem;font-weight:700;">${escapeHtml(roleLabel)}</span>
+          <span class="${isActive ? 'badge-status-active' : 'badge-status-inactive'}">● ${isActive ? 'Active' : 'Deactivated'}</span>
+        </div>
+        <div style="font-size:0.78rem;color:var(--text-3);margin-top:2px;">
+          @${escapeHtml(u.username || '—')} &bull; ${escapeHtml(u.email || 'No email')}
+          ${u.block || u.lot ? ` &bull; ${escapeHtml([u.block, u.lot].filter(Boolean).join(', '))}` : ''}
         </div>
       </div>
     </div>
 
-    ${isAdminUser ? `
-      <div style="background:#16a34a12;border:1px solid #16a34a40;border-radius:8px;padding:16px 18px;margin-bottom:16px;color:#16a34a;font-size:0.88rem;font-weight:600;line-height:1.5;">
-        ★ Administrator account has full unrestricted system access to all modules and settings. Module configuration is not applicable.
+    <!-- Section 1: Personal Information -->
+    <div class="modal-form-section">
+      <div class="modal-section-title">Personal Information</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Full Name *</label>
+          <input id="ea_name" value="${escapeHtml(u.name)}" placeholder="e.g. Maria Santos" autocomplete="off"/>
+        </div>
+        <div class="form-group">
+          <label>Contact Number</label>
+          <input id="ea_contact" value="${escapeHtml(u.contact || '')}" placeholder="e.g. 09171234567"/>
+        </div>
       </div>
-    ` : `
-      <div class="permissions-section-wrap" style="margin-top:0;">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-          <div>
-            <label style="margin-bottom:2px;font-weight:700;font-size:0.92rem;color:var(--text);">Module Access Permissions</label>
-            <div style="font-size:0.76rem;color:var(--text-3);">Configure module access permissions for this resident account.</div>
+
+      ${!isAdminUser ? `
+        <div class="grid-2">
+          <div class="form-group">
+            <label>Block</label>
+            <input id="ea_block" value="${escapeHtml(u.block || '')}" placeholder="e.g. Block 2"/>
           </div>
-          <button type="button" class="btn btn-secondary btn-xs" id="btnEditSelectAll" onclick="toggleSelectAllPermissions('edit_resident_perms_wrap', this)">
-            Select All
-          </button>
+          <div class="form-group">
+            <label>Lot</label>
+            <input id="ea_lot" value="${escapeHtml(u.lot || '')}" placeholder="e.g. Lot 5"/>
+          </div>
+        </div>
+        <div class="form-group">
+          <label>Lot Area (sqm)</label>
+          <input id="ea_lotArea" type="number" step="0.01" value="${u.lotArea || 0}" placeholder="e.g. 120"/>
+        </div>
+      ` : ''}
+    </div>
+
+    <!-- Section 2: Account Information -->
+    <div class="modal-form-section">
+      <div class="modal-section-title">Account Information</div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label>Login Username *</label>
+          <input id="ea_user" value="${escapeHtml(u.username || '')}" ${u.id === 'u001' ? 'disabled title="Primary admin username cannot be changed"' : ''} placeholder="e.g. mariasantos" autocomplete="off"/>
+        </div>
+        <div class="form-group">
+          <label>Email Address *</label>
+          <input id="ea_email" type="email" value="${escapeHtml(u.email || '')}" placeholder="e.g. maria@example.com" autocomplete="off"/>
+        </div>
+      </div>
+      <div class="form-group">
+        <label>Change Password (Optional)</label>
+        <input id="ea_newpass" type="password" placeholder="Leave blank to keep current password" autocomplete="new-password"/>
+        <small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:2px;">Minimum 6 characters. Leave blank if password should remain unchanged.</small>
+      </div>
+    </div>
+
+    <!-- Section 3: Module Access Permissions -->
+    <div class="modal-form-section">
+      ${isAdminUser ? `
+        <div class="modal-section-title">Module Access Permissions</div>
+        <div class="admin-fullaccess-notice">
+          <svg width="20" height="20"><use href="#ico-shield"/></svg>
+          <div>
+            <strong style="color:#15803d;">Full System Access</strong>
+            <p style="margin-top:2px;font-size:0.78rem;color:#166534;">Administrator account has unrestricted access to all system modules, tables, and settings. Module configuration is not required.</p>
+          </div>
+        </div>
+      ` : `
+        <div class="compact-perm-header">
+          <div>
+            <div class="modal-section-title" style="margin-bottom:2px;">Module Access Permissions</div>
+            <div class="compact-perm-subtitle">Resident portal is default access. Assign additional operational &amp; analytics modules below:</div>
+          </div>
+          <div style="display:flex;gap:6px;">
+            <button type="button" class="btn btn-secondary btn-xs" id="btnEditSelectAll" onclick="toggleEditSelectAll(this)">
+              Select All
+            </button>
+            <button type="button" class="btn btn-secondary btn-xs" onclick="clearEditAdditionalPermissions()">
+              Clear Extra
+            </button>
+          </div>
         </div>
 
-        <div id="edit_resident_perms_wrap">
-          ${renderPermissionGroupsHTML(currentPerms, 'edit')}
+        <!-- Default Base Module Card (Resident) -->
+        <div class="compact-perm-card base-default selected" style="margin-top:8px;margin-bottom:8px;">
+          <input type="checkbox" checked disabled title="Default access for all resident accounts" />
+          <div class="compact-perm-info">
+            <div class="compact-perm-name">
+              <svg width="13" height="13" style="vertical-align:-1px;color:var(--teal-600);"><use href="#ico-home"/></svg>
+              Resident Portal <span class="badge badge-blue" style="font-size:0.65rem;padding:1px 6px;margin-left:4px;">Default Base Access</span>
+            </div>
+            <div class="compact-perm-desc">Homeowner portal: dues, payment submission, complaints, facility bookings, notices</div>
+          </div>
         </div>
-      </div>
-    `}
-  `, [
+
+        <!-- Additional Assignable Modules Grid -->
+        <div class="compact-perm-grid" id="ea_perms_wrap">
+          ${RESIDENT_ASSIGNABLE_MODULES.map(m => {
+            const isChecked = currentPerms.includes(m.id);
+            return `
+              <label class="compact-perm-card ${isChecked ? 'selected' : ''}" for="ea_perm_${m.id}">
+                <input type="checkbox"
+                       id="ea_perm_${m.id}"
+                       value="${m.id}"
+                       class="perm-checkbox"
+                       ${isChecked ? 'checked' : ''}
+                       onchange="updateCompactCardState(this)" />
+                <div class="compact-perm-info">
+                  <div class="compact-perm-name">
+                    <svg width="13" height="13" style="vertical-align:-1px;"><use href="#${m.icon}"/></svg>
+                    ${escapeHtml(m.label)}
+                  </div>
+                  <div class="compact-perm-desc">${escapeHtml(m.desc)}</div>
+                </div>
+              </label>
+            `;
+          }).join('')}
+        </div>
+      `}
+    </div>
+  `;
+
+  openModal(`Edit Account: ${escapeHtml(u.name)}`, bodyHtml, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    ...(!isAdminUser ? [
-      { label: 'Save Permissions', cls: 'btn-primary', action: () => saveEditUserPermissions(userId) }
-    ] : [])
-  ]);
+    { label: 'Save Changes', cls: 'btn-primary', action: () => saveEditUserAccount(userId) },
+  ], 'modal-account-edit');
 
   if (!isAdminUser) {
     const btn = document.getElementById('btnEditSelectAll');
     if (btn) {
-      const container = document.getElementById('edit_resident_perms_wrap');
+      const container = document.getElementById('ea_perms_wrap');
       const checkboxes = Array.from(container?.querySelectorAll('.perm-checkbox:not(:disabled)') || []);
       if (checkboxes.length && checkboxes.every(cb => cb.checked)) {
         btn.textContent = 'Deselect All';
@@ -2498,87 +2699,13 @@ function openEditUserPermissionsModal(userId) {
   }
 }
 
-async function saveEditUserPermissions(userId) {
-  const u = db.getOne('users', userId);
-  if (!u) return;
-
-  const newPermissions = [];
-  document.querySelectorAll('#edit_resident_perms_wrap .perm-checkbox:checked').forEach(cb => {
-    if (cb.value && !newPermissions.includes(cb.value)) {
-      newPermissions.push(cb.value);
-    }
-  });
-
-  u.permissions = newPermissions;
-
-  showLoading();
-  try {
-    await db.save('users', u);
-    await api.loadAll();
-    logAction(`Updated access permissions for user: ${u.name} (@${u.username})`);
-
-    // If updating current user's permissions, refresh sidebar immediately
-    if (currentUser && currentUser.id === u.id) {
-      currentUser.permissions = newPermissions;
-      buildSidebar();
-    }
-
-    closeModal();
-    hideLoading();
-    showToast('success', 'Permissions Updated', `Permissions saved for ${u.name}.`);
-    renderUserManagement();
-  } catch (err) {
-    hideLoading();
-    showToast('error', 'Failed', err.message || 'Could not update permissions.');
-  }
+// Retain alias for any external or legacy references
+function openEditUserPermissionsModal(userId) {
+  openEditUserAccountModal(userId);
 }
 
-// ── Edit User Account Details Modal ──
-
-function openEditUserAccountModal(userId) {
-  const u = db.getOne('users', userId);
-  if (!u) return;
-
-  const isHomeowner = u.role !== 'admin';
-
-  openModal(`Edit Account: ${escapeHtml(u.name)}`, `
-    <div class="grid-2">
-      <div class="form-group">
-        <label>Full Name *</label>
-        <input id="ea_name" value="${escapeHtml(u.name)}"/>
-      </div>
-      <div class="form-group">
-        <label>Username</label>
-        <input id="ea_user" value="${escapeHtml(u.username || '')}" ${u.id === 'u001' ? 'disabled' : ''}/>
-      </div>
-    </div>
-    <div class="grid-2">
-      <div class="form-group">
-        <label>Email Address</label>
-        <input id="ea_email" type="email" value="${escapeHtml(u.email || '')}"/>
-      </div>
-      <div class="form-group">
-        <label>Contact Number</label>
-        <input id="ea_contact" value="${escapeHtml(u.contact || '')}"/>
-      </div>
-    </div>
-
-    ${isHomeowner ? `
-      <div class="grid-2">
-        <div class="form-group"><label>Block</label><input id="ea_block" value="${escapeHtml(u.block || '')}"/></div>
-        <div class="form-group"><label>Lot</label><input id="ea_lot" value="${escapeHtml(u.lot || '')}"/></div>
-      </div>
-      <div class="form-group"><label>Lot Area (sqm)</label><input id="ea_lotArea" type="number" step="0.01" value="${u.lotArea || 0}"/></div>
-    ` : ''}
-
-    <div class="form-group" style="margin-top:10px;border-top:1px solid var(--border);padding-top:12px;">
-      <label>Change Password (Leave blank to keep current)</label>
-      <input id="ea_newpass" type="password" placeholder="New password (min. 6 characters)..."/>
-    </div>
-  `, [
-    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    { label: 'Save Changes', cls: 'btn-primary', action: () => saveEditUserAccount(userId) },
-  ]);
+async function saveEditUserPermissions(userId) {
+  return saveEditUserAccount(userId);
 }
 
 async function saveEditUserAccount(userId) {
@@ -2587,7 +2714,7 @@ async function saveEditUserAccount(userId) {
 
   const name = (document.getElementById('ea_name')?.value || '').trim();
   const username = (document.getElementById('ea_user')?.value || '').trim().toLowerCase();
-  const email = (document.getElementById('ea_email')?.value || '').trim();
+  const email = (document.getElementById('ea_email')?.value || '').trim().toLowerCase();
   const contact = (document.getElementById('ea_contact')?.value || '').trim();
   const newPass = (document.getElementById('ea_newpass')?.value || '').trim();
 
@@ -2595,15 +2722,43 @@ async function saveEditUserAccount(userId) {
     showToast('error', 'Missing Name', 'Full name cannot be empty.');
     return;
   }
+  if (!email) {
+    showToast('error', 'Missing Email', 'Email address cannot be empty.');
+    return;
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    showToast('error', 'Invalid Email', 'Please enter a valid email address.');
+    return;
+  }
 
   // Check username uniqueness if changed
   if (username && username !== (u.username || '').toLowerCase()) {
+    if (/\s/.test(username)) {
+      showToast('error', 'Invalid Username', 'Username cannot contain spaces.');
+      return;
+    }
+    if (username.length < 3) {
+      showToast('error', 'Username Too Short', 'Username must be at least 3 characters.');
+      return;
+    }
     const duplicate = db.get('users').find(x => x.id !== userId && (x.username || '').toLowerCase() === username);
     if (duplicate) {
       showToast('error', 'Username Taken', 'That username is already taken by another account.');
       return;
     }
     u.username = username;
+  }
+
+  // Check email uniqueness if changed
+  if (email && email !== (u.email || '').toLowerCase()) {
+    const duplicateEmail = db.get('users').find(x => x.id !== userId && (x.email || '').toLowerCase() === email);
+    if (duplicateEmail) {
+      showToast('error', 'Email Taken', 'That email address is already registered to another account.');
+      return;
+    }
+    u.email = email;
   }
 
   if (newPass) {
@@ -2615,35 +2770,47 @@ async function saveEditUserAccount(userId) {
   }
 
   u.name = name;
-  u.email = email;
-  u.contact = contact;
+  u.contact = contact || null;
 
   if (u.role !== 'admin') {
     u.block = formatLocationPart(document.getElementById('ea_block')?.value, 'Block');
     u.lot = formatLocationPart(document.getElementById('ea_lot')?.value, 'Lot');
     const lotAreaVal = document.getElementById('ea_lotArea')?.value;
     u.lotArea = lotAreaVal ? Number(lotAreaVal) : 0;
+
+    // Collect module permissions: resident base is default access
+    const newPerms = ['resident'];
+    document.querySelectorAll('#ea_perms_wrap .perm-checkbox:checked').forEach(cb => {
+      if (cb.value && !newPerms.includes(cb.value)) {
+        newPerms.push(cb.value);
+      }
+    });
+    u.permissions = newPerms;
+  } else {
+    u.permissions = ['*'];
   }
 
   showLoading();
   try {
     await db.save('users', u);
     await api.loadAll();
-    logAction(`Updated account profile: ${u.name}`);
+    logAction(`Updated account & permissions: ${u.name} (@${u.username})`);
 
+    // If updating current user's profile or permissions, update active state & rebuild sidebar
     if (currentUser && currentUser.id === u.id) {
       currentUser.name = u.name;
       currentUser.email = u.email;
+      currentUser.permissions = u.permissions;
       buildSidebar();
     }
 
     closeModal();
     hideLoading();
-    showToast('success', 'Profile Saved', `Account for ${u.name} updated.`);
+    showToast('success', 'Account Updated', `Account details and permissions saved for ${u.name}.`);
     renderUserManagement();
   } catch (err) {
     hideLoading();
-    showToast('error', 'Failed', err.message || 'Could not update account.');
+    showToast('error', 'Update Failed', err.message || 'Could not update account.');
   }
 }
 
@@ -2735,7 +2902,11 @@ function confirmDeleteUserAccount(userId) {
 // SECTION 18: MODAL ENGINE
 
 
-function openModal(title, bodyHtml, buttons = []) {
+function openModal(title, bodyHtml, buttons = [], modalClass = '') {
+  const modalEl = document.getElementById('modal');
+  if (modalEl) {
+    modalEl.className = 'modal' + (modalClass ? ' ' + modalClass : '');
+  }
   document.getElementById('modalTitle').textContent = title;
   document.getElementById('modalBody').innerHTML = bodyHtml;
   const footer = document.getElementById('modalFooter');
@@ -2754,6 +2925,10 @@ function openModal(title, bodyHtml, buttons = []) {
 function closeModal() {
   if (pendingPhotoFile || pendingPhotoPreviewUrl) {
     cancelProfilePhotoSelect();
+  }
+  const modalEl = document.getElementById('modal');
+  if (modalEl) {
+    modalEl.className = 'modal';
   }
   document.getElementById('modalOverlay').classList.add('hidden');
   document.body.style.overflow = '';
