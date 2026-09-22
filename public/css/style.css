@@ -666,7 +666,6 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 .pub-about-card {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-top: 3px solid var(--ac, var(--teal-500));
   border-radius: var(--radius-lg);
   padding: 20px;
   transition: transform 0.2s, box-shadow 0.2s;
