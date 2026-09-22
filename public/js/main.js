@@ -22,25 +22,59 @@ const VEHICLE_TYPES = ['Car', 'Motorcycle', 'Tricycle', 'Van', 'Truck', 'SUV', '
 const VEHICLE_REGISTRATION_FEES = { homeowner: 200, nonHomeowner: 250 };
 const ROLE_LABELS = {
   admin: 'Administrator',
-  homeowner: 'Homeowner',
+  homeowner: 'Resident',
 };
 
-const MODULE_PERMISSIONS = [
-  { id: 'dashboard',      label: 'Dashboard',            section: 'MAIN',        icon: 'ico-dashboard',  desc: 'Overview stats, collection trends, recent activity' },
-  { id: 'homeowners',     label: 'Homeowners',           section: 'MAIN',        icon: 'ico-users',      desc: 'Resident directory, contact details, balance info' },
-  { id: 'announcements',  label: 'Announcements',        section: 'MANAGEMENT',  icon: 'ico-megaphone',  desc: 'Post notices, multi-photo updates, comments' },
-  { id: 'billing',        label: 'Billing',              section: 'MANAGEMENT',  icon: 'ico-file',       desc: 'Create invoices, auto-generate dues, assign rates' },
-  { id: 'payments',       label: 'Payments',             section: 'MANAGEMENT',  icon: 'ico-credit',     desc: 'Verify receipts, approve/reject homeowner payments' },
-  { id: 'complaints',     label: 'Complaints',           section: 'MANAGEMENT',  icon: 'ico-flag',       desc: 'Review complaints, post admin responses, resolve' },
-  { id: 'amenities',      label: 'Amenity Bookings',     section: 'MANAGEMENT',  icon: 'ico-building',   desc: 'Facility reservation approvals and schedules' },
-  { id: 'vehicles',       label: 'Vehicle Management',   section: 'MANAGEMENT',  icon: 'ico-parking',    desc: 'Approve vehicle registrations and RFID stickers' },
-  { id: 'lostfound',      label: 'Lost and Found',        section: 'MANAGEMENT',  icon: 'ico-search',     desc: 'Manage community lost & found listings' },
-  { id: 'board',          label: 'Board of Directors',   section: 'MANAGEMENT',  icon: 'ico-users',      desc: 'Manage elected HOA officers, terms, and leadership' },
-  { id: 'reports',        label: 'Reports',              section: 'ANALYTICS',   icon: 'ico-chart',      desc: 'Financial summaries, payment collection charts' },
-  { id: 'auditlog',       label: 'Audit Log',            section: 'ANALYTICS',   icon: 'ico-log',        desc: 'Audit trail of administrative system actions' },
-  { id: 'users',          label: 'Accounts & Roles',      section: 'SYSTEM',      icon: 'ico-shield',     desc: 'User management, custom roles, permission matrix' },
-  { id: 'settings',       label: 'Settings',             section: 'SYSTEM',      icon: 'ico-settings',   desc: 'System preferences, dues rate, admin profile' },
+const ASSIGNABLE_PERMISSION_GROUPS = [
+  {
+    category: 'Resident',
+    description: 'Resident portal access',
+    modules: [
+      { id: 'resident', label: 'Resident', icon: 'ico-home', desc: 'Homeowner portal: dues, payment submission, complaints, bookings, notices' },
+    ],
+  },
+  {
+    category: 'Management',
+    description: 'Operational modules',
+    modules: [
+      { id: 'billing', label: 'Billing', icon: 'ico-file', desc: 'Create invoices, auto-generate dues, assign rates' },
+      { id: 'payments', label: 'Payments', icon: 'ico-credit', desc: 'Verify receipts, approve/reject homeowner payments' },
+      { id: 'complaints', label: 'Complaints', icon: 'ico-flag', desc: 'Review complaints, post admin responses, resolve' },
+      { id: 'vehicles', label: 'Vehicles', icon: 'ico-parking', desc: 'Approve vehicle registrations and RFID stickers' },
+      { id: 'lostfound', label: 'Lost & Found', icon: 'ico-search', desc: 'Manage community lost & found listings' },
+      { id: 'announcements', label: 'Announcements', icon: 'ico-megaphone', desc: 'Post notices, multi-photo updates, comments' },
+      { id: 'amenities', label: 'Amenity Management', icon: 'ico-building', desc: 'Facility reservation approvals and schedules' },
+    ],
+  },
+  {
+    category: 'Analytics',
+    description: 'Reporting and audit oversight modules',
+    modules: [
+      { id: 'reports', label: 'Reports', icon: 'ico-chart', desc: 'Financial summaries, payment collection charts' },
+      { id: 'auditlog', label: 'Audit Logs', icon: 'ico-log', desc: 'Audit trail of administrative system actions' },
+    ],
+  },
 ];
+
+const MODULE_PERMISSIONS = [
+  { id: 'resident',      label: 'Resident',             section: 'RESIDENT',    icon: 'ico-home',       desc: 'Homeowner portal: dues, payment submission, complaints, bookings, notices' },
+  { id: 'dashboard',     label: 'Dashboard',            section: 'MAIN',        icon: 'ico-dashboard',  desc: 'Overview stats, collection trends, recent activity' },
+  { id: 'homeowners',    label: 'Homeowners',           section: 'MAIN',        icon: 'ico-users',      desc: 'Resident directory, contact details, balance info' },
+  { id: 'announcements', label: 'Announcements',        section: 'MANAGEMENT',  icon: 'ico-megaphone',  desc: 'Post notices, multi-photo updates, comments' },
+  { id: 'billing',       label: 'Billing',              section: 'MANAGEMENT',  icon: 'ico-file',       desc: 'Create invoices, auto-generate dues, assign rates' },
+  { id: 'payments',      label: 'Payments',             section: 'MANAGEMENT',  icon: 'ico-credit',     desc: 'Verify receipts, approve/reject homeowner payments' },
+  { id: 'complaints',    label: 'Complaints',           section: 'MANAGEMENT',  icon: 'ico-flag',       desc: 'Review complaints, post admin responses, resolve' },
+  { id: 'amenities',     label: 'Amenity Management',   section: 'MANAGEMENT',  icon: 'ico-building',   desc: 'Facility reservation approvals and schedules' },
+  { id: 'vehicles',      label: 'Vehicles',             section: 'MANAGEMENT',  icon: 'ico-parking',    desc: 'Approve vehicle registrations and RFID stickers' },
+  { id: 'lostfound',     label: 'Lost & Found',         section: 'MANAGEMENT',  icon: 'ico-search',     desc: 'Manage community lost & found listings' },
+  { id: 'board',         label: 'Board of Directors',   section: 'MANAGEMENT',  icon: 'ico-users',      desc: 'Manage elected HOA officers, terms, and leadership' },
+  { id: 'reports',       label: 'Reports',              section: 'ANALYTICS',   icon: 'ico-chart',      desc: 'Financial summaries, payment collection charts' },
+  { id: 'auditlog',      label: 'Audit Logs',           section: 'ANALYTICS',   icon: 'ico-log',        desc: 'Audit trail of administrative system actions' },
+  { id: 'users',         label: 'Accounts & Roles',     section: 'SYSTEM',      icon: 'ico-shield',     desc: 'User accounts and access permissions management' },
+  { id: 'settings',      label: 'Settings',             section: 'SYSTEM',      icon: 'ico-settings',   desc: 'System preferences, dues rate, admin profile' },
+];
+
+const ADMIN_ONLY_MODULES = ['users', 'settings'];
 
 const ADMIN_NAV = [
   { id: 'dashboard',      icon: 'ico-dashboard',  label: 'Dashboard',       section: 'MAIN' },
@@ -444,39 +478,34 @@ function initApp(targetView) {
 function getNavForRole(role) {
   if (role === 'admin') return ADMIN_NAV;
 
-  // If user has custom permissions array in MySQL, dynamically build their navigation
-  if (currentUser && Array.isArray(currentUser.permissions) && currentUser.permissions.length > 0) {
-    if (role === 'homeowner') {
-      const perms = currentUser.permissions;
-      // Resident features are base access for every resident
-      const baseNav = [...HOMEOWNER_NAV];
-      // Include any additional modules granted via module access permissions
-      const additionalNav = ADMIN_NAV.filter(item => perms.includes(item.id) || perms.includes('*'));
-      return [...baseNav, ...additionalNav];
-    }
-    const perms = currentUser.permissions;
-    const permittedNav = ADMIN_NAV.filter(item => perms.includes(item.id) || perms.includes('*'));
-    if (permittedNav.length > 0) return permittedNav;
+  // For resident, build base navigation plus any permitted management/analytics modules
+  if (currentUser) {
+    const perms = Array.isArray(currentUser.permissions) ? currentUser.permissions : [];
+    const baseNav = perms.includes('resident') ? [...HOMEOWNER_NAV] : [];
+    // Only include assignable modules, NEVER admin-only modules (users, settings) or board
+    const additionalNav = ADMIN_NAV.filter(item =>
+      !ADMIN_ONLY_MODULES.includes(item.id) && item.id !== 'board' && perms.includes(item.id)
+    );
+    return [...baseNav, ...additionalNav];
   }
 
-  // Default fallback
-  if (role === 'admin') return ADMIN_NAV;
   return HOMEOWNER_NAV;
 }
 
 function getDefaultViewForRole(role) {
   const nav = getNavForRole(role);
   if (nav && nav.length > 0) return nav[0].id;
-  return role === 'homeowner' ? HOMEOWNER_NAV[0].id : ADMIN_NAV[0].id;
+  return role === 'admin' ? ADMIN_NAV[0].id : (userHasModulePermission('resident') ? HOMEOWNER_NAV[0].id : 'dashboard');
 }
 
 function userHasModulePermission(moduleId) {
   if (!currentUser) return false;
   if (currentUser.status === 'inactive' || currentUser.status === 'deactivated') return false;
   if (currentUser.role === 'admin') return true;
+  // Non-admins can NEVER have access to admin-only modules
+  if (ADMIN_ONLY_MODULES.includes(moduleId)) return false;
   if (Array.isArray(currentUser.permissions)) {
-    if (currentUser.permissions.includes('*')) return true;
-    if (currentUser.permissions.includes(moduleId)) return true;
+    return currentUser.permissions.includes(moduleId);
   }
   return false;
 }
@@ -489,14 +518,26 @@ function canViewPayments() { return isAdmin() || userHasModulePermission('paymen
 function canManageBilling() { return isAdmin() || userHasModulePermission('billing'); }
 function canViewBillingStatus() { return isAdmin() || userHasModulePermission('billing'); }
 function canViewReports() { return isAdmin() || userHasModulePermission('reports'); }
+function canManageVehicles() { return isAdmin() || userHasModulePermission('vehicles'); }
+function canManageAmenities() { return isAdmin() || userHasModulePermission('amenities'); }
+function canManageLostFound() { return isAdmin() || userHasModulePermission('lostfound'); }
+function canManageAnnouncements() { return isAdmin() || userHasModulePermission('announcements'); }
+function canViewAuditLog() { return isAdmin() || userHasModulePermission('auditlog'); }
 
 function canAccessView(viewId) {
   if (!currentUser) return false;
   if (currentUser.status === 'inactive' || currentUser.status === 'deactivated') return false;
   if (isAdmin()) return true;
 
+  // Block admin-only views for non-admin accounts
+  if (ADMIN_ONLY_MODULES.includes(viewId)) return false;
+
+  // Base resident views require resident permission
+  if (viewId === 'resident' || viewId.startsWith('ho-')) {
+    return userHasModulePermission('resident');
+  }
+
   if (Array.isArray(currentUser.permissions) && currentUser.permissions.length > 0) {
-    if (currentUser.permissions.includes('*')) return true;
     if (currentUser.permissions.includes(viewId)) return true;
   }
 
@@ -1846,8 +1887,8 @@ function renderUserManagement() {
   area.innerHTML = `
   <div class="page-header">
     <div class="page-header-left">
-      <h2>Accounts &amp; Permissions</h2>
-      <p>Create accounts, customize module access permissions, and manage user status.</p>
+      <h2>Accounts &amp; Access Permissions</h2>
+      <p>Manage user accounts, assign module access permissions, and configure account status.</p>
     </div>
     <div class="page-header-actions">
       <button class="btn btn-primary" onclick="openCreateAccountModal()">
@@ -1876,7 +1917,7 @@ function renderUserManagement() {
     <div class="stat-card">
       <div class="stat-icon" style="background:#fef3c7;color:#d97706;"><svg width="22" height="22"><use href="#ico-home"/></svg></div>
       <div class="stat-value">${hoCount}</div>
-      <div class="stat-label">Homeowner Residents</div>
+      <div class="stat-label">Resident Accounts</div>
     </div>
   </div>
 
@@ -1888,9 +1929,9 @@ function renderUserManagement() {
           <input id="userMgmtSearch" type="text" placeholder="Search by name, username, email, role..." oninput="filterUserManagementTable()"/>
         </div>
         <select class="filter-select" id="userRoleFilter" onchange="filterUserManagementTable()">
-          <option value="">All Roles</option>
+          <option value="">All Account Types</option>
           <option value="admin">Administrator</option>
-          <option value="homeowner">Homeowner</option>
+          <option value="homeowner">Resident</option>
         </select>
         <select class="filter-select" id="userStatusFilter" onchange="filterUserManagementTable()">
           <option value="">All Statuses</option>
@@ -1907,8 +1948,8 @@ function renderUserManagement() {
               <th>#</th>
               <th>User</th>
               <th>Username / Email</th>
-              <th>Role</th>
-              <th>Assigned Permissions</th>
+              <th>Account Type</th>
+              <th>Access Permissions</th>
               <th>Status</th>
               <th style="text-align:right">Actions</th>
             </tr>
@@ -1993,17 +2034,19 @@ function renderUserManagementRows(filteredUsers = null, resetPage = false) {
     // Format permissions preview
     let permsHtml = '';
     if (u.role === 'admin') {
-      permsHtml = '<span class="perm-pill" style="background:#16a34a18;color:#16a34a;border-color:#16a34a40;font-weight:700;">★ Full Access (All Modules)</span>';
+      permsHtml = '<span class="perm-pill" style="background:#16a34a18;color:#16a34a;border-color:#16a34a40;font-weight:700;">★ Full Access</span>';
     } else {
-      const perms = Array.isArray(u.permissions) ? u.permissions : [];
-      if (!perms.length) {
-        permsHtml = '<span style="color:var(--text-3);font-size:0.75rem;font-style:italic;">No custom modules assigned</span>';
+      let perms = Array.isArray(u.permissions) ? [...u.permissions] : [];
+      perms = perms.filter(p => !p.startsWith('ho-') && p !== '*' && p !== 'users' && p !== 'settings');
+
+      if (perms.length === 0) {
+        permsHtml = '<span class="perm-pill" style="color:var(--text-3);border-style:dashed;">No modules assigned</span>';
       } else {
         const visible = perms.slice(0, 3);
         const remaining = perms.length - 3;
         permsHtml = visible.map(pid => {
           const mod = MODULE_PERMISSIONS.find(m => m.id === pid);
-          return `<span class="perm-pill">${escapeHtml(mod ? mod.label : pid)}</span>`;
+          return `<span class="perm-pill">${escapeHtml(mod ? mod.label : (pid === 'resident' ? 'Resident' : pid))}</span>`;
         }).join('');
         if (remaining > 0) {
           permsHtml += `<span class="perm-pill" style="color:var(--teal-600);font-weight:700;">+${remaining} more</span>`;
@@ -2099,7 +2142,39 @@ function filterUserManagementTable() {
   renderUserManagementRows(users, true);
 }
 
-// ── Account Creation with Custom Permissions ──
+// ── Account Creation with Module Access Permissions ──
+
+function renderPermissionGroupsHTML(selectedPerms = [], prefix = 'ca') {
+  return ASSIGNABLE_PERMISSION_GROUPS.map(group => `
+    <div class="perm-category-group">
+      <div class="perm-category-title">
+        <span>${escapeHtml(group.category)}</span>
+      </div>
+      <div class="permission-grid">
+        ${group.modules.map(p => {
+          const isChecked = selectedPerms.includes(p.id);
+          return `
+            <label class="permission-card ${isChecked ? 'selected' : ''}" for="${prefix}_perm_${p.id}">
+              <input type="checkbox"
+                     id="${prefix}_perm_${p.id}"
+                     value="${p.id}"
+                     class="perm-checkbox"
+                     ${isChecked ? 'checked' : ''}
+                     onchange="updatePermissionCardState(this)" />
+              <div class="permission-info">
+                <div class="permission-title">
+                  <svg width="14" height="14" style="margin-right:4px;vertical-align:-2px;"><use href="#${p.icon}"/></svg>
+                  ${escapeHtml(p.label)}
+                </div>
+                <div class="permission-desc">${escapeHtml(p.desc)}</div>
+              </div>
+            </label>
+          `;
+        }).join('')}
+      </div>
+    </div>
+  `).join('');
+}
 
 function openCreateAccountModal() {
   openModal('Create New Account', `
@@ -2125,10 +2200,10 @@ function openCreateAccountModal() {
     </div>
     <div class="grid-2">
       <div class="form-group">
-        <label>User Role *</label>
+        <label>Account Type *</label>
         <select id="ca_role" onchange="handleCreateAccountRoleChange()">
-          <option value="homeowner" selected>Homeowner / Resident</option>
-          <option value="admin">Administrator (Full Access)</option>
+          <option value="homeowner" selected>Resident</option>
+          <option value="admin">Administrator</option>
         </select>
       </div>
       <div class="form-group">
@@ -2137,7 +2212,7 @@ function openCreateAccountModal() {
       </div>
     </div>
 
-    <!-- Homeowner-specific inputs (shown by default) -->
+    <!-- Homeowner-specific inputs (shown by default for Resident) -->
     <div id="ca_ho_fields">
       <div class="grid-2">
         <div class="form-group"><label>Block</label><input id="ca_block" placeholder="e.g. Block 2"/></div>
@@ -2146,35 +2221,26 @@ function openCreateAccountModal() {
       <div class="form-group"><label>Lot Area (sqm)</label><input id="ca_lotArea" type="number" min="0" step="0.01" placeholder="e.g. 120"/></div>
     </div>
 
-    <!-- Custom Permissions Checklist -->
+    <!-- Module Access Permissions Section -->
     <div class="permissions-section-wrap" style="margin-top:14px;border-top:1px solid var(--border);padding-top:14px;">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <div>
-          <label style="margin-bottom:2px;font-weight:700;font-size:0.92rem;color:var(--text);">Module Access Permissions</label>
-          <div style="font-size:0.76rem;color:var(--text-3);">Select the modules this account is allowed to access and manage.</div>
+      <div id="ca_admin_notice" class="hidden" style="background:#16a34a12;border:1px solid #16a34a40;border-radius:8px;padding:14px 16px;margin-bottom:10px;color:#16a34a;font-size:0.85rem;font-weight:600;">
+        ★ Administrator account has full unrestricted access to all system modules and settings. Module configuration is not required.
+      </div>
+
+      <div id="ca_resident_perms_wrap">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <label style="margin-bottom:2px;font-weight:700;font-size:0.92rem;color:var(--text);">Module Access Permissions</label>
+            <div style="font-size:0.76rem;color:var(--text-3);">Select module access permissions to grant to this resident account.</div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-xs" id="btnSelectAllPerms" onclick="toggleSelectAllPermissions('ca_resident_perms_wrap', this)">
+            Select All
+          </button>
         </div>
-        <button type="button" class="btn btn-secondary btn-xs" id="btnSelectAllPerms" onclick="toggleSelectAllPermissions('ca_perms_grid', this)">
-          Select All
-        </button>
-      </div>
 
-      <div id="ca_admin_notice" class="hidden" style="background:var(--teal-50);border:1px solid var(--teal-500);border-radius:8px;padding:10px 14px;margin-bottom:10px;font-size:0.82rem;color:var(--teal-800);font-weight:600;">
-        ★ Administrator role has unrestricted access to all current and future modules.
-      </div>
-
-      <div class="permission-grid" id="ca_perms_grid">
-        ${MODULE_PERMISSIONS.map(p => `
-          <label class="permission-card" for="perm_${p.id}">
-            <input type="checkbox" id="perm_${p.id}" value="${p.id}" class="perm-checkbox" onchange="updatePermissionCardState(this)" />
-            <div class="permission-info">
-              <div class="permission-title">
-                <svg width="14" height="14" style="margin-right:4px;vertical-align:-2px;"><use href="#${p.icon}"/></svg>
-                ${escapeHtml(p.label)}
-              </div>
-              <div class="permission-desc">${escapeHtml(p.desc)}</div>
-            </div>
-          </label>
-        `).join('')}
+        <div id="ca_perms_grid">
+          ${renderPermissionGroupsHTML([], 'ca')}
+        </div>
       </div>
     </div>
   `, [
@@ -2182,7 +2248,6 @@ function openCreateAccountModal() {
     { label: 'Create Account', cls: 'btn-primary', action: saveCreateAccount },
   ]);
 
-  // Default preselection for staff
   handleCreateAccountRoleChange();
 }
 
@@ -2190,32 +2255,23 @@ function handleCreateAccountRoleChange() {
   const role = document.getElementById('ca_role')?.value;
   const hoFields = document.getElementById('ca_ho_fields');
   const adminNotice = document.getElementById('ca_admin_notice');
-  const grid = document.getElementById('ca_perms_grid');
-  const btnSelectAll = document.getElementById('btnSelectAllPerms');
+  const residentPermsWrap = document.getElementById('ca_resident_perms_wrap');
   if (!role) return;
 
   if (hoFields) hoFields.classList.toggle('hidden', role === 'admin');
 
-  const checkboxes = document.querySelectorAll('#ca_perms_grid .perm-checkbox');
-
   if (role === 'admin') {
     if (adminNotice) adminNotice.classList.remove('hidden');
-    if (btnSelectAll) btnSelectAll.disabled = true;
-    checkboxes.forEach(cb => {
-      cb.checked = true;
-      cb.disabled = true;
-      updatePermissionCardState(cb);
-    });
+    if (residentPermsWrap) residentPermsWrap.classList.add('hidden');
     return;
   }
 
   if (adminNotice) adminNotice.classList.add('hidden');
-  if (btnSelectAll) btnSelectAll.disabled = false;
-  checkboxes.forEach(cb => { cb.disabled = false; });
+  if (residentPermsWrap) residentPermsWrap.classList.remove('hidden');
 
-  // Homeowner default: no extra modules pre-selected (Resident access is implicit)
+  const checkboxes = document.querySelectorAll('#ca_resident_perms_wrap .perm-checkbox');
   checkboxes.forEach(cb => {
-    cb.checked = false;
+    cb.disabled = false;
     updatePermissionCardState(cb);
   });
 }
@@ -2230,6 +2286,7 @@ function updatePermissionCardState(checkbox) {
 function toggleSelectAllPermissions(containerId, buttonEl) {
   const container = document.getElementById(containerId);
   if (!container) return;
+  // Select only non-disabled checkboxes (preserves locked Resident module)
   const checkboxes = Array.from(container.querySelectorAll('.perm-checkbox:not(:disabled)'));
   if (!checkboxes.length) return;
 
@@ -2272,8 +2329,10 @@ async function saveCreateAccount() {
   if (role === 'admin') {
     permissions = ['*'];
   } else {
-    document.querySelectorAll('#ca_perms_grid .perm-checkbox:checked').forEach(cb => {
-      permissions.push(cb.value);
+    document.querySelectorAll('#ca_resident_perms_wrap .perm-checkbox:checked').forEach(cb => {
+      if (cb.value && !permissions.includes(cb.value)) {
+        permissions.push(cb.value);
+      }
     });
   }
 
@@ -2301,7 +2360,7 @@ async function saveCreateAccount() {
   showLoading();
   try {
     await db.save('users', newUser);
-    logAction(`Created account: "${name}" (@${username}) with role: ${role}`);
+    logAction(`Created account: "${name}" (@${username}) with account type: ${role === 'admin' ? 'Administrator' : 'Resident'}`);
     closeModal();
     hideLoading();
     showToast('success', 'Account Created', `Account for ${name} has been created.`);
@@ -2312,69 +2371,69 @@ async function saveCreateAccount() {
   }
 }
 
-// ── Edit User Permissions Modal ──
+// ── Edit User Access Permissions Modal ──
 
 function openEditUserPermissionsModal(userId) {
   const u = db.getOne('users', userId);
   if (!u) return;
 
-  const isPrimaryAdmin = u.id === 'u001';
+  const isAdminUser = u.role === 'admin';
   const roleLabel = ROLE_LABELS[u.role] || u.role;
   const currentPerms = Array.isArray(u.permissions) ? u.permissions : [];
-  const hasWildcard = currentPerms.includes('*') || u.role === 'admin';
 
-  openModal(`Permissions: ${escapeHtml(u.name)}`, `
+  openModal(`Access Permissions: ${escapeHtml(u.name)}`, `
     <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;padding-bottom:14px;border-bottom:1px solid var(--border);">
       ${avatarHTML(u, 'avatar-md')}
       <div style="flex:1;">
         <div style="font-weight:700;font-size:1rem;color:var(--text);">${escapeHtml(u.name)}</div>
         <div style="font-size:0.8rem;color:var(--text-3);">@${escapeHtml(u.username)} &bull; ${escapeHtml(u.email || 'No email')}${u.block || u.lot ? ` &bull; ${escapeHtml([u.block, u.lot].filter(Boolean).join(', '))}` : ''}</div>
         <div style="margin-top:4px;">
-          <span class="badge badge-teal" style="font-size:0.72rem;font-weight:700;">${escapeHtml(roleLabel)}</span>
+          <span class="badge ${isAdminUser ? 'badge-red' : 'badge-teal'}" style="font-size:0.72rem;font-weight:700;">${escapeHtml(roleLabel)}</span>
           <span class="${(u.status || 'active') === 'active' ? 'badge-status-active' : 'badge-status-inactive'}" style="margin-left:6px;">
             ● ${(u.status || 'active') === 'active' ? 'Active' : 'Deactivated'}
           </span>
-          ${u.role !== 'admin' ? `<span class="badge" style="background:var(--teal-50);color:var(--teal-700);margin-left:6px;font-size:0.72rem;font-weight:700;">Resident Access (Default)</span>` : ''}
         </div>
       </div>
     </div>
 
-    ${isPrimaryAdmin ? `
-      <div style="background:#16a34a12;border:1px solid #16a34a40;border-radius:8px;padding:12px 16px;margin-bottom:16px;color:#16a34a;font-size:0.85rem;font-weight:600;">
-        ★ Primary Administrator has unrestricted full access to all system modules and features.
+    ${isAdminUser ? `
+      <div style="background:#16a34a12;border:1px solid #16a34a40;border-radius:8px;padding:16px 18px;margin-bottom:16px;color:#16a34a;font-size:0.88rem;font-weight:600;line-height:1.5;">
+        ★ Administrator account has full unrestricted system access to all modules and settings. Module configuration is not applicable.
       </div>
     ` : `
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
-        <label style="margin-bottom:0;font-weight:700;font-size:0.88rem;color:var(--text);">Configure Module Permissions</label>
-        <button type="button" class="btn btn-secondary btn-xs" id="btnEditSelectAll" onclick="toggleSelectAllPermissions('edit_perms_grid', this)">
-          ${MODULE_PERMISSIONS.every(p => currentPerms.includes(p.id) || hasWildcard) ? 'Deselect All' : 'Select All'}
-        </button>
-      </div>
+      <div class="permissions-section-wrap" style="margin-top:0;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+          <div>
+            <label style="margin-bottom:2px;font-weight:700;font-size:0.92rem;color:var(--text);">Module Access Permissions</label>
+            <div style="font-size:0.76rem;color:var(--text-3);">Configure module access permissions for this resident account.</div>
+          </div>
+          <button type="button" class="btn btn-secondary btn-xs" id="btnEditSelectAll" onclick="toggleSelectAllPermissions('edit_resident_perms_wrap', this)">
+            Select All
+          </button>
+        </div>
 
-      <div class="permission-grid" id="edit_perms_grid">
-        ${MODULE_PERMISSIONS.map(p => {
-          const isChecked = hasWildcard || currentPerms.includes(p.id);
-          return `
-            <label class="permission-card ${isChecked ? 'selected' : ''}" for="edit_perm_${p.id}">
-              <input type="checkbox" id="edit_perm_${p.id}" value="${p.id}" class="perm-checkbox" ${isChecked ? 'checked' : ''} onchange="updatePermissionCardState(this)" />
-              <div class="permission-info">
-                <div class="permission-title">
-                  <svg width="14" height="14" style="margin-right:4px;vertical-align:-2px;"><use href="#${p.icon}"/></svg>
-                  ${escapeHtml(p.label)}
-                </div>
-                <div class="permission-desc">${escapeHtml(p.desc)}</div>
-              </div>
-            </label>
-          `;
-        }).join('')}
+        <div id="edit_resident_perms_wrap">
+          ${renderPermissionGroupsHTML(currentPerms, 'edit')}
+        </div>
       </div>
     `}
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    ...(!isPrimaryAdmin ? [
+    ...(!isAdminUser ? [
       { label: 'Save Permissions', cls: 'btn-primary', action: () => saveEditUserPermissions(userId) }
     ] : [])
   ]);
+
+  if (!isAdminUser) {
+    const btn = document.getElementById('btnEditSelectAll');
+    if (btn) {
+      const container = document.getElementById('edit_resident_perms_wrap');
+      const checkboxes = Array.from(container?.querySelectorAll('.perm-checkbox:not(:disabled)') || []);
+      if (checkboxes.length && checkboxes.every(cb => cb.checked)) {
+        btn.textContent = 'Deselect All';
+      }
+    }
+  }
 }
 
 async function saveEditUserPermissions(userId) {
@@ -2382,8 +2441,10 @@ async function saveEditUserPermissions(userId) {
   if (!u) return;
 
   const newPermissions = [];
-  document.querySelectorAll('#edit_perms_grid .perm-checkbox:checked').forEach(cb => {
-    newPermissions.push(cb.value);
+  document.querySelectorAll('#edit_resident_perms_wrap .perm-checkbox:checked').forEach(cb => {
+    if (cb.value && !newPermissions.includes(cb.value)) {
+      newPermissions.push(cb.value);
+    }
   });
 
   u.permissions = newPermissions;
@@ -2391,7 +2452,7 @@ async function saveEditUserPermissions(userId) {
   showLoading();
   try {
     await db.save('users', u);
-    logAction(`Updated permissions for user: ${u.name} (@${u.username})`);
+    logAction(`Updated access permissions for user: ${u.name} (@${u.username})`);
 
     // If updating current user's permissions, refresh sidebar immediately
     if (currentUser && currentUser.id === u.id) {

@@ -291,16 +291,12 @@ function deserializeRow(table, row) {
   if (table === 'users') {
     delete output.password;
     if (output.role === 'admin') {
-      output.permissions = Array.isArray(output.permissions) && output.permissions.length ? output.permissions : ['*'];
-    } else if (output.role === 'homeowner') {
-      output.permissions = Array.isArray(output.permissions) && output.permissions.length ? output.permissions : [
-        'ho-dashboard', 'ho-billing', 'ho-payments', 'ho-history', 'ho-amenities', 'ho-vehicles', 'ho-complaints', 'ho-announcements', 'ho-profile'
-      ];
-    } else if (!Array.isArray(output.permissions) || !output.permissions.length) {
-      // For any other role (legacy staff records), fall back to homeowner defaults
-      output.permissions = [
-        'ho-dashboard', 'ho-billing', 'ho-payments', 'ho-history', 'ho-amenities', 'ho-vehicles', 'ho-complaints', 'ho-announcements', 'ho-profile'
-      ];
+      output.permissions = ['*'];
+    } else {
+      let perms = Array.isArray(output.permissions) ? [...output.permissions] : [];
+      // Strip legacy 'ho-*' IDs, wildcard, and admin-only modules
+      perms = perms.filter(p => !p.startsWith('ho-') && p !== '*' && p !== 'users' && p !== 'settings');
+      output.permissions = perms;
     }
     output.status = output.status || 'active';
   }
@@ -332,7 +328,10 @@ function asyncHandler(handler) {
 }
 
 async function saveRecord(table, item) {
-  if (!item.id) throw new Error('Record id is required.');
+  if (!item.id) {
+    const prefix = table === 'users' ? 'u' : (table === 'billings' ? 'b' : (table === 'payments' ? 'p' : 'id'));
+    item.id = prefix + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+  }
 
   const columns = tableConfig[table].columns;
   const sqlTable = tableName(table);
@@ -357,10 +356,16 @@ async function getTableData(table) {
   return rows.map((row) => deserializeRow(table, row));
 }
 
-async function loadAllData() {
+async function loadAllData(requester = null) {
   const data = {};
   for (const table of Object.keys(tableConfig)) {
     data[table] = await getTableData(table);
+  }
+  // Withhold auditLog from unauthenticated users or users without auditlog permission
+  if (!requester || requester.role !== 'admin') {
+    if (!requester || !userHasPermission(requester, 'auditlog')) {
+      data.auditLog = [];
+    }
   }
   return data;
 }
@@ -385,6 +390,8 @@ async function createTables() {
   await run('ALTER TABLE users ADD COLUMN permissions LONGTEXT').catch(() => {});
   await run("ALTER TABLE users ADD COLUMN status VARCHAR(32) DEFAULT 'active'").catch(() => {});
   await run("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''").catch(() => {});
+  await run("UPDATE users SET permissions = '[\"*\"]' WHERE role = 'admin' AND (permissions IS NULL OR permissions = '' OR permissions = '[]')").catch(() => {});
+  await run("UPDATE users SET permissions = '[]' WHERE role != 'admin' AND (permissions IS NULL OR permissions = '')").catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS billings (
     id VARCHAR(64) PRIMARY KEY,
@@ -800,8 +807,12 @@ function userHasPermission(user, moduleKey) {
   if (!user) return false;
   if (user.status === 'inactive' || user.status === 'deactivated') return false;
   if (user.role === 'admin') return true; // Administrator always has full unrestricted access
+
+  // Administrator-only modules can NEVER be assigned to or accessed by normal residents
+  if (moduleKey === 'users' || moduleKey === 'settings') return false;
+
   const perms = Array.isArray(user.permissions) ? user.permissions : [];
-  if (perms.includes('*')) return true;
+  if (perms.includes('*') && user.role === 'admin') return true;
   return perms.includes(moduleKey);
 }
 
@@ -835,35 +846,103 @@ async function checkTableAccess(req, res, table, action = 'read') {
     return null;
   }
 
-  // Administrator has 100% full access
+  // Administrator has 100% full access to all tables and actions
   if (requester.role === 'admin') return requester;
 
-  // Homeowner access rules
-  if (requester.role === 'homeowner') {
-    if (action === 'read') return requester;
-    if (action === 'create' && ['complaints', 'payments', 'amenityBookings', 'vehicleRegistrations', 'lostFound'].includes(table)) {
-      return requester;
+  // 1. Accounts & Roles (users table): Strictly Administrator-only
+  if (table === 'users') {
+    if (action === 'update' && req.params.id === requester.id) {
+      return requester; // User updating their own profile
     }
-    if (action === 'update' && table === 'users' && req.params.id === requester.id) {
-      return requester;
-    }
-    const perm = TABLE_PERMISSIONS[table];
-    if (perm && userHasPermission(requester, perm)) return requester;
-
-    res.status(403).json({ error: `Access Denied: You do not have permission to ${action} ${table}.` });
+    res.status(403).json({ error: 'Access Denied: Only administrators can access Accounts & Roles.' });
     return null;
   }
 
-  // Staff and custom accounts
+  // 2. Settings (appSettings table): Strictly Administrator-only
+  if (table === 'appSettings') {
+    res.status(403).json({ error: 'Access Denied: Only administrators can access system settings.' });
+    return null;
+  }
+
+  // 3. Audit Logs (auditLog table): Requires auditlog permission
+  if (table === 'auditLog') {
+    if (userHasPermission(requester, 'auditlog')) return requester;
+    res.status(403).json({ error: 'Access Denied: You do not have permission to access Audit Logs.' });
+    return null;
+  }
+
+  // 4. Billings: Read is accessible for dues view if user has resident or billing permission; manage requires billing permission
+  if (table === 'billings') {
+    if (action === 'read' && (userHasPermission(requester, 'resident') || userHasPermission(requester, 'billing'))) return requester;
+    if (userHasPermission(requester, 'billing')) return requester;
+    res.status(403).json({ error: 'Access Denied: You do not have permission to manage billing.' });
+    return null;
+  }
+
+  // 5. Payments: Read and self-submission require resident permission; managing approvals requires payments permission
+  if (table === 'payments') {
+    if (action === 'read' && (userHasPermission(requester, 'resident') || userHasPermission(requester, 'payments'))) return requester;
+    if (action === 'create' && userHasPermission(requester, 'resident')) return requester; // Homeowner submitting payment receipt
+    if (userHasPermission(requester, 'payments')) return requester;
+    res.status(403).json({ error: 'Access Denied: You do not have permission to manage payments.' });
+    return null;
+  }
+
+  // 6. Complaints: Read and filing require resident permission; resolution/response requires complaints permission
+  if (table === 'complaints') {
+    if (action === 'read' && (userHasPermission(requester, 'resident') || userHasPermission(requester, 'complaints'))) return requester;
+    if (action === 'create' && userHasPermission(requester, 'resident')) return requester; // Homeowner filing a complaint
+    if (userHasPermission(requester, 'complaints')) return requester;
+    res.status(403).json({ error: 'Access Denied: You do not have permission to manage complaints.' });
+    return null;
+  }
+
+  // 7. Vehicle Registrations: Read and applying require resident permission; approving requires vehicles permission
+  if (table === 'vehicleRegistrations') {
+    if (action === 'read' && (userHasPermission(requester, 'resident') || userHasPermission(requester, 'vehicles'))) return requester;
+    if (action === 'create' && userHasPermission(requester, 'resident')) return requester; // Homeowner submitting vehicle registration
+    if (userHasPermission(requester, 'vehicles')) return requester;
+    res.status(403).json({ error: 'Access Denied: You do not have permission to manage vehicle registrations.' });
+    return null;
+  }
+
+  // 8. Amenity Bookings: Read and booking require resident permission; approving requires amenities permission
+  if (table === 'amenityBookings') {
+    if (action === 'read' && (userHasPermission(requester, 'resident') || userHasPermission(requester, 'amenities'))) return requester;
+    if (action === 'create' && userHasPermission(requester, 'resident')) return requester; // Homeowner requesting booking
+    if (userHasPermission(requester, 'amenities')) return requester;
+    res.status(403).json({ error: 'Access Denied: You do not have permission to manage amenity bookings.' });
+    return null;
+  }
+
+  // 9. Lost & Found: Read and posting are accessible; managing/deleting requires lostfound permission
+  if (table === 'lostFound') {
+    if (action === 'read') return requester;
+    if (action === 'create') return requester;
+    if (userHasPermission(requester, 'lostfound')) return requester;
+    res.status(403).json({ error: 'Access Denied: You do not have permission to manage lost & found items.' });
+    return null;
+  }
+
+  // 10. Announcements: Read is accessible; managing requires announcements permission
+  if (table === 'announcements') {
+    if (action === 'read') return requester;
+    if (userHasPermission(requester, 'announcements')) return requester;
+    res.status(403).json({ error: 'Access Denied: You do not have permission to manage announcements.' });
+    return null;
+  }
+
+  // 11. Board of Directors: Read is accessible; managing requires admin role
+  if (table === 'board_of_directors') {
+    if (action === 'read') return requester;
+    if (requester.role === 'admin') return requester;
+    res.status(403).json({ error: 'Access Denied: Only administrators can manage Board of Directors.' });
+    return null;
+  }
+
+  // General fallback
   const requiredPerm = TABLE_PERMISSIONS[table];
   if (requiredPerm && userHasPermission(requester, requiredPerm)) return requester;
-
-  if (action === 'read') {
-    if (table === 'users' && (userHasPermission(requester, 'users') || userHasPermission(requester, 'homeowners'))) return requester;
-    if (table === 'billings' && userHasPermission(requester, 'reports')) return requester;
-    if (table === 'payments' && userHasPermission(requester, 'reports')) return requester;
-    if (table === 'announcements') return requester;
-  }
 
   res.status(403).json({ error: `Access Denied: You do not have permission to ${action} ${table}.` });
   return null;
@@ -1523,7 +1602,8 @@ app.get('/api/data', asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  res.json(await loadAllData());
+  const requester = await getRequester(req);
+  res.json(await loadAllData(requester));
 }));
 
 app.post('/api/login', asyncHandler(async (req, res) => {
@@ -1894,11 +1974,30 @@ app.post('/api/complaints', (req, res, next) => {
   }
 });
 
+app.post('/api/reset', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  await resetDatabase();
+  res.json(await loadAllData(admin));
+}));
+
 app.post('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'create');
   if (!allowed) return;
+
+  if (table === 'users') {
+    if (req.body.role === 'admin') {
+      req.body.permissions = ['*'];
+    } else {
+      req.body.role = 'homeowner';
+      const perms = Array.isArray(req.body.permissions) ? [...req.body.permissions] : [];
+      const clean = perms.filter(p => !p.startsWith('ho-') && p !== '*' && p !== 'users' && p !== 'settings');
+      req.body.permissions = clean;
+    }
+  }
+
   const body = stripProfilePhotoField(table, req.body);
   await saveRecord(table, body);
   res.status(201).json(sanitizeRecord(table, body));
@@ -1917,6 +2016,34 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
     }
     if (req.body.role && req.body.role !== 'admin') {
       return res.status(400).json({ error: 'Primary Administrator role cannot be changed.' });
+    }
+  }
+
+  if (table === 'users') {
+    const existing = await get('SELECT * FROM users WHERE id = ?', [req.params.id]);
+    if (!existing) {
+      res.status(404).json({ error: 'User not found.' });
+      return;
+    }
+
+    if (allowed.role !== 'admin') {
+      // Non-admin updating their own profile cannot change role, permissions, balance, or status
+      delete req.body.role;
+      delete req.body.permissions;
+      delete req.body.balance;
+      delete req.body.status;
+    } else {
+      // Admin updating a user
+      const targetRole = req.body.role !== undefined ? req.body.role : existing.role;
+      if (targetRole === 'admin') {
+        req.body.permissions = ['*'];
+      } else {
+        if (req.body.permissions !== undefined) {
+          const perms = Array.isArray(req.body.permissions) ? [...req.body.permissions] : [];
+          const clean = perms.filter(p => !p.startsWith('ho-') && p !== '*' && p !== 'users' && p !== 'settings');
+          req.body.permissions = clean;
+        }
+      }
     }
   }
 
@@ -1966,11 +2093,6 @@ app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.post('/api/reset', asyncHandler(async (req, res) => {
-  await resetDatabase();
-  res.json(await loadAllData());
-}));
-
 app.get(['/', '/index.html'], (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
@@ -1981,6 +2103,13 @@ app.get(['/', '/index.html'], (req, res) => {
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Server error. Check the VS Code terminal.' });
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught Exception:', err);
+});
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 ensureDatabase()
