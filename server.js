@@ -36,6 +36,10 @@ const COMPLAINT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'complain
 fs.mkdirSync(COMPLAINT_UPLOAD_DIR, { recursive: true });
 const LOSTFOUND_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'lostfound');
 fs.mkdirSync(LOSTFOUND_UPLOAD_DIR, { recursive: true });
+const RECEIPT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'receipts');
+fs.mkdirSync(RECEIPT_UPLOAD_DIR, { recursive: true });
+const QRCODE_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'qrcodes');
+fs.mkdirSync(QRCODE_UPLOAD_DIR, { recursive: true });
 app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
 
 const tableConfig = {
@@ -50,9 +54,14 @@ const tableConfig = {
     booleanColumns: [],
   },
   payments: {
-    columns: ['id', 'homeownerId', 'billingId', 'amount', 'refNum', 'status', 'receipt', 'submittedAt', 'remarks', 'reviewedAt'],
+    columns: ['id', 'homeownerId', 'billingId', 'amount', 'refNum', 'status', 'receipt', 'submittedAt', 'remarks', 'reviewedAt', 'payment_method', 'payment_date', 'verified_by', 'verified_at', 'rejection_reason', 'created_at', 'updated_at'],
     jsonColumns: [],
     booleanColumns: [],
+  },
+  payment_settings: {
+    columns: ['id', 'payment_method', 'account_name', 'account_number', 'qr_code_path', 'instructions', 'is_active', 'updated_by', 'updated_at'],
+    jsonColumns: [],
+    booleanColumns: ['is_active'],
   },
   announcements: {
     columns: ['id', 'title', 'description', 'content', 'category', 'date', 'urgent', 'createdBy', 'user_id', 'image_path', 'images', 'created_at', 'updated_at'],
@@ -154,6 +163,19 @@ const seed = {
   lostFound: [],
   auditLog: [],
   notifications: [],
+  payment_settings: [
+    {
+      id: 'ps_gcash',
+      payment_method: 'gcash',
+      account_name: 'San Alfonso Homes HOA',
+      account_number: '09171234567',
+      qr_code_path: null,
+      instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay the exact amount shown in SmartHood.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
+      is_active: 1,
+      updated_by: 'u001',
+      updated_at: new Date().toISOString(),
+    },
+  ],
   appSettings: [{ id: 'duesRatePerSqm', value: '5.725' }],
   board_of_directors: [
     {
@@ -317,7 +339,10 @@ function sanitizeRecord(table, item) {
 }
 
 function validateTable(req, res) {
-  const table = req.params.table;
+  let table = req.params.table;
+  if (!tableConfig[table] && tableConfig[table?.replace(/-/g, '_')]) {
+    table = table.replace(/-/g, '_');
+  }
   if (!tableConfig[table]) {
     res.status(404).json({ error: 'Unknown table.' });
     return null;
@@ -373,7 +398,9 @@ async function loadAllData(requester = null) {
     if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'billing'))) {
       data.billings = [];
     }
-    if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'payments'))) {
+    if (requester && userHasPermission(requester, 'resident') && !userHasPermission(requester, 'payments')) {
+      data.payments = (data.payments || []).filter(p => p.homeownerId === requester.id);
+    } else if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'payments'))) {
       data.payments = [];
     }
     if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'amenities'))) {
@@ -426,18 +453,46 @@ async function createTables() {
     createdAt TEXT
   )`);
 
+  await run(`CREATE TABLE IF NOT EXISTS payment_settings (
+    id VARCHAR(64) PRIMARY KEY,
+    payment_method VARCHAR(64),
+    account_name VARCHAR(255),
+    account_number VARCHAR(64),
+    qr_code_path TEXT,
+    instructions TEXT,
+    is_active TINYINT(1) DEFAULT 1,
+    updated_by VARCHAR(64),
+    updated_at TEXT
+  )`);
+
   await run(`CREATE TABLE IF NOT EXISTS payments (
     id VARCHAR(64) PRIMARY KEY,
     homeownerId TEXT,
     billingId TEXT,
     amount DOUBLE,
-    refNum TEXT,
+    refNum VARCHAR(191),
     status TEXT,
     receipt LONGTEXT,
     submittedAt TEXT,
     remarks TEXT,
-    reviewedAt TEXT
+    reviewedAt TEXT,
+    payment_method VARCHAR(64) DEFAULT 'GCash',
+    payment_date TEXT,
+    verified_by VARCHAR(64),
+    verified_at TEXT,
+    rejection_reason TEXT,
+    created_at TEXT,
+    updated_at TEXT
   )`);
+  await run('ALTER TABLE payments MODIFY refNum VARCHAR(191)').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN payment_method VARCHAR(64) DEFAULT "GCash"').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN payment_date TEXT').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN verified_by VARCHAR(64)').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN verified_at TEXT').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN rejection_reason TEXT').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN created_at TEXT').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN updated_at TEXT').catch(() => {});
+  await run('ALTER TABLE payments ADD UNIQUE INDEX idx_payments_refNum (refNum)').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS announcements (
     id VARCHAR(64) PRIMARY KEY,
@@ -593,6 +648,13 @@ async function seedIfEmpty() {
       await saveRecord('board_of_directors', record);
     }
   }
+
+  const psRow = await get('SELECT COUNT(*) AS count FROM payment_settings').catch(() => ({ count: 0 }));
+  if (Number(psRow.count) === 0 && Array.isArray(seed.payment_settings)) {
+    for (const record of seed.payment_settings) {
+      await saveRecord('payment_settings', record);
+    }
+  }
 }
 
 async function ensureAdminUser() {
@@ -663,6 +725,52 @@ function isValidImageBuffer(buffer) {
   ) return true;
   return false;
 }
+
+const MAX_PAYMENT_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
+
+const receiptUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, RECEIPT_UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const origExt = path.extname(file.originalname || '').toLowerCase();
+      const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || (ALLOWED_PHOTO_EXTS.has(origExt) ? origExt : '.jpg');
+      const cleanExt = ext === '.jpeg' ? '.jpg' : ext;
+      const unique = `receipt-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${cleanExt}`;
+      cb(null, unique);
+    },
+  }),
+  limits: { fileSize: MAX_PAYMENT_FILE_BYTES, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ALLOWED_PHOTO_MIMES[file.mimetype] || !ALLOWED_PHOTO_EXTS.has(ext)) {
+      cb(new Error('Only JPG, JPEG, PNG, or WebP receipt images are allowed.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
+
+const qrUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, QRCODE_UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const origExt = path.extname(file.originalname || '').toLowerCase();
+      const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || (ALLOWED_PHOTO_EXTS.has(origExt) ? origExt : '.jpg');
+      const cleanExt = ext === '.jpeg' ? '.jpg' : ext;
+      const unique = `qr-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${cleanExt}`;
+      cb(null, unique);
+    },
+  }),
+  limits: { fileSize: MAX_PAYMENT_FILE_BYTES, files: 1 },
+  fileFilter: (req, file, cb) => {
+    const ext = path.extname(file.originalname || '').toLowerCase();
+    if (!ALLOWED_PHOTO_MIMES[file.mimetype] || !ALLOWED_PHOTO_EXTS.has(ext)) {
+      cb(new Error('Only JPG, JPEG, PNG, or WebP images are allowed.'));
+      return;
+    }
+    cb(null, true);
+  },
+});
 
 function getRequestUserId(req) {
   return req.get('x-user-id') || req.body.userId || req.query.userId || null;
@@ -841,6 +949,7 @@ function userHasPermission(user, moduleKey) {
 const TABLE_PERMISSIONS = {
   billings: 'billing',
   payments: 'payments',
+  payment_settings: 'payments',
   amenityBookings: 'amenities',
   vehicleRegistrations: 'vehicles',
   lostFound: 'lostfound',
@@ -883,6 +992,14 @@ async function checkTableAccess(req, res, table, action = 'read') {
   // 2. Settings (appSettings table): Strictly Administrator-only
   if (table === 'appSettings') {
     res.status(403).json({ error: 'Access Denied: Only administrators can access system settings.' });
+    return null;
+  }
+
+  // 2b. Payment Settings (payment_settings table): Read by all authenticated users; manage by admin/payments
+  if (table === 'payment_settings') {
+    if (action === 'read') return requester;
+    if (userHasPermission(requester, 'payments')) return requester;
+    res.status(403).json({ error: 'Access Denied: You do not have permission to manage payment settings.' });
     return null;
   }
 
@@ -1660,6 +1777,414 @@ app.post('/api/login', asyncHandler(async (req, res) => {
   res.json(deserializeRow('users', user));
 }));
 
+// ── PAYMENT SETTINGS APIS ──
+
+app.get('/api/payment-settings', asyncHandler(async (req, res) => {
+  const requester = await requireAuth(req, res);
+  if (!requester) return;
+
+  let setting = await get('SELECT * FROM payment_settings WHERE payment_method = "gcash" LIMIT 1');
+  if (!setting) {
+    setting = {
+      id: 'ps_gcash',
+      payment_method: 'gcash',
+      account_name: 'San Alfonso Homes HOA',
+      account_number: '09171234567',
+      qr_code_path: null,
+      instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay the exact amount shown in SmartHood.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
+      is_active: 1,
+      updated_by: 'u001',
+      updated_at: new Date().toISOString(),
+    };
+    await saveRecord('payment_settings', setting);
+  }
+  res.json(deserializeRow('payment_settings', setting));
+}));
+
+app.put('/api/payment-settings', asyncHandler(async (req, res) => {
+  const requester = await requirePermission(req, res, 'payments');
+  if (!requester) return;
+
+  let existing = await get('SELECT * FROM payment_settings WHERE payment_method = "gcash" LIMIT 1');
+  const body = req.body || {};
+  const updated = {
+    id: existing ? existing.id : 'ps_gcash',
+    payment_method: 'gcash',
+    account_name: body.account_name !== undefined ? String(body.account_name).trim() : (existing?.account_name || 'San Alfonso Homes HOA'),
+    account_number: body.account_number !== undefined ? String(body.account_number).trim() : (existing?.account_number || '09171234567'),
+    qr_code_path: existing ? existing.qr_code_path : null,
+    instructions: body.instructions !== undefined ? String(body.instructions).trim() : (existing?.instructions || ''),
+    is_active: body.is_active !== undefined ? (body.is_active ? 1 : 0) : (existing ? existing.is_active : 1),
+    updated_by: requester.id,
+    updated_at: new Date().toISOString(),
+  };
+
+  await saveRecord('payment_settings', updated);
+
+  // Detailed audit logging based on changes
+  if (existing) {
+    if (existing.account_name !== updated.account_name) {
+      await recordAuditLog(`Admin changed GCash account name to "${updated.account_name}"`, requester.id);
+    }
+    if (existing.account_number !== updated.account_number) {
+      await recordAuditLog(`Admin changed GCash number to "${updated.account_number}"`, requester.id);
+    }
+    if (Boolean(existing.is_active) !== Boolean(updated.is_active)) {
+      await recordAuditLog(`Admin ${updated.is_active ? 'enabled' : 'disabled'} GCash payment method`, requester.id);
+    }
+    if (existing.instructions !== updated.instructions) {
+      await recordAuditLog('Admin changed payment settings instructions', requester.id);
+    }
+  } else {
+    await recordAuditLog('Admin configured GCash payment settings', requester.id);
+  }
+
+  res.json(deserializeRow('payment_settings', updated));
+}));
+
+app.post('/api/payment-settings/upload-qr', (req, res) => {
+  qrUpload.single('qr')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message = uploadErr.code === 'LIMIT_FILE_SIZE'
+        ? 'QR code image exceeds the 10 MB size limit.'
+        : (uploadErr.message || 'Invalid QR code upload.');
+      return res.status(400).json({ error: message });
+    }
+
+    try {
+      const requester = await requirePermission(req, res, 'payments');
+      if (!requester) {
+        if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+        return;
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'No QR code image received.' });
+      }
+
+      const buffer = await fs.promises.readFile(req.file.path);
+      if (!isValidImageBuffer(buffer)) {
+        await fs.promises.unlink(req.file.path).catch(() => {});
+        return res.status(400).json({ error: 'Uploaded file is not a valid JPG, JPEG, PNG, or WebP image.' });
+      }
+
+      const existing = await get('SELECT * FROM payment_settings WHERE payment_method = "gcash" LIMIT 1');
+      if (existing && existing.qr_code_path) {
+        const oldFile = path.join(__dirname, 'public', existing.qr_code_path.replace(/^\//, ''));
+        fs.promises.unlink(oldFile).catch(() => {});
+      }
+
+      const qrPath = `/uploads/qrcodes/${req.file.filename}`;
+      const record = {
+        id: existing ? existing.id : 'ps_gcash',
+        payment_method: 'gcash',
+        account_name: existing?.account_name || 'San Alfonso Homes HOA',
+        account_number: existing?.account_number || '09171234567',
+        qr_code_path: qrPath,
+        instructions: existing?.instructions || '',
+        is_active: existing ? existing.is_active : 1,
+        updated_by: requester.id,
+        updated_at: new Date().toISOString(),
+      };
+      await saveRecord('payment_settings', record);
+      await recordAuditLog('Admin uploaded/replaced QR code', requester.id);
+
+      res.json({ ok: true, qr_code_path: qrPath, message: 'GCash QR code updated successfully.' });
+    } catch (err) {
+      if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+      console.error(err);
+      res.status(500).json({ error: 'Could not upload QR code image.' });
+    }
+  });
+});
+
+app.delete('/api/payment-settings/qr', asyncHandler(async (req, res) => {
+  const requester = await requirePermission(req, res, 'payments');
+  if (!requester) return;
+
+  const existing = await get('SELECT * FROM payment_settings WHERE payment_method = "gcash" LIMIT 1');
+  if (existing && existing.qr_code_path) {
+    const oldFile = path.join(__dirname, 'public', existing.qr_code_path.replace(/^\//, ''));
+    fs.promises.unlink(oldFile).catch(() => {});
+    await run('UPDATE payment_settings SET qr_code_path = NULL, updated_by = ?, updated_at = ? WHERE id = ?', [
+      requester.id,
+      new Date().toISOString(),
+      existing.id,
+    ]);
+  }
+  await recordAuditLog('Admin removed GCash QR code', requester.id);
+  res.json({ ok: true, message: 'QR code removed successfully.' });
+}));
+
+// ── RESIDENT PAYMENT SUBMISSION & VERIFICATION APIS ──
+
+app.post('/api/payments/submit', (req, res) => {
+  receiptUpload.single('receipt')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message = uploadErr.code === 'LIMIT_FILE_SIZE'
+        ? 'Receipt image exceeds the 10 MB size limit.'
+        : (uploadErr.message || 'Invalid receipt upload.');
+      return res.status(400).json({ error: message });
+    }
+
+    const cleanUpFile = async () => {
+      if (req.file && req.file.path) {
+        await fs.promises.unlink(req.file.path).catch(() => {});
+      }
+    };
+
+    try {
+      const requester = await getRequester(req);
+      if (!requester) {
+        await cleanUpFile();
+        return res.status(401).json({ error: 'Login required.' });
+      }
+
+      if (requester.status === 'inactive' || requester.status === 'deactivated') {
+        await cleanUpFile();
+        return res.status(403).json({ error: 'Your account has been deactivated. Please contact the administrator.' });
+      }
+
+      if (!req.file) {
+        return res.status(400).json({ error: 'GCash receipt screenshot is required.' });
+      }
+
+      // Magic byte validation of uploaded receipt image
+      const buffer = await fs.promises.readFile(req.file.path);
+      if (!isValidImageBuffer(buffer)) {
+        await cleanUpFile();
+        return res.status(400).json({ error: 'Uploaded file is not a valid JPG, JPEG, PNG, or WebP image.' });
+      }
+
+      // Validate Billing
+      const billingId = (req.body.billingId || '').trim();
+      if (!billingId) {
+        await cleanUpFile();
+        return res.status(400).json({ error: 'Billing ID is required.' });
+      }
+
+      const billing = await get('SELECT * FROM billings WHERE id = ?', [billingId]);
+      if (!billing) {
+        await cleanUpFile();
+        return res.status(404).json({ error: 'Billing record not found.' });
+      }
+
+      // Verify billing belongs to this resident
+      let assigned = [];
+      try {
+        assigned = billing.assignedTo ? (typeof billing.assignedTo === 'string' ? JSON.parse(billing.assignedTo) : billing.assignedTo) : [];
+      } catch {
+        assigned = [];
+      }
+      if (!Array.isArray(assigned) || !assigned.includes(requester.id)) {
+        await cleanUpFile();
+        return res.status(403).json({ error: 'Access Denied: You are not assigned to this billing.' });
+      }
+
+      // Validate GCash Reference Number
+      const refNum = (req.body.refNum || req.body.reference_number || '').trim();
+      if (!refNum) {
+        await cleanUpFile();
+        return res.status(400).json({ error: 'GCash reference number is required.' });
+      }
+
+      if (refNum.length < 5) {
+        await cleanUpFile();
+        return res.status(400).json({ error: 'GCash reference number must be at least 5 characters long.' });
+      }
+
+      // Server-side Duplicate Reference Number Protection (case-insensitive across entire system)
+      const dup = await get('SELECT id, refNum FROM payments WHERE LOWER(TRIM(refNum)) = LOWER(TRIM(?))', [refNum]);
+      if (dup) {
+        await cleanUpFile();
+        return res.status(400).json({ error: 'This GCash reference number has already been submitted. Please check your reference number or contact admin.' });
+      }
+
+      // Check if this billing already has an approved payment
+      const alreadyApproved = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "approved"', [requester.id, billing.id]);
+      if (alreadyApproved) {
+        await cleanUpFile();
+        return res.status(400).json({ error: 'This bill has already been paid and approved.' });
+      }
+
+      // Check if there is already a pending verification payment for this billing
+      const alreadyPending = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "pending"', [requester.id, billing.id]);
+      if (alreadyPending) {
+        await cleanUpFile();
+        return res.status(400).json({ error: 'You already have a payment submission pending admin verification for this bill.' });
+      }
+
+      // Server-side Amount Integrity Check: amount must match the actual billing record
+      const actualAmount = Number(billing.amount) || 0;
+      if (actualAmount <= 0) {
+        await cleanUpFile();
+        return res.status(400).json({ error: 'Invalid billing amount.' });
+      }
+
+      if (req.body.amount && Math.abs(Number(req.body.amount) - actualAmount) > 0.01) {
+        await cleanUpFile();
+        return res.status(400).json({ error: `Payment amount (₱${Number(req.body.amount).toLocaleString()}) must match the exact bill amount (₱${actualAmount.toLocaleString()}).` });
+      }
+
+      // Payment Date
+      const paymentDate = (req.body.payment_date || new Date().toISOString().slice(0, 10)).trim();
+      const paymentMethod = (req.body.payment_method || 'GCash').trim();
+      const receiptPath = `/uploads/receipts/${req.file.filename}`;
+      const paymentId = 'p' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+      const nowIso = new Date().toISOString();
+
+      const paymentRecord = {
+        id: paymentId,
+        homeownerId: requester.id,
+        billingId: billing.id,
+        amount: actualAmount,
+        refNum: refNum,
+        status: 'pending',
+        receipt: receiptPath,
+        submittedAt: new Date().toISOString().slice(0, 10),
+        remarks: (req.body.remarks || '').trim(),
+        reviewedAt: null,
+        payment_method: paymentMethod,
+        payment_date: paymentDate,
+        verified_by: null,
+        verified_at: null,
+        rejection_reason: null,
+        created_at: nowIso,
+        updated_at: nowIso,
+      };
+
+      await saveRecord('payments', paymentRecord);
+
+      // Record in Audit Log
+      await recordAuditLog(
+        `Resident ${requester.name} submitted payment for "${billing.title}" (Ref: ${refNum}, Amount: ₱${actualAmount.toLocaleString()})`,
+        requester.id
+      );
+
+      // Create notifications
+      await createServerNotification(
+        'Payment Submitted',
+        `${requester.name} submitted a GCash payment of ₱${actualAmount.toLocaleString()} for "${billing.title}".`,
+        { roles: ['admin'] }
+      );
+      await createServerNotification(
+        'Payment Submission Received',
+        `Your payment of ₱${actualAmount.toLocaleString()} for "${billing.title}" (Ref: ${refNum}) has been received and is pending admin verification.`,
+        { userIds: [requester.id] }
+      );
+
+      res.status(201).json({
+        ok: true,
+        payment: sanitizeRecord('payments', paymentRecord),
+        message: 'Payment proof submitted successfully. Your payment is now pending admin verification.',
+      });
+    } catch (err) {
+      await cleanUpFile();
+      console.error(err);
+      if (err.code === 'ER_DUP_ENTRY') {
+        return res.status(400).json({ error: 'This GCash reference number has already been submitted. Please check your reference number or contact admin.' });
+      }
+      res.status(500).json({ error: 'Could not submit payment. Please try again.' });
+    }
+  });
+});
+
+app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
+  const requester = await requirePermission(req, res, 'payments');
+  if (!requester) return;
+
+  const payment = await get('SELECT * FROM payments WHERE id = ?', [req.params.id]);
+  if (!payment) {
+    return res.status(404).json({ error: 'Payment record not found.' });
+  }
+
+  if (payment.status !== 'pending') {
+    return res.status(400).json({ error: `Cannot approve payment with status "${payment.status}". Only pending payments can be approved.` });
+  }
+
+  const nowIso = new Date().toISOString();
+  const reviewedAt = new Date().toISOString().slice(0, 10);
+
+  await run(
+    `UPDATE payments SET status = 'approved', verified_by = ?, verified_at = ?, reviewedAt = ?, updated_at = ? WHERE id = ?`,
+    [requester.id, nowIso, reviewedAt, nowIso, payment.id]
+  );
+
+  const ho = await get('SELECT name FROM users WHERE id = ?', [payment.homeownerId]);
+  const bill = await get('SELECT title FROM billings WHERE id = ?', [payment.billingId]);
+  const hoName = ho ? ho.name : 'Resident';
+  const billTitle = bill ? bill.title : 'Billing';
+
+  // Audit Log
+  await recordAuditLog(
+    `Admin approved payment from ${hoName} for "${billTitle}" (Ref: ${payment.refNum}, Amount: ₱${Number(payment.amount).toLocaleString()})`,
+    requester.id
+  );
+
+  // Notification to resident
+  await createServerNotification(
+    'Payment Approved',
+    `Your GCash payment of ₱${Number(payment.amount).toLocaleString()} for "${billTitle}" has been verified and approved.`,
+    { userIds: [payment.homeownerId] }
+  );
+
+  res.json({
+    ok: true,
+    message: 'Payment approved successfully. Billing balance updated.',
+  });
+}));
+
+app.post('/api/payments/:id/reject', asyncHandler(async (req, res) => {
+  const requester = await requirePermission(req, res, 'payments');
+  if (!requester) return;
+
+  const payment = await get('SELECT * FROM payments WHERE id = ?', [req.params.id]);
+  if (!payment) {
+    return res.status(404).json({ error: 'Payment record not found.' });
+  }
+
+  if (payment.status !== 'pending') {
+    return res.status(400).json({ error: `Cannot reject payment with status "${payment.status}". Only pending payments can be rejected.` });
+  }
+
+  const reason = (req.body.rejection_reason || req.body.remarks || req.body.reason || '').trim();
+  if (!reason) {
+    return res.status(400).json({ error: 'A rejection reason is required. Please provide a reason to help the resident understand why their payment was rejected.' });
+  }
+
+  const nowIso = new Date().toISOString();
+  const reviewedAt = new Date().toISOString().slice(0, 10);
+
+  await run(
+    `UPDATE payments SET status = 'rejected', rejection_reason = ?, remarks = ?, verified_by = ?, verified_at = ?, reviewedAt = ?, updated_at = ? WHERE id = ?`,
+    [reason, reason, requester.id, nowIso, reviewedAt, nowIso, payment.id]
+  );
+
+  const ho = await get('SELECT name FROM users WHERE id = ?', [payment.homeownerId]);
+  const bill = await get('SELECT title FROM billings WHERE id = ?', [payment.billingId]);
+  const hoName = ho ? ho.name : 'Resident';
+  const billTitle = bill ? bill.title : 'Billing';
+
+  // Audit Log
+  await recordAuditLog(
+    `Admin rejected payment from ${hoName} for "${billTitle}". Reason: ${reason}`,
+    requester.id
+  );
+
+  // Notification to resident with rejection reason
+  await createServerNotification(
+    'Payment Rejected',
+    `Your payment for "${billTitle}" was rejected. Reason: ${reason}`,
+    { userIds: [payment.homeownerId] }
+  );
+
+  res.json({
+    ok: true,
+    message: 'Payment rejected. Resident has been notified with the rejection reason.',
+  });
+}));
+
+
 app.get('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
@@ -2013,6 +2538,33 @@ app.post('/api/complaints', (req, res, next) => {
     next();
   }
 });
+
+// ── AUDIT LOG & NOTIFICATION HELPERS ──
+
+async function recordAuditLog(action, adminId = 'u001') {
+  try {
+    const id = 'l' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const timestamp = new Date().toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' });
+    await run('INSERT INTO auditLog (id, action, adminId, timestamp) VALUES (?, ?, ?, ?)', [id, action, adminId, timestamp]);
+  } catch (err) {
+    console.error('Failed to write audit log:', err);
+  }
+}
+
+async function createServerNotification(title, message, options = {}) {
+  try {
+    const id = 'n' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const time = new Date().toLocaleTimeString();
+    const audience = options.audience || (options.roles ? 'roles' : (options.userIds ? 'users' : 'all'));
+    const targetIds = options.roles || options.userIds || [];
+    await run(
+      'INSERT INTO notifications (id, title, message, time, audience, targetIds, dismissedBy) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      [id, title, message, time, audience, JSON.stringify(targetIds), JSON.stringify([])]
+    );
+  } catch (err) {
+    console.error('Failed to write notification:', err);
+  }
+}
 
 app.post('/api/reset', asyncHandler(async (req, res) => {
   const admin = await requireAdmin(req, res);

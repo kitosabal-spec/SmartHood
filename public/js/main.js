@@ -313,6 +313,51 @@ const api = {
       method: 'DELETE',
     });
   },
+
+  // ── Payment & Payment Settings API Helpers ──
+  async getPaymentSettings() {
+    return this.request('/api/payment-settings');
+  },
+
+  async updatePaymentSettings(data) {
+    return this.request('/api/payment-settings', {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async uploadPaymentQr(formData) {
+    return this.request('/api/payment-settings/upload-qr', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  async deletePaymentQr() {
+    return this.request('/api/payment-settings/qr', {
+      method: 'DELETE',
+    });
+  },
+
+  async submitPayment(formData) {
+    return this.request('/api/payments/submit', {
+      method: 'POST',
+      body: formData,
+    });
+  },
+
+  async approvePayment(id) {
+    return this.request(`/api/payments/${id}/approve`, {
+      method: 'POST',
+    });
+  },
+
+  async rejectPayment(id, reason) {
+    return this.request(`/api/payments/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ rejection_reason: reason }),
+    });
+  },
 };
 
 function reportSyncError(error) {
@@ -1877,6 +1922,19 @@ function renderSettings() {
       <div class="settings-row">
         <div><div class="settings-label">Auto-generate Monthly Dues</div><div style="font-size:0.78rem;color:var(--text-3)">Automatically create dues on the 1st</div></div>
         <label class="toggle-switch"><input type="checkbox"><span class="toggle-slider"></span></label>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-section">
+    <div class="settings-section-header"><h4>Payment Settings (GCash)</h4></div>
+    <div class="settings-section-body">
+      <div class="settings-row">
+        <div>
+          <div class="settings-label">GCash Account, Number &amp; QR Code</div>
+          <div style="font-size:0.78rem;color:var(--text-3)">Configure GCash account details, payment instructions, and QR code image</div>
+        </div>
+        <button class="btn btn-primary btn-sm" onclick="openPaymentSettingsModal()">Configure GCash</button>
       </div>
     </div>
   </div>

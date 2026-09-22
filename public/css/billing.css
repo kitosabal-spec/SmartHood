@@ -168,3 +168,413 @@
 .amount-paid { color: var(--green-600); font-weight: 700; }
 .overdue-row td { background: rgba(220,38,38,0.04); }
 .receipt-preview-img { max-width: 100%; border-radius: var(--radius); border: 1px solid var(--border); margin-top: 8px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   GCASH PAYMENT SYSTEM STYLES
+   ═══════════════════════════════════════════════════════════════ */
+
+:root {
+  --gcash-blue: #007dfe;
+  --gcash-blue-dark: #0060c4;
+  --gcash-light: #eef6ff;
+  --gcash-border: #bfdbfe;
+}
+
+/* GCash Badge */
+.badge-gcash {
+  background: var(--gcash-light);
+  color: var(--gcash-blue);
+  border: 1px solid var(--gcash-border);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Pay Now & Payment Modals */
+.payment-flow-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.payment-bill-summary {
+  background: linear-gradient(135deg, var(--surface-2) 0%, var(--surface) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.payment-bill-meta h4 {
+  margin: 0 0 4px 0;
+  font-size: 1.05rem;
+  color: var(--text);
+}
+
+.payment-bill-meta p {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--text-3);
+}
+
+.payment-amount-badge {
+  text-align: right;
+}
+
+.payment-amount-badge .pay-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  font-weight: 700;
+}
+
+.payment-amount-badge .pay-val {
+  font-size: 1.45rem;
+  font-weight: 800;
+  color: var(--teal-700);
+}
+
+/* GCash Account Info Card */
+.gcash-info-card {
+  background: #ffffff;
+  border: 1.5px solid var(--gcash-border);
+  border-radius: var(--radius);
+  padding: 16px;
+  position: relative;
+  overflow: hidden;
+}
+
+[data-theme="dark"] .gcash-info-card {
+  background: var(--surface);
+  border-color: #1e3a8a;
+}
+
+.gcash-brand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
+}
+
+.gcash-logo-text {
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: var(--gcash-blue);
+  letter-spacing: -0.02em;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gcash-status-pill {
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.gcash-details-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
+@media (min-width: 600px) {
+  .gcash-details-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.gcash-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.gcash-field-label {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 700;
+  color: var(--text-3);
+}
+
+.gcash-field-val {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  word-break: break-word;
+}
+
+.gcash-number-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.gcash-number-val {
+  font-family: monospace;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: var(--gcash-blue);
+  letter-spacing: 0.05em;
+}
+
+.btn-copy-number {
+  background: var(--gcash-light);
+  border: 1px solid var(--gcash-border);
+  color: var(--gcash-blue);
+  border-radius: var(--radius-sm);
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  transition: all 0.2s ease;
+}
+
+.btn-copy-number:hover {
+  background: var(--gcash-blue);
+  color: #fff;
+}
+
+.btn-copy-number.copied {
+  background: #16a34a !important;
+  color: #fff !important;
+  border-color: #16a34a !important;
+}
+
+/* QR Code Section */
+.gcash-qr-section {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0;
+}
+
+.gcash-qr-frame {
+  background: #ffffff;
+  padding: 12px;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  border: 2px dashed var(--gcash-blue);
+  display: inline-block;
+  position: relative;
+  max-width: 240px;
+  width: 100%;
+}
+
+.gcash-qr-img {
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1 / 1;
+  object-fit: contain;
+  display: block;
+  border-radius: 6px;
+}
+
+.gcash-qr-placeholder {
+  width: 100%;
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-3);
+  font-size: 0.85rem;
+  background: var(--surface-2);
+  border-radius: 6px;
+}
+
+.gcash-qr-hint {
+  font-size: 0.78rem;
+  color: var(--text-3);
+  font-weight: 500;
+}
+
+/* Payment Instructions Box */
+.gcash-instructions-box {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.gcash-instructions-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gcash-instructions-list {
+  margin: 0;
+  padding-left: 20px;
+  font-size: 0.84rem;
+  color: var(--text-2);
+  line-height: 1.6;
+}
+
+.gcash-instructions-list li {
+  margin-bottom: 4px;
+}
+
+/* Receipt Upload Component */
+.receipt-upload-zone {
+  border: 2px dashed var(--border);
+  border-radius: var(--radius);
+  padding: 20px;
+  text-align: center;
+  background: var(--surface-2);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+
+.receipt-upload-zone:hover,
+.receipt-upload-zone.dragover {
+  border-color: var(--teal-600);
+  background: var(--teal-50);
+}
+
+.receipt-upload-icon {
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 8px auto;
+  color: var(--teal-600);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.receipt-upload-text {
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+
+.receipt-upload-subtext {
+  font-size: 0.76rem;
+  color: var(--text-3);
+}
+
+.receipt-file-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* Receipt Preview Card */
+.receipt-preview-card {
+  position: relative;
+  margin-top: 10px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  text-align: center;
+  padding: 8px;
+}
+
+.receipt-preview-thumb {
+  max-height: 240px;
+  width: auto;
+  max-width: 100%;
+  border-radius: var(--radius-sm);
+  display: block;
+  margin: 0 auto;
+  object-fit: contain;
+  cursor: zoom-in;
+}
+
+.receipt-preview-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 8px;
+  padding: 4px 6px;
+  font-size: 0.8rem;
+}
+
+/* Admin Payment Review Details */
+.review-receipt-container {
+  margin-top: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: #00000005;
+  padding: 12px;
+  text-align: center;
+}
+
+.review-receipt-img {
+  max-height: 380px;
+  max-width: 100%;
+  border-radius: var(--radius);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.1);
+  cursor: zoom-in;
+  transition: transform 0.2s ease;
+}
+
+.review-receipt-img:hover {
+  transform: scale(1.02);
+}
+
+.rejection-reason-callout {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  color: #991b1b;
+  font-size: 0.84rem;
+  margin-top: 12px;
+}
+
+[data-theme="dark"] .rejection-reason-callout {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #fca5a5;
+}
+
+/* QR Code Zoom Lightbox */
+.receipt-lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 100000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  cursor: zoom-out;
+}
+
+.receipt-lightbox-img {
+  max-width: 95vw;
+  max-height: 95vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
