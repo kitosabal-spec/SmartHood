@@ -295,7 +295,11 @@ function deserializeRow(table, row) {
     } else {
       let perms = Array.isArray(output.permissions) ? [...output.permissions] : [];
       // Strip legacy 'ho-*' IDs, wildcard, and admin-only modules
+      const hadLegacyHo = perms.some(p => p.startsWith('ho-'));
       perms = perms.filter(p => !p.startsWith('ho-') && p !== '*' && p !== 'users' && p !== 'settings');
+      if (output.role === 'homeowner' && (perms.length === 0 || hadLegacyHo) && !perms.includes('resident')) {
+        perms.unshift('resident');
+      }
       output.permissions = perms;
     }
     output.status = output.status || 'active';
@@ -361,10 +365,25 @@ async function loadAllData(requester = null) {
   for (const table of Object.keys(tableConfig)) {
     data[table] = await getTableData(table);
   }
-  // Withhold auditLog from unauthenticated users or users without auditlog permission
+  // Filter table data for non-admins based on permissions
   if (!requester || requester.role !== 'admin') {
     if (!requester || !userHasPermission(requester, 'auditlog')) {
       data.auditLog = [];
+    }
+    if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'billing'))) {
+      data.billings = [];
+    }
+    if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'payments'))) {
+      data.payments = [];
+    }
+    if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'amenities'))) {
+      data.amenityBookings = [];
+    }
+    if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'complaints'))) {
+      data.complaints = [];
+    }
+    if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'vehicles'))) {
+      data.vehicleRegistrations = [];
     }
   }
   return data;
@@ -391,7 +410,8 @@ async function createTables() {
   await run("ALTER TABLE users ADD COLUMN status VARCHAR(32) DEFAULT 'active'").catch(() => {});
   await run("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''").catch(() => {});
   await run("UPDATE users SET permissions = '[\"*\"]' WHERE role = 'admin' AND (permissions IS NULL OR permissions = '' OR permissions = '[]')").catch(() => {});
-  await run("UPDATE users SET permissions = '[]' WHERE role != 'admin' AND (permissions IS NULL OR permissions = '')").catch(() => {});
+  await run("UPDATE users SET permissions = '[\"resident\"]' WHERE role = 'homeowner' AND (permissions IS NULL OR permissions = '' OR permissions = '[]')").catch(() => {});
+  await run("UPDATE users SET permissions = '[]' WHERE role NOT IN ('admin', 'homeowner') AND (permissions IS NULL OR permissions = '')").catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS billings (
     id VARCHAR(64) PRIMARY KEY,
@@ -1607,8 +1627,16 @@ app.get('/api/data', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/login', asyncHandler(async (req, res) => {
-  const { username, password } = req.body;
-  const user = await get('SELECT * FROM users WHERE username = ? AND password = ?', [username, password]);
+  const username = (req.body.username || '').trim();
+  const password = (req.body.password || '').trim();
+  if (!username || !password) {
+    res.status(400).json({ error: 'Username and password are required.' });
+    return;
+  }
+  const user = await get(
+    'SELECT * FROM users WHERE (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)) AND password = ?',
+    [username, username, password]
+  );
   if (!user) {
     res.status(401).json({ error: 'Invalid username or password.' });
     return;
@@ -1981,6 +2009,81 @@ app.post('/api/reset', asyncHandler(async (req, res) => {
   res.json(await loadAllData(admin));
 }));
 
+app.post('/api/users', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+
+  const name = (req.body.name || '').trim();
+  const username = (req.body.username || '').trim().toLowerCase();
+  const email = (req.body.email || '').trim().toLowerCase();
+  const password = (req.body.password || '').trim();
+  const role = req.body.role === 'admin' ? 'admin' : 'homeowner';
+
+  if (!name || !username || !email || !password) {
+    return res.status(400).json({ error: 'Name, Username, Email, and Password are all required.' });
+  }
+
+  if (/\s/.test(username)) {
+    return res.status(400).json({ error: 'Username cannot contain whitespace.' });
+  }
+
+  if (username.length < 3) {
+    return res.status(400).json({ error: 'Username must be at least 3 characters long.' });
+  }
+
+  if (password.length < 6) {
+    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+  }
+
+  // Prevent duplicate username
+  const dupUser = await get('SELECT id FROM users WHERE LOWER(username) = LOWER(?)', [username]);
+  if (dupUser) {
+    return res.status(400).json({ error: 'Username already exists. Please choose another username.' });
+  }
+
+  // Prevent duplicate email
+  const dupEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email]);
+  if (dupEmail) {
+    return res.status(400).json({ error: 'Email address is already registered. Please choose another email.' });
+  }
+
+  // Process permissions
+  let permissions = [];
+  if (role === 'admin') {
+    permissions = ['*'];
+  } else {
+    const rawPerms = Array.isArray(req.body.permissions) ? req.body.permissions : [];
+    const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
+    permissions = rawPerms.filter(p => validPermissions.includes(p));
+    // If no permission specified for homeowner, default to resident
+    if (permissions.length === 0) {
+      permissions = ['resident'];
+    }
+  }
+
+  const userId = req.body.id || ('u' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase());
+
+  const newUserRecord = {
+    id: userId,
+    username,
+    password,
+    role,
+    name,
+    email,
+    block: role === 'homeowner' ? (req.body.block || null) : null,
+    lot: role === 'homeowner' ? (req.body.lot || null) : null,
+    lotArea: role === 'homeowner' ? (Number(req.body.lotArea) || 0) : null,
+    contact: (req.body.contact || '').trim() || null,
+    balance: Number(req.body.balance) || 0,
+    profile_photo: null,
+    permissions,
+    status: req.body.status || 'active',
+  };
+
+  await saveRecord('users', newUserRecord);
+  res.status(201).json(sanitizeRecord('users', newUserRecord));
+}));
+
 app.post('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
@@ -1988,13 +2091,29 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
   if (!allowed) return;
 
   if (table === 'users') {
+    const username = (req.body.username || '').trim().toLowerCase();
+    if (username) {
+      const dupUser = await get('SELECT id FROM users WHERE LOWER(username) = LOWER(?)', [username]);
+      if (dupUser) {
+        return res.status(400).json({ error: 'Username already exists. Please choose another username.' });
+      }
+    }
+    const email = (req.body.email || '').trim().toLowerCase();
+    if (email) {
+      const dupEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email]);
+      if (dupEmail) {
+        return res.status(400).json({ error: 'Email address is already registered. Please choose another email.' });
+      }
+    }
+
     if (req.body.role === 'admin') {
       req.body.permissions = ['*'];
     } else {
       req.body.role = 'homeowner';
       const perms = Array.isArray(req.body.permissions) ? [...req.body.permissions] : [];
-      const clean = perms.filter(p => !p.startsWith('ho-') && p !== '*' && p !== 'users' && p !== 'settings');
-      req.body.permissions = clean;
+      const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
+      const clean = perms.filter(p => validPermissions.includes(p));
+      req.body.permissions = clean.length > 0 ? clean : ['resident'];
     }
   }
 
@@ -2034,14 +2153,27 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
       delete req.body.status;
     } else {
       // Admin updating a user
+      if (req.body.username && req.body.username.trim().toLowerCase() !== (existing.username || '').toLowerCase()) {
+        const dupUser = await get('SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?', [req.body.username.trim().toLowerCase(), req.params.id]);
+        if (dupUser) {
+          return res.status(400).json({ error: 'Username already exists. Please choose another username.' });
+        }
+      }
+      if (req.body.email && req.body.email.trim().toLowerCase() !== (existing.email || '').toLowerCase()) {
+        const dupEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?', [req.body.email.trim().toLowerCase(), req.params.id]);
+        if (dupEmail) {
+          return res.status(400).json({ error: 'Email address is already registered. Please choose another email.' });
+        }
+      }
+
       const targetRole = req.body.role !== undefined ? req.body.role : existing.role;
       if (targetRole === 'admin') {
         req.body.permissions = ['*'];
       } else {
         if (req.body.permissions !== undefined) {
-          const perms = Array.isArray(req.body.permissions) ? [...req.body.permissions] : [];
-          const clean = perms.filter(p => !p.startsWith('ho-') && p !== '*' && p !== 'users' && p !== 'settings');
-          req.body.permissions = clean;
+          const rawPerms = Array.isArray(req.body.permissions) ? [...req.body.permissions] : [];
+          const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
+          req.body.permissions = rawPerms.filter(p => validPermissions.includes(p));
         }
       }
     }

@@ -237,8 +237,8 @@ const api = {
     });
   },
 
-  async save(table, item) {
-    const exists = db.get(table).some(x => x.id === item.id);
+  async save(table, item, isUpdate = null) {
+    const exists = isUpdate !== null ? isUpdate : db.get(table).some(x => x.id === item.id);
     return this.request(exists ? `/api/${table}/${item.id}` : `/api/${table}`, {
       method: exists ? 'PUT' : 'POST',
       body: JSON.stringify(item),
@@ -259,6 +259,14 @@ const api = {
   async reset() {
     dbCache = await this.request('/api/reset', { method: 'POST' });
     return dbCache;
+  },
+
+  // ── User Management API Helper ──
+  async createUser(userData) {
+    return this.request('/api/users', {
+      method: 'POST',
+      body: JSON.stringify(userData),
+    });
   },
 
   // ── Announcements & MySQL Comments API Helpers ──
@@ -321,23 +329,36 @@ const db = {
   set(key, val) {
     dbCache[key] = Array.isArray(val) ? val : [];
     scheduleSidebarBadgeRefresh();
-    api.replace(key, dbCache[key]).catch(reportSyncError);
+    return api.replace(key, dbCache[key]).catch(reportSyncError);
   },
   getOne(key, id) {
     return this.get(key).find(x => x.id === id);
   },
-  save(key, item) {
+  async save(key, item) {
     const arr = this.get(key);
-    const idx = arr.findIndex(x => x.id === item.id);
-    if (idx >= 0) arr[idx] = item; else arr.push(item);
-    dbCache[key] = arr;
+    const existingIndex = arr.findIndex(x => x.id === item.id);
+    const isUpdate = existingIndex >= 0;
+
+    // Send to API first and WAIT for MySQL confirmation
+    const saved = await api.save(key, item, isUpdate);
+    const resultItem = (saved && typeof saved === 'object') ? { ...item, ...saved } : item;
+
+    // Update in-memory dbCache only upon successful persistence
+    const currentArr = this.get(key);
+    const currentIdx = currentArr.findIndex(x => x.id === (resultItem.id || item.id));
+    if (currentIdx >= 0) {
+      currentArr[currentIdx] = resultItem;
+    } else {
+      currentArr.push(resultItem);
+    }
+    dbCache[key] = currentArr;
     scheduleSidebarBadgeRefresh();
-    api.save(key, item).catch(reportSyncError);
+    return resultItem;
   },
-  delete(key, id) {
+  async delete(key, id) {
+    await api.delete(key, id);
     dbCache[key] = this.get(key).filter(x => x.id !== id);
     scheduleSidebarBadgeRefresh();
-    api.delete(key, id).catch(reportSyncError);
   },
   newId(prefix) {
     return prefix + Date.now().toString(36).toUpperCase();
@@ -2178,24 +2199,31 @@ function renderPermissionGroupsHTML(selectedPerms = [], prefix = 'ca') {
 
 function openCreateAccountModal() {
   openModal('Create New Account', `
+    <div style="background:var(--teal-50, #f0fdfa);border:1px solid var(--teal-200, #99f6e4);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.83rem;color:var(--teal-800, #115e59);line-height:1.4;">
+      <strong>Sign-In Credentials Note:</strong> The account holder will log in using their <strong>Username</strong> and <strong>Password</strong>. Full Name is used as their display name in directory and records.
+    </div>
     <div class="grid-2">
       <div class="form-group">
         <label>Full Name *</label>
-        <input id="ca_name" placeholder="e.g. Maria Santos"/>
+        <input id="ca_name" placeholder="e.g. Maria Santos" autocomplete="off"/>
+        <small style="font-size:0.75rem;color:var(--text-3);display:block;margin-top:2px;">Display name of the person</small>
       </div>
       <div class="form-group">
-        <label>Username *</label>
-        <input id="ca_user" placeholder="e.g. mariasantos"/>
+        <label>Login Username *</label>
+        <input id="ca_user" placeholder="e.g. mariasantos" autocomplete="off"/>
+        <small style="font-size:0.75rem;color:var(--text-3);display:block;margin-top:2px;">Sign-in identifier (no spaces, min. 3 chars)</small>
       </div>
     </div>
     <div class="grid-2">
       <div class="form-group">
         <label>Email Address *</label>
-        <input id="ca_email" type="email" placeholder="e.g. maria@example.com"/>
+        <input id="ca_email" type="email" placeholder="e.g. maria@example.com" autocomplete="off"/>
+        <small style="font-size:0.75rem;color:var(--text-3);display:block;margin-top:2px;">Must be a unique email address</small>
       </div>
       <div class="form-group">
         <label>Initial Password *</label>
-        <input id="ca_pass" type="password" placeholder="Min. 6 characters"/>
+        <input id="ca_pass" type="password" placeholder="Min. 6 characters" autocomplete="new-password"/>
+        <small style="font-size:0.75rem;color:var(--text-3);display:block;margin-top:2px;">Minimum 6 characters</small>
       </div>
     </div>
     <div class="grid-2">
@@ -2231,7 +2259,7 @@ function openCreateAccountModal() {
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
           <div>
             <label style="margin-bottom:2px;font-weight:700;font-size:0.92rem;color:var(--text);">Module Access Permissions</label>
-            <div style="font-size:0.76rem;color:var(--text-3);">Select module access permissions to grant to this resident account.</div>
+            <div style="font-size:0.76rem;color:var(--text-3);">Select specific module access permissions to grant to this account.</div>
           </div>
           <button type="button" class="btn btn-secondary btn-xs" id="btnSelectAllPerms" onclick="toggleSelectAllPermissions('ca_resident_perms_wrap', this)">
             Select All
@@ -2304,7 +2332,7 @@ function toggleSelectAllPermissions(containerId, buttonEl) {
 async function saveCreateAccount() {
   const name = (document.getElementById('ca_name')?.value || '').trim();
   const username = (document.getElementById('ca_user')?.value || '').trim().toLowerCase();
-  const email = (document.getElementById('ca_email')?.value || '').trim();
+  const email = (document.getElementById('ca_email')?.value || '').trim().toLowerCase();
   const password = (document.getElementById('ca_pass')?.value || '').trim();
   const role = document.getElementById('ca_role')?.value;
   const contact = (document.getElementById('ca_contact')?.value || '').trim();
@@ -2313,14 +2341,38 @@ async function saveCreateAccount() {
     showToast('error', 'Missing Fields', 'Please fill in Name, Username, Email, and Password.');
     return;
   }
+
+  if (/\s/.test(username)) {
+    showToast('error', 'Invalid Username', 'Username cannot contain spaces. Use letters, numbers, or underscores.');
+    return;
+  }
+
+  if (username.length < 3) {
+    showToast('error', 'Username Too Short', 'Username must be at least 3 characters long.');
+    return;
+  }
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  if (!emailRegex.test(email)) {
+    showToast('error', 'Invalid Email', 'Please enter a valid email address.');
+    return;
+  }
+
   if (password.length < 6) {
     showToast('error', 'Weak Password', 'Password must be at least 6 characters.');
     return;
   }
 
+  // Fast client-side pre-validation
   const existingUser = db.get('users').find(u => (u.username || '').toLowerCase() === username);
   if (existingUser) {
-    showToast('error', 'Username Taken', 'That username is already registered. Please choose another.');
+    showToast('error', 'Username Taken', 'Username already exists. Please choose another username.');
+    return;
+  }
+
+  const existingEmail = db.get('users').find(u => (u.email || '').toLowerCase() === email);
+  if (existingEmail) {
+    showToast('error', 'Email Taken', 'Email address is already registered. Please choose another email.');
     return;
   }
 
@@ -2334,6 +2386,11 @@ async function saveCreateAccount() {
         permissions.push(cb.value);
       }
     });
+
+    if (permissions.length === 0) {
+      showToast('error', 'Module Selection Required', 'Please select at least one module access permission for this resident account.');
+      return;
+    }
   }
 
   const newUser = {
@@ -2359,15 +2416,20 @@ async function saveCreateAccount() {
 
   showLoading();
   try {
+    // Save to MySQL and wait for confirmation
     await db.save('users', newUser);
+
+    // Refresh entire dataset directly from MySQL so account persists across reloads
+    await api.loadAll();
+
     logAction(`Created account: "${name}" (@${username}) with account type: ${role === 'admin' ? 'Administrator' : 'Resident'}`);
     closeModal();
     hideLoading();
-    showToast('success', 'Account Created', `Account for ${name} has been created.`);
+    showToast('success', 'Account Created Successfully', `Account for ${name} has been created in MySQL. Login Username: "${username}"`);
     renderUserManagement();
   } catch (err) {
     hideLoading();
-    showToast('error', 'Failed', err.message || 'Could not create account.');
+    showToast('error', 'Account Creation Failed', err.message || 'Could not save account to database.');
   }
 }
 
@@ -2452,6 +2514,7 @@ async function saveEditUserPermissions(userId) {
   showLoading();
   try {
     await db.save('users', u);
+    await api.loadAll();
     logAction(`Updated access permissions for user: ${u.name} (@${u.username})`);
 
     // If updating current user's permissions, refresh sidebar immediately
@@ -2565,6 +2628,7 @@ async function saveEditUserAccount(userId) {
   showLoading();
   try {
     await db.save('users', u);
+    await api.loadAll();
     logAction(`Updated account profile: ${u.name}`);
 
     if (currentUser && currentUser.id === u.id) {
@@ -3437,6 +3501,20 @@ window.addEventListener('popstate', () => {
     navigate(hash, false);
   } else {
     navigate(getDefaultViewForRole(currentUser.role), false);
+  }
+});
+
+// Intercept direct hash change in address bar
+window.addEventListener('hashchange', () => {
+  if (currentUser && restoreSession()) {
+    const hash = (window.location.hash || '').replace(/^#/, '');
+    if (hash && !PUBLIC_LANDING_SECTIONS.has(hash) && hash !== 'login') {
+      if (canAccessView(hash)) {
+        navigate(hash, false);
+      } else {
+        renderAccessDenied(hash);
+      }
+    }
   }
 });
 
