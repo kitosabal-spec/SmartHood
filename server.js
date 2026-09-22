@@ -392,8 +392,8 @@ async function loadAllData(requester = null) {
 async function createTables() {
   await run(`CREATE TABLE IF NOT EXISTS users (
     id VARCHAR(64) PRIMARY KEY,
-    username VARCHAR(255) UNIQUE,
-    password TEXT,
+    username VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin UNIQUE,
+    password TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin,
     role VARCHAR(64),
     name TEXT,
     email TEXT,
@@ -404,6 +404,8 @@ async function createTables() {
     balance DOUBLE DEFAULT 0,
     profile_photo TEXT
   )`);
+  await run('ALTER TABLE users MODIFY username VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin').catch(() => {});
+  await run('ALTER TABLE users MODIFY password TEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin').catch(() => {});
   await run('ALTER TABLE users ADD COLUMN lotArea DOUBLE').catch(() => {});
   await run('ALTER TABLE users ADD COLUMN profile_photo TEXT').catch(() => {});
   await run('ALTER TABLE users ADD COLUMN permissions LONGTEXT').catch(() => {});
@@ -1634,10 +1636,20 @@ app.post('/api/login', asyncHandler(async (req, res) => {
     return;
   }
   const user = await get(
-    'SELECT * FROM users WHERE (LOWER(username) = LOWER(?) OR LOWER(email) = LOWER(?)) AND password = ?',
-    [username, username, password]
+    'SELECT * FROM users WHERE (BINARY username = ? OR BINARY email = ? OR (block IS NOT NULL AND lot IS NOT NULL AND (BINARY CONCAT(block, " ", lot) = ? OR BINARY CONCAT(block, ", ", lot) = ?))) AND BINARY password = ?',
+    [username, username, username, username, password]
   );
-  if (!user) {
+  const matchesIdentifier = Boolean(
+    user && (
+      user.username === username ||
+      user.email === username ||
+      (user.block && user.lot && (
+        `${user.block} ${user.lot}` === username ||
+        `${user.block}, ${user.lot}` === username
+      ))
+    )
+  );
+  if (!user || !matchesIdentifier || user.password !== password) {
     res.status(401).json({ error: 'Invalid username or password.' });
     return;
   }
@@ -2014,7 +2026,7 @@ app.post('/api/users', asyncHandler(async (req, res) => {
   if (!admin) return;
 
   const name = (req.body.name || '').trim();
-  const username = (req.body.username || '').trim().toLowerCase();
+  const username = (req.body.username || '').trim();
   const email = (req.body.email || '').trim().toLowerCase();
   const password = (req.body.password || '').trim();
   const role = req.body.role === 'admin' ? 'admin' : 'homeowner';
@@ -2036,7 +2048,7 @@ app.post('/api/users', asyncHandler(async (req, res) => {
   }
 
   // Prevent duplicate username
-  const dupUser = await get('SELECT id FROM users WHERE LOWER(username) = LOWER(?)', [username]);
+  const dupUser = await get('SELECT id FROM users WHERE BINARY username = ?', [username]);
   if (dupUser) {
     return res.status(400).json({ error: 'Username already exists. Please choose another username.' });
   }
@@ -2091,9 +2103,9 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
   if (!allowed) return;
 
   if (table === 'users') {
-    const username = (req.body.username || '').trim().toLowerCase();
+    const username = (req.body.username || '').trim();
     if (username) {
-      const dupUser = await get('SELECT id FROM users WHERE LOWER(username) = LOWER(?)', [username]);
+      const dupUser = await get('SELECT id FROM users WHERE BINARY username = ?', [username]);
       if (dupUser) {
         return res.status(400).json({ error: 'Username already exists. Please choose another username.' });
       }
@@ -2153,8 +2165,8 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
       delete req.body.status;
     } else {
       // Admin updating a user
-      if (req.body.username && req.body.username.trim().toLowerCase() !== (existing.username || '').toLowerCase()) {
-        const dupUser = await get('SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?', [req.body.username.trim().toLowerCase(), req.params.id]);
+      if (req.body.username && req.body.username.trim() !== (existing.username || '')) {
+        const dupUser = await get('SELECT id FROM users WHERE BINARY username = ? AND id != ?', [req.body.username.trim(), req.params.id]);
         if (dupUser) {
           return res.status(400).json({ error: 'Username already exists. Please choose another username.' });
         }

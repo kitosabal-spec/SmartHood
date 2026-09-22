@@ -2393,7 +2393,7 @@ function toggleSelectAllPermissions(containerId, buttonEl) {
 
 async function saveCreateAccount() {
   const name = (document.getElementById('ca_name')?.value || '').trim();
-  const username = (document.getElementById('ca_user')?.value || '').trim().toLowerCase();
+  const username = (document.getElementById('ca_user')?.value || '').trim();
   const email = (document.getElementById('ca_email')?.value || '').trim().toLowerCase();
   const password = (document.getElementById('ca_pass')?.value || '').trim();
   const role = document.getElementById('ca_role')?.value;
@@ -2426,7 +2426,7 @@ async function saveCreateAccount() {
   }
 
   // Fast client-side pre-validation
-  const existingUser = db.get('users').find(u => (u.username || '').toLowerCase() === username);
+  const existingUser = db.get('users').find(u => (u.username || '') === username);
   if (existingUser) {
     showToast('error', 'Username Taken', 'Username already exists. Please choose another username.');
     return;
@@ -2713,7 +2713,7 @@ async function saveEditUserAccount(userId) {
   if (!u) return;
 
   const name = (document.getElementById('ea_name')?.value || '').trim();
-  const username = (document.getElementById('ea_user')?.value || '').trim().toLowerCase();
+  const username = (document.getElementById('ea_user')?.value || '').trim();
   const email = (document.getElementById('ea_email')?.value || '').trim().toLowerCase();
   const contact = (document.getElementById('ea_contact')?.value || '').trim();
   const newPass = (document.getElementById('ea_newpass')?.value || '').trim();
@@ -2734,7 +2734,7 @@ async function saveEditUserAccount(userId) {
   }
 
   // Check username uniqueness if changed
-  if (username && username !== (u.username || '').toLowerCase()) {
+  if (username && username !== (u.username || '')) {
     if (/\s/.test(username)) {
       showToast('error', 'Invalid Username', 'Username cannot contain spaces.');
       return;
@@ -2743,7 +2743,7 @@ async function saveEditUserAccount(userId) {
       showToast('error', 'Username Too Short', 'Username must be at least 3 characters.');
       return;
     }
-    const duplicate = db.get('users').find(x => x.id !== userId && (x.username || '').toLowerCase() === username);
+    const duplicate = db.get('users').find(x => x.id !== userId && (x.username || '') === username);
     if (duplicate) {
       showToast('error', 'Username Taken', 'That username is already taken by another account.');
       return;

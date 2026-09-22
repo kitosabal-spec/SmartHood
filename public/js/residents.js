@@ -157,7 +157,7 @@ function openAddHomeownerModal() {
 
 async function saveAddHomeowner() {
   const name = document.getElementById('f_name').value.trim();
-  const username = document.getElementById('f_user').value.trim().toLowerCase();
+  const username = document.getElementById('f_user').value.trim();
   const password = document.getElementById('f_pass').value.trim();
   const email = document.getElementById('f_email').value.trim().toLowerCase();
   if (!name || !username || !password || !email) { showToast('error', 'Missing Fields', 'Please fill in all required fields.'); return; }
@@ -165,7 +165,7 @@ async function saveAddHomeowner() {
   if (username.length < 3) { showToast('error', 'Username Too Short', 'Username must be at least 3 characters.'); return; }
   if (password.length < 6) { showToast('error', 'Weak Password', 'Password must be at least 6 characters.'); return; }
   const users = db.get('users');
-  if (users.find(u => (u.username || '').toLowerCase() === username)) { showToast('error', 'Duplicate Username', 'Username already exists. Please choose another username.'); return; }
+  if (users.find(u => (u.username || '') === username)) { showToast('error', 'Duplicate Username', 'Username already exists. Please choose another username.'); return; }
   if (users.find(u => (u.email || '').toLowerCase() === email)) { showToast('error', 'Duplicate Email', 'Email address is already registered. Please choose another email.'); return; }
   const lotAreaValue = document.getElementById('f_lotArea').value.trim();
   const lotArea = lotAreaValue ? Number(lotAreaValue) : 0;
