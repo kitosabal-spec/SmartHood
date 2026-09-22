@@ -2,7 +2,9 @@
 
 
 function renderBilling() {
-  syncHomeownerBalances();
+  if (canManageBilling()) {
+    syncHomeownerBalances();
+  }
   const billings = db.get('billings');
   const manageBilling = canManageBilling();
   const area = document.getElementById('contentArea');
@@ -28,11 +30,15 @@ function renderBilling() {
     </div>
   </div>`;
 
-  document.getElementById('billSearch').addEventListener('input', () => {
-    const q = document.getElementById('billSearch').value.toLowerCase();
-    const filtered = billings.filter(b => b.title.toLowerCase().includes(q));
-    renderBillingTable(filtered);
-  });
+  const searchEl = document.getElementById('billSearch');
+  if (searchEl) {
+    searchEl.addEventListener('input', () => {
+      const q = searchEl.value.toLowerCase();
+      const currentList = db.get('billings');
+      const filtered = currentList.filter(b => (b.title || '').toLowerCase().includes(q));
+      renderBillingTable(filtered);
+    });
+  }
 
   renderBillingTable(billings);
 }
@@ -40,15 +46,17 @@ function renderBilling() {
 function renderBillingTable(billings) {
   const tbody = document.getElementById('billTableBody');
   if (!tbody) return;
-  if (!billings.length) { tbody.innerHTML = `<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings found.</div></td></tr>`; return; }
-  tbody.innerHTML = billings.map(b => {
+  const list = Array.isArray(billings) ? billings : [];
+  if (!list.length) { tbody.innerHTML = `<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings found.</div></td></tr>`; return; }
+  tbody.innerHTML = list.map(b => {
     const assignedIds = getAssignedHomeownerIds(b);
     const collectionStatus = getBillingCollectionStatus(b);
     const overdue = collectionStatus === 'overdue';
+    const amountStr = Number(b.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     return `<tr class="${overdue ? 'overdue-row' : ''}">
-      <td><strong>${b.title}</strong>${overdue ? ' <span class="badge badge-red">Overdue</span>' : ''}</td>
-      <td class="amount-due">₱${b.amount.toLocaleString()}</td>
-      <td>${b.dueDate}</td>
+      <td><strong>${escapeHtml(b.title)}</strong>${overdue ? ' <span class="badge badge-red">Overdue</span>' : ''}</td>
+      <td class="amount-due">₱${amountStr}</td>
+      <td>${escapeHtml(b.dueDate || '—')}</td>
       <td>${assignedIds.length} homeowner(s)</td>
       <td>${badgeHtml(collectionStatus)}</td>
       <td><div class="td-actions">
@@ -244,7 +252,7 @@ function updateBillingAmountForMonthlyDues() {
   if (hint) hint.textContent = `${user?.lotArea || 0} sqm x PHP ${rate.toLocaleString()} per sqm`;
 }
 
-function saveAddBilling() {
+async function saveAddBilling() {
   const title = document.getElementById('bf_title').value.trim();
   const due = document.getElementById('bf_due').value;
   const billingMonth = formatBillingMonth(document.getElementById('bf_month')?.value);
@@ -257,45 +265,63 @@ function saveAddBilling() {
   }
   updateBillingAmountForMonthlyDues();
   const amount = parseFloat(document.getElementById('bf_amount').value);
-  if (isNaN(amount)) { showToast('error', 'Missing Fields', 'Fill all required fields.'); return; }
+  if (isNaN(amount) || amount <= 0) { showToast('error', 'Invalid Amount', 'Enter a valid billing amount.'); return; }
   const finalTitle = title.toLowerCase().includes(billingMonth.toLowerCase()) ? title : `${title} - ${billingMonth}`;
   const description = document.getElementById('bf_desc').value.trim();
   const bill = {
     id: db.newId('b'),
-    title: finalTitle, amount, dueDate: due,
+    title: finalTitle,
+    amount,
+    dueDate: due,
     description: description ? `Billing month: ${billingMonth}. ${description}` : `Billing month: ${billingMonth}.`,
-    assignedTo: checked, status: 'active',
+    assignedTo: checked,
+    status: 'active',
     createdAt: getLocalDateValue(),
   };
-  db.save('billings', bill);
-  checked.forEach(id => {
-    const user = db.getOne('users', id);
-    if (user) {
-      user.balance = (Number(user.balance) || 0) + amount;
-      db.save('users', user);
+
+  try {
+    showLoading();
+    // Persist to MySQL and update in-memory dbCache
+    await db.save('billings', bill);
+
+    if (canManageBilling()) {
+      syncHomeownerBalances();
     }
-  });
-  logAction(`Created billing: ${finalTitle} for ${checked.length} homeowner(s)`);
-  addNotification('New Billing Created', `"${finalTitle}" has been assigned to you.`, { userIds: checked });
-  closeModal();
-  showToast('success', 'Billing Created', `"${finalTitle}" has been created.`);
-  renderBilling();
+
+    if (typeof logAction === 'function') {
+      logAction(`Created billing: ${finalTitle} for ${checked.length} homeowner(s)`);
+    }
+    if (typeof addNotification === 'function') {
+      addNotification('New Billing Created', `"${finalTitle}" has been assigned to you.`, { userIds: checked });
+    }
+
+    closeModal();
+    hideLoading();
+    showToast('success', 'Billing Created', `"${finalTitle}" has been created.`);
+    renderBilling();
+  } catch (err) {
+    hideLoading();
+    console.error('Failed to create billing:', err);
+    showToast('error', 'Creation Failed', err.message || 'Could not save billing.');
+  }
 }
 
 function viewBillingDetail(id) {
   const b = db.getOne('billings', id);
   if (!b) return;
   const users = db.get('users');
-  const assignedNames = b.assignedTo.map(uid => { const u = users.find(x => x.id === uid); return u ? u.name : uid; });
+  const assignedIds = getAssignedHomeownerIds(b);
+  const assignedNames = assignedIds.map(uid => { const u = users.find(x => x.id === uid); return u ? u.name : uid; });
+  const amountStr = Number(b.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   openModal(b.title, `
-    <p style="color:var(--text-2);margin-bottom:16px">${b.description || 'No description.'}</p>
+    <p style="color:var(--text-2);margin-bottom:16px">${escapeHtml(b.description || 'No description.')}</p>
     <div class="grid-2 mb-16">
-      <div class="report-summary-item"><div class="r-val">₱${b.amount.toLocaleString()}</div><div class="r-lbl">Amount</div></div>
-      <div class="report-summary-item"><div class="r-val">${b.dueDate}</div><div class="r-lbl">Due Date</div></div>
+      <div class="report-summary-item"><div class="r-val">₱${amountStr}</div><div class="r-lbl">Amount</div></div>
+      <div class="report-summary-item"><div class="r-val">${escapeHtml(b.dueDate || '—')}</div><div class="r-lbl">Due Date</div></div>
     </div>
     <strong style="font-size:0.82rem;color:var(--text-3)">ASSIGNED TO (${assignedNames.length})</strong>
     <div style="margin-top:8px;max-height:180px;overflow-y:auto">
-      ${assignedNames.map(n => `<div style="padding:6px 0;font-size:0.88rem;border-bottom:1px solid var(--border);color:var(--text-2)">- ${n}</div>`).join('')}
+      ${assignedNames.map(n => `<div style="padding:6px 0;font-size:0.88rem;border-bottom:1px solid var(--border);color:var(--text-2)">- ${escapeHtml(n)}</div>`).join('')}
     </div>
   `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
 }
@@ -304,20 +330,28 @@ function confirmDeleteBilling(id) {
   if (!canManageBilling()) { showToast('error', 'Access Denied', 'Only the admin can delete billings.'); return; }
   const b = db.getOne('billings', id);
   if (!b) return;
-  openModal('Delete Billing', `<p>Delete <strong>${b.title}</strong>? This cannot be undone.</p>`, [
+  openModal('Delete Billing', `<p>Delete <strong>${escapeHtml(b.title)}</strong>? This cannot be undone.</p>`, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    { label: 'Delete', cls: 'btn-danger', action: () => {
-      db.delete('billings', id);
-      syncHomeownerBalances();
-      logAction(`Deleted billing: ${b.title}`);
-      closeModal();
-      showToast('success', 'Deleted', 'Billing removed and balances updated.');
-      renderBilling();
+    { label: 'Delete', cls: 'btn-danger', action: async () => {
+      try {
+        showLoading();
+        await db.delete('billings', id);
+        syncHomeownerBalances();
+        logAction(`Deleted billing: ${b.title}`);
+        closeModal();
+        hideLoading();
+        showToast('success', 'Deleted', 'Billing removed and balances updated.');
+        renderBilling();
+      } catch (err) {
+        hideLoading();
+        console.error(err);
+        showToast('error', 'Delete Failed', err.message || 'Could not delete billing.');
+      }
     } },
   ]);
 }
 
-function autoGenerateMonthlyDues() {
+async function autoGenerateMonthlyDues() {
   const month = new Date().toLocaleString('default', { month: 'long' });
   const year = new Date().getFullYear();
   const title = `Monthly Dues – ${month} ${year}`;
@@ -326,24 +360,32 @@ function autoGenerateMonthlyDues() {
   if (existing) { showToast('warning', 'Already Exists', `Dues for ${month} already created.`); return; }
   const lastDay = getLocalDateValue(new Date(year, new Date().getMonth() + 1, 0));
   const bill = { id: db.newId('b'), title, amount: 1500, dueDate: lastDay, description: 'Auto-generated monthly dues.', assignedTo: homeowners.map(u => u.id), status: 'active', createdAt: getLocalDateValue() };
-  db.save('billings', bill);
-  logAction(`Auto-generated monthly dues: ${title}`);
-  showToast('success', 'Generated', `${title} created for ${homeowners.length} homeowners.`);
-  renderBilling();
+  try {
+    showLoading();
+    await db.save('billings', bill);
+    syncHomeownerBalances();
+    logAction(`Auto-generated monthly dues: ${title}`);
+    hideLoading();
+    showToast('success', 'Generated', `${title} created for ${homeowners.length} homeowners.`);
+    renderBilling();
+  } catch (err) {
+    hideLoading();
+    console.error(err);
+    showToast('error', 'Failed', err.message || 'Could not auto-generate dues.');
+  }
 }
 
-
-function autoGenerateLotAreaMonthlyDues() {
+async function autoGenerateLotAreaMonthlyDues() {
   const month = new Date().toLocaleString('default', { month: 'long' });
   const year = new Date().getFullYear();
   const title = `Monthly Dues - ${month} ${year}`;
   const homeowners = db.get('users').filter(u => u.role === 'homeowner');
   const existing = db.get('billings').filter(b => b.title === title);
-  const alreadyAssigned = new Set(existing.flatMap(b => b.assignedTo || []));
+  const alreadyAssigned = new Set(existing.flatMap(b => getAssignedHomeownerIds(b)));
   const rate = getDuesRatePerSqm();
   const lastDay = getLocalDateValue(new Date(year, new Date().getMonth() + 1, 0));
   const createdAt = getLocalDateValue();
-  let created = 0;
+  const toCreate = [];
 
   homeowners.forEach((u, index) => {
     if (alreadyAssigned.has(u.id)) return;
@@ -358,20 +400,29 @@ function autoGenerateLotAreaMonthlyDues() {
       status: 'active',
       createdAt,
     };
-    db.save('billings', bill);
-    u.balance = (Number(u.balance) || 0) + amount;
-    db.save('users', u);
-    created++;
+    toCreate.push(bill);
   });
 
-  if (!created) {
+  if (!toCreate.length) {
     showToast('warning', 'Already Exists', `Dues for ${month} already created.`);
     return;
   }
 
-  logAction(`Auto-generated monthly dues: ${title} at PHP ${rate}/sqm for ${created} homeowner(s)`);
-  showToast('success', 'Generated', `${title} created for ${created} homeowner(s).`);
-  renderBilling();
+  try {
+    showLoading();
+    for (const bill of toCreate) {
+      await db.save('billings', bill);
+    }
+    syncHomeownerBalances();
+    logAction(`Auto-generated monthly dues: ${title} at PHP ${rate}/sqm for ${toCreate.length} homeowner(s)`);
+    hideLoading();
+    showToast('success', 'Generated', `${title} created for ${toCreate.length} homeowner(s).`);
+    renderBilling();
+  } catch (err) {
+    hideLoading();
+    console.error(err);
+    showToast('error', 'Failed', err.message || 'Could not auto-generate dues.');
+  }
 }
 
 // SECTION 9: ADMIN — PAYMENTS
@@ -889,9 +940,11 @@ async function savePaymentSettings() {
 // ── RESIDENT PORTAL: MY BILLS & PAY NOW FLOW ──
 
 function renderHOBilling() {
-  syncHomeownerBalances();
-  const myBillings = db.get('billings').filter(b => b.assignedTo.includes(currentUser.id));
-  const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser.id);
+  if (canManageBilling()) {
+    syncHomeownerBalances();
+  }
+  const myBillings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(currentUser?.id));
+  const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser?.id);
   const today = getLocalDateValue();
   const area = document.getElementById('contentArea');
 
@@ -920,7 +973,7 @@ function renderHOBilling() {
               const paid = myPayments.find(p => p.billingId === b.id && p.status === 'approved');
               const pend = myPayments.find(p => p.billingId === b.id && p.status === 'pending');
               const rej = myPayments.find(p => p.billingId === b.id && p.status === 'rejected');
-              const overdue = b.dueDate < today && !paid;
+              const overdue = b.dueDate && b.dueDate < today && !paid;
 
               let statusBadge = '<span class="badge badge-gray">Unpaid</span>';
               if (paid) {
@@ -949,7 +1002,7 @@ function renderHOBilling() {
                   ${rej && !paid && !pend ? `<div style="font-size:0.76rem;color:var(--red-600);margin-top:4px">⚠️ Previous submission was rejected: ${escapeHtml(rej.rejection_reason || rej.remarks || 'Check history')}</div>` : ''}
                 </td>
                 <td class="amount-due">₱${Number(b.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td>${escapeHtml(b.dueDate)}${overdue ? ' <span style="color:var(--red-600);font-weight:700">— Overdue</span>' : ''}</td>
+                <td>${escapeHtml(b.dueDate || '—')}${overdue ? ' <span style="color:var(--red-600);font-weight:700">— Overdue</span>' : ''}</td>
                 <td>${statusBadge}</td>
                 <td>${actionBtn}</td>
               </tr>`;
@@ -1349,7 +1402,7 @@ function renderHOHistory() {
 }
 
 function renderHOPayments() {
-  const myBillings = db.get('billings').filter(b => b.assignedTo.includes(currentUser.id));
+  const myBillings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(currentUser?.id));
   const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser.id);
   const unpaid = myBillings.filter(b => !myPayments.find(p => p.billingId === b.id && (p.status === 'approved' || p.status === 'pending')));
 

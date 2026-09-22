@@ -976,6 +976,13 @@ function calculateUserOutstandingBalance(userId) {
 }
 
 function syncHomeownerBalances() {
+  if (!canManageBilling()) {
+    if (currentUser && currentUser.role === 'homeowner') {
+      const balance = calculateUserOutstandingBalance(currentUser.id);
+      currentUser.balance = balance;
+    }
+    return;
+  }
   db.get('users')
     .filter(user => user.role === 'homeowner')
     .forEach(user => {

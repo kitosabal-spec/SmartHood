@@ -289,7 +289,17 @@ async function get(sql, params = []) {
 
 function serializeValue(table, column, value) {
   const config = tableConfig[table];
-  if (config.jsonColumns.includes(column)) return JSON.stringify(value || []);
+  if (config.jsonColumns.includes(column)) {
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        return JSON.stringify(Array.isArray(parsed) ? parsed : [parsed]);
+      } catch {
+        return JSON.stringify(value.split(',').map(s => s.trim()).filter(Boolean));
+      }
+    }
+    return JSON.stringify(Array.isArray(value) ? value : (value ? [value] : []));
+  }
   if (config.booleanColumns.includes(column)) return value ? 1 : 0;
   return value === undefined ? null : value;
 }
@@ -300,7 +310,11 @@ function deserializeRow(table, row) {
 
   for (const column of config.jsonColumns) {
     try {
-      output[column] = row[column] ? JSON.parse(row[column]) : [];
+      let parsed = row[column] ? JSON.parse(row[column]) : [];
+      if (typeof parsed === 'string') {
+        try { parsed = JSON.parse(parsed); } catch { parsed = parsed.split(',').map(s => s.trim()).filter(Boolean); }
+      }
+      output[column] = Array.isArray(parsed) ? parsed : (parsed ? [parsed] : []);
     } catch {
       output[column] = [];
     }
@@ -395,7 +409,12 @@ async function loadAllData(requester = null) {
     if (!requester || !userHasPermission(requester, 'auditlog')) {
       data.auditLog = [];
     }
-    if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'billing'))) {
+    if (requester && userHasPermission(requester, 'resident') && !userHasPermission(requester, 'billing')) {
+      data.billings = (data.billings || []).filter(b => {
+        const assigned = Array.isArray(b.assignedTo) ? b.assignedTo : [];
+        return assigned.includes(requester.id);
+      });
+    } else if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'billing'))) {
       data.billings = [];
     }
     if (requester && userHasPermission(requester, 'resident') && !userHasPermission(requester, 'payments')) {
@@ -439,7 +458,7 @@ async function createTables() {
   await run("ALTER TABLE users ADD COLUMN status VARCHAR(32) DEFAULT 'active'").catch(() => {});
   await run("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''").catch(() => {});
   await run("UPDATE users SET permissions = '[\"*\"]' WHERE role = 'admin' AND (permissions IS NULL OR permissions = '' OR permissions = '[]')").catch(() => {});
-  await run("UPDATE users SET permissions = '[\"resident\"]' WHERE role = 'homeowner' AND (permissions IS NULL OR permissions = '' OR permissions = '[]')").catch(() => {});
+  await run("UPDATE users SET permissions = '[\"resident\"]' WHERE role = 'homeowner' AND (permissions IS NULL OR permissions = '' OR permissions = '[]' OR permissions LIKE '%ho-%')").catch(() => {});
   await run("UPDATE users SET permissions = '[]' WHERE role NOT IN ('admin', 'homeowner') AND (permissions IS NULL OR permissions = '')").catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS billings (
@@ -670,6 +689,12 @@ async function ensureAdminUser() {
       });
     }
   }
+
+  // Ensure all existing homeowners have at least the 'resident' permission and no legacy 'ho-*' permission strings in DB
+  await run(
+    'UPDATE users SET permissions = ? WHERE role = ? AND (permissions IS NULL OR permissions = "" OR permissions = "[]" OR permissions LIKE "%ho-%")',
+    [JSON.stringify(['resident']), 'homeowner']
+  ).catch(() => {});
 }
 
 async function resetDatabase() {
@@ -2191,7 +2216,10 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
   const allowed = await checkTableAccess(req, res, table, 'read');
   if (!allowed) return;
 
-  const data = await getTableData(table);
+  let data = await getTableData(table);
+  if (table === 'billings' && allowed.role !== 'admin' && !userHasPermission(allowed, 'billing')) {
+    data = data.filter(b => (Array.isArray(b.assignedTo) ? b.assignedTo : []).includes(allowed.id));
+  }
   if (table === 'auditLog' && (req.query.filter || req.query.date || req.query.startDate || req.query.endDate || req.query.q)) {
     const filterMode = req.query.filter || 'all';
     const query = (req.query.q || '').trim().toLowerCase();
@@ -2734,11 +2762,10 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
       if (targetRole === 'admin') {
         req.body.permissions = ['*'];
       } else {
-        if (req.body.permissions !== undefined) {
-          const rawPerms = Array.isArray(req.body.permissions) ? [...req.body.permissions] : [];
-          const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
-          req.body.permissions = rawPerms.filter(p => validPermissions.includes(p));
-        }
+        const rawPerms = Array.isArray(req.body.permissions) ? [...req.body.permissions] : [];
+        const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
+        const clean = rawPerms.filter(p => validPermissions.includes(p));
+        req.body.permissions = clean.length > 0 ? clean : ['resident'];
       }
     }
   }
