@@ -1067,6 +1067,9 @@ async function submitReplyComment(announcementId, rootCommentId) {
     announcementCommentsCache[announcementId].push(created);
     renderCommentsIntoContainer(announcementId);
     showToast('success', 'Reply Posted', 'Your reply has been added.');
+    if (typeof refreshNotifications === 'function') {
+      refreshNotifications();
+    }
   } catch (err) {
     showToast('error', 'Failed', err.message || 'Could not post reply.');
     input.disabled = false;
@@ -1090,6 +1093,9 @@ async function submitNewComment(announcementId) {
     announcementCommentsCache[announcementId].push(created);
     renderCommentsIntoContainer(announcementId);
     showToast('success', 'Comment Posted', 'Your comment has been saved.');
+    if (typeof refreshNotifications === 'function') {
+      refreshNotifications();
+    }
   } catch (err) {
     showToast('error', 'Failed', err.message || 'Could not post comment.');
   } finally {

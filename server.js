@@ -424,6 +424,10 @@ async function saveRecord(table, item) {
 }
 
 async function getTableData(table) {
+  if (table === 'notifications') {
+    const rows = await all('SELECT * FROM notifications ORDER BY id DESC');
+    return rows.map((row) => deserializeRow(table, row));
+  }
   const rows = await all(`SELECT * FROM ${tableName(table)}`);
   return rows.map((row) => deserializeRow(table, row));
 }
@@ -1611,7 +1615,7 @@ app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
       for (const u of allUsers) {
         const uNameLower = (u.name || '').trim().toLowerCase();
         const uUsernameLower = (u.username || '').trim().toLowerCase();
-        if ((mentionedNames.has(uNameLower) || mentionedNames.has(uUsernameLower)) && u.id !== user.id) {
+        if (mentionedNames.has(uNameLower) || mentionedNames.has(uUsernameLower)) {
           notificationsToSend.set(u.id, {
             title: 'Mentioned in Announcement Comment',
             message: `${commenterName} mentioned you in a comment on "${annTitle}": "${previewText}"`,
@@ -1623,7 +1627,7 @@ app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
     // 2. Comment Reply Notification
     if (parentId) {
       const targetRepliedUserId = replyToUserId;
-      if (targetRepliedUserId && targetRepliedUserId !== user.id) {
+      if (targetRepliedUserId) {
         if (!notificationsToSend.has(targetRepliedUserId)) {
           notificationsToSend.set(targetRepliedUserId, {
             title: 'New Reply to Your Comment',

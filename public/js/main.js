@@ -3060,7 +3060,15 @@ function showToast(type, title, message) {
 
 
 function normalizeNotificationList(value) {
-  return Array.isArray(value) ? value.filter(Boolean) : [];
+  if (Array.isArray(value)) return value.filter(Boolean);
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.filter(Boolean);
+    } catch {}
+    return value.split(',').map(s => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
+  }
+  return [];
 }
 
 function getNotificationSeenKey() {
@@ -3207,10 +3215,27 @@ function updateNotifBadge() {
   }
 }
 
+let knownNotifIds = null;
+
 async function refreshNotifications() {
   if (!currentUser) return;
   try {
-    dbCache.notifications = await api.request('/api/notifications');
+    const latestNotifs = await api.request('/api/notifications');
+    if (Array.isArray(latestNotifs)) {
+      dbCache.notifications = latestNotifs;
+    }
+
+    // Real-time toast alert for newly arrived notifications
+    const visible = getVisibleNotifications();
+    if (knownNotifIds !== null) {
+      for (const n of visible) {
+        if (!knownNotifIds.has(n.id)) {
+          showToast('info', n.title || 'Notification', n.message || '');
+        }
+      }
+    }
+    knownNotifIds = new Set(visible.map(n => n.id));
+
     const panel = document.getElementById('notifPanel');
     if (panel && !panel.classList.contains('hidden')) {
       renderNotificationList();
@@ -3224,7 +3249,8 @@ async function refreshNotifications() {
 
 function startNotificationRefresh() {
   if (notificationRefreshTimer) clearInterval(notificationRefreshTimer);
-  notificationRefreshTimer = setInterval(refreshNotifications, 10000);
+  refreshNotifications();
+  notificationRefreshTimer = setInterval(refreshNotifications, 5000);
 }
 
 function stopNotificationRefresh() {
