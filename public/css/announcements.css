@@ -132,8 +132,9 @@
   gap: 3px;
 }
 [data-theme="dark"] .badge-admin-official {
-  background: var(--teal-800);
-  color: var(--teal-300);
+  background: rgba(24, 134, 141, 0.16);
+  color: #5cced6;
+  border: 1px solid rgba(24, 134, 141, 0.28);
 }
 .community-post-meta {
   display: flex;
@@ -199,7 +200,7 @@
 /* Post Media/Image */
 .community-post-media {
   position: relative;
-  background: #091a1c;
+  background: #10141d;
   width: 100%;
   max-height: 480px;
   overflow: hidden;
@@ -371,8 +372,9 @@
   text-transform: uppercase;
 }
 [data-theme="dark"] .comment-role-badge {
-  background: var(--teal-800);
-  color: var(--teal-300);
+  background: rgba(24, 134, 141, 0.16);
+  color: #5cced6;
+  border: 1px solid rgba(24, 134, 141, 0.28);
 }
 .comment-text {
   font-size: 0.88rem;
@@ -394,11 +396,11 @@
   text-decoration: underline;
 }
 [data-theme="dark"] .comment-mention {
-  color: var(--teal-300);
-  background: rgba(45, 212, 191, 0.12);
+  color: #5cced6;
+  background: rgba(24, 134, 141, 0.14);
 }
 [data-theme="dark"] .comment-mention:hover {
-  background: rgba(45, 212, 191, 0.22);
+  background: rgba(24, 134, 141, 0.24);
 }
 
 .comment-meta-row {
@@ -425,7 +427,7 @@
   color: var(--teal-600);
 }
 [data-theme="dark"] .comment-action-link.reply-link {
-  color: var(--teal-300);
+  color: var(--teal-400);
 }
 .comment-action-link:hover {
   color: var(--teal-600);
@@ -669,7 +671,7 @@
   gap: 3px;
   width: 100%;
   overflow: hidden;
-  background: #091a1c;
+  background: #10141d;
   cursor: pointer;
   position: relative;
   user-select: none;
@@ -678,7 +680,7 @@
 .community-photo-grid .photo-item {
   position: relative;
   overflow: hidden;
-  background: #0d2224;
+  background: #161b24;
 }
 
 .community-photo-grid .photo-item img {
@@ -826,9 +828,9 @@
   margin-top: 8px;
 }
 [data-theme="dark"] .photo-count-badge {
-  background: var(--teal-800);
-  color: var(--teal-300);
-  border-color: var(--teal-700);
+  background: rgba(24, 134, 141, 0.16);
+  color: #5cced6;
+  border-color: rgba(24, 134, 141, 0.28);
 }
 
 /* Lightbox Gallery Styles */

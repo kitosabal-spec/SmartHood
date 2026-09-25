@@ -80,3 +80,29 @@
   font-size: 0.86rem;
   font-weight: 700;
 }
+
+/* ── VEHICLES DARK MODE ── */
+[data-theme="dark"] .vehicle-fee-panel {
+  background: rgba(24, 134, 141, 0.08);
+  border-color: rgba(24, 134, 141, 0.22);
+  border-left: 3px solid var(--teal-500);
+}
+
+[data-theme="dark"] .vehicle-fee-panel strong {
+  color: #5cced6;
+}
+
+[data-theme="dark"] .vehicle-fee-panel span {
+  color: var(--text-3);
+}
+
+[data-theme="dark"] .vehicle-detail-grid > div {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .vehicle-release-check {
+  background: var(--surface);
+  border-color: var(--border);
+}
+

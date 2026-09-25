@@ -59,3 +59,15 @@
   background: var(--teal-100);
   border-color: var(--teal-400);
 }
+
+/* ── RESIDENTS DARK MODE ── */
+[data-theme="dark"] .ho-info-btn {
+  background: rgba(24, 134, 141, 0.14);
+  border-color: rgba(24, 134, 141, 0.28);
+  color: #5cced6;
+}
+
+[data-theme="dark"] .ho-info-btn:hover {
+  background: rgba(24, 134, 141, 0.24);
+  border-color: var(--teal-400);
+}

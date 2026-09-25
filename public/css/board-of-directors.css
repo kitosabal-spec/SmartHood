@@ -41,8 +41,8 @@
 }
 
 [data-theme="dark"] .pub-board-card:hover {
-  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.4);
-  border-color: var(--teal-500);
+  box-shadow: var(--shadow);
+  border-color: rgba(24, 134, 141, 0.4);
 }
 
 .pub-board-card-pres {
@@ -117,8 +117,9 @@
 [data-theme="dark"] .pub-board-pos-treas,
 [data-theme="dark"] .pub-board-pos-aud,
 [data-theme="dark"] .pub-board-pos-default {
-  background: rgba(45, 212, 191, 0.15);
-  color: var(--teal-300);
+  background: rgba(24, 134, 141, 0.16);
+  color: #5cced6;
+  border: 1px solid rgba(24, 134, 141, 0.28);
   box-shadow: none;
 }
 
@@ -146,8 +147,9 @@
 }
 
 [data-theme="dark"] .pub-board-contact:hover {
-  background: var(--teal-900);
-  color: var(--teal-300);
+  background: rgba(24, 134, 141, 0.16);
+  color: #5cced6;
+  border-color: rgba(24, 134, 141, 0.3);
 }
 
 .pub-board-contact svg {

@@ -252,7 +252,7 @@
 
 [data-theme="dark"] .gcash-info-card {
   background: var(--surface);
-  border-color: #1e3a8a;
+  border-color: var(--border);
 }
 
 .gcash-brand-header {

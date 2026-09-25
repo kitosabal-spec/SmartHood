@@ -212,3 +212,45 @@
   .profile-card { flex-direction: column; text-align: center; }
   .profile-avatar-wrapper { margin: 0 auto 8px auto; }
 }
+
+/* ── PROFILE DARK MODE ── */
+[data-theme="dark"] .profile-avatar-wrapper .profile-avatar-big {
+  border-color: var(--surface);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+[data-theme="dark"] .profile-avatar-edit-btn {
+  border-color: var(--surface);
+  background: var(--teal-600);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .profile-avatar-edit-btn:hover {
+  background: var(--teal-500);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.5);
+}
+
+[data-theme="dark"] .profile-avatar-menu {
+  background: var(--surface);
+  border-color: var(--border);
+  box-shadow: var(--shadow-lg);
+}
+
+[data-theme="dark"] .profile-avatar-menu-item {
+  color: var(--text);
+}
+
+[data-theme="dark"] .profile-avatar-menu-item:hover {
+  background: var(--surface-2);
+  color: var(--teal-400);
+}
+
+[data-theme="dark"] .profile-avatar-menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #f87171;
+}
+
+[data-theme="dark"] .crop-viewport {
+  background: #10141d;
+}
+

@@ -262,3 +262,51 @@
   background: var(--teal-100);
   border-color: var(--teal-600);
 }
+
+/* ── COMPLAINTS DARK MODE ── */
+[data-theme="dark"] .complaint-status-step.active::before {
+  box-shadow: 0 0 0 3px rgba(24, 134, 141, 0.25);
+}
+
+[data-theme="dark"] .complaint-media-preview-box,
+[data-theme="dark"] .complaint-media-thumb-wrapper {
+  background: #10141d;
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .complaint-evidence-header {
+  color: var(--teal-400);
+}
+
+[data-theme="dark"] .complaint-evidence-caption {
+  background: var(--surface-2);
+  border-color: var(--border);
+  color: var(--text-3);
+}
+
+[data-theme="dark"] .complaint-media-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .complaint-media-card-info {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .complaint-media-dropzone:hover {
+  background: rgba(24, 134, 141, 0.08);
+  border-color: var(--teal-500);
+}
+
+[data-theme="dark"] .complaint-media-add-more-btn {
+  background: rgba(24, 134, 141, 0.1);
+  border-color: rgba(24, 134, 141, 0.3);
+  color: #5cced6;
+}
+
+[data-theme="dark"] .complaint-media-add-more-btn:hover {
+  background: rgba(24, 134, 141, 0.18);
+  border-color: var(--teal-500);
+}
+

@@ -152,3 +152,42 @@
   display: block;
   background: #000;
 }
+
+/* ── LOST & FOUND DARK MODE ── */
+[data-theme="dark"] .lostfound-form-note {
+  background: rgba(245, 158, 11, 0.08);
+  border-color: rgba(245, 158, 11, 0.25);
+  border-left: 3px solid var(--gold-400);
+  color: var(--text-2);
+}
+
+[data-theme="dark"] .lostfound-media-thumb-wrapper {
+  background: #10141d;
+}
+
+[data-theme="dark"] .lostfound-media-card {
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .lostfound-media-card-info {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+
+[data-theme="dark"] .lostfound-media-dropzone:hover {
+  background: rgba(24, 134, 141, 0.08);
+  border-color: var(--teal-500);
+}
+
+[data-theme="dark"] .lostfound-media-add-more-btn {
+  background: rgba(24, 134, 141, 0.1);
+  border-color: rgba(24, 134, 141, 0.3);
+  color: #5cced6;
+}
+
+[data-theme="dark"] .lostfound-media-add-more-btn:hover {
+  background: rgba(24, 134, 141, 0.18);
+  border-color: var(--teal-500);
+}
+
