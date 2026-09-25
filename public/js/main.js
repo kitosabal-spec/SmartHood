@@ -147,9 +147,9 @@ async function seedData() {
     ];
 
     const complaints = [
-      { id: 'c001', homeownerId: 'u002', category: 'Noise', description: 'Neighbor at Block 3, Lot 8 plays loud music past midnight every weekend. This has been going on for two weeks and is disturbing the whole street.', status: 'In Progress', adminResponse: 'We have reached out to the resident in question and issued a formal reminder. Please inform us if the issue continues.', dateFiled: '2025-04-10', updatedAt: '2025-04-12', resolvedAt: null },
-      { id: 'c002', homeownerId: 'u003', category: 'Maintenance', description: 'The street light in front of Block 1, Lot 2–4 has been out for over a week. The area is very dark at night and feels unsafe for walking.', status: 'Reviewed', adminResponse: '', dateFiled: '2025-04-18', updatedAt: null, resolvedAt: null },
-      { id: 'c003', homeownerId: 'u005', category: 'Security', description: 'I noticed an unfamiliar vehicle parked near the back gate for three consecutive nights. The guard on duty did not seem to take action.', status: 'Resolved', adminResponse: 'Security personnel investigated the matter. The vehicle belonged to a guest of a resident. The guard has been reminded to log all overnight visitors properly.', dateFiled: '2025-04-05', updatedAt: '2025-04-07', resolvedAt: '2025-04-07' },
+      { id: 'c001', homeownerId: 'u002', category: 'Noise', dateOfOccurrence: '2025-04-09', description: 'Neighbor at Block 3, Lot 8 plays loud music past midnight every weekend. This has been going on for two weeks and is disturbing the whole street.', status: 'In Progress', adminResponse: 'We have reached out to the resident in question and issued a formal reminder. Please inform us if the issue continues.', dateFiled: '2025-04-10', updatedAt: '2025-04-12', resolvedAt: null },
+      { id: 'c002', homeownerId: 'u003', category: 'Maintenance', dateOfOccurrence: '2025-04-17', description: 'The street light in front of Block 1, Lot 2–4 has been out for over a week. The area is very dark at night and feels unsafe for walking.', status: 'Reviewed', adminResponse: '', dateFiled: '2025-04-18', updatedAt: null, resolvedAt: null },
+      { id: 'c003', homeownerId: 'u005', category: 'Security', dateOfOccurrence: '2025-04-04', description: 'I noticed an unfamiliar vehicle parked near the back gate for three consecutive nights. The guard on duty did not seem to take action.', status: 'Resolved', adminResponse: 'Security personnel investigated the matter. The vehicle belonged to a guest of a resident. The guard has been reminded to log all overnight visitors properly.', dateFiled: '2025-04-05', updatedAt: '2025-04-07', resolvedAt: '2025-04-07' },
     ];
 
     const auditLog = [
@@ -1324,17 +1324,18 @@ function renderReports() {
     </div>
     <div class="section-card-body no-pad">
       <table class="data-table">
-        <thead><tr><th>Homeowner</th><th>Category</th><th>Date Filed</th><th>Status</th></tr></thead>
+        <thead><tr><th>Homeowner</th><th>Category</th><th>Date of Occurrence</th><th>Date Filed</th><th>Status</th></tr></thead>
         <tbody>
           ${complaints.map(c => {
             const ho = db.getOne('users', c.homeownerId);
             return `<tr>
               <td>${ho ? ho.name : 'Unknown'}</td>
               <td>${complaintCategoryBadge(c.category)}</td>
-              <td>${c.dateFiled}</td>
+              <td>${typeof formatComplaintDate === 'function' ? formatComplaintDate(c.dateOfOccurrence || c.dateFiled) : (c.dateOfOccurrence || c.dateFiled)}</td>
+              <td>${typeof formatComplaintDate === 'function' ? formatComplaintDate(c.dateFiled) : c.dateFiled}</td>
               <td>${complaintStatusBadge(c.status)}</td>
             </tr>`;
-          }).join('') || '<tr><td colspan="4"><div class="no-results">No complaints on record.</div></td></tr>'}
+          }).join('') || '<tr><td colspan="5"><div class="no-results">No complaints on record.</div></td></tr>'}
         </tbody>
       </table>
     </div>

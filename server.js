@@ -74,7 +74,7 @@ const tableConfig = {
     booleanColumns: [],
   },
   complaints: {
-    columns: ['id', 'homeownerId', 'category', 'description', 'status', 'adminResponse', 'dateFiled', 'updatedAt', 'resolvedAt', 'otherCategory', 'attachment', 'media_url', 'media_type', 'attachments'],
+    columns: ['id', 'homeownerId', 'category', 'description', 'status', 'adminResponse', 'dateFiled', 'updatedAt', 'resolvedAt', 'otherCategory', 'attachment', 'media_url', 'media_type', 'attachments', 'dateOfOccurrence'],
     jsonColumns: ['attachments'],
     booleanColumns: [],
   },
@@ -588,13 +588,15 @@ async function createTables() {
     adminResponse LONGTEXT,
     dateFiled TEXT,
     updatedAt TEXT,
-    resolvedAt TEXT
+    resolvedAt TEXT,
+    dateOfOccurrence TEXT
   )`);
   await run('ALTER TABLE complaints ADD COLUMN otherCategory TEXT').catch(() => {});
   await run('ALTER TABLE complaints ADD COLUMN attachment TEXT').catch(() => {});
   await run('ALTER TABLE complaints ADD COLUMN media_url TEXT').catch(() => {});
   await run('ALTER TABLE complaints ADD COLUMN media_type TEXT').catch(() => {});
   await run('ALTER TABLE complaints ADD COLUMN attachments TEXT').catch(() => {});
+  await run('ALTER TABLE complaints ADD COLUMN dateOfOccurrence TEXT').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS amenityBookings (
     id VARCHAR(64) PRIMARY KEY,
@@ -2728,6 +2730,9 @@ app.post('/api/complaints', (req, res, next) => {
         }
         if (!body.id) {
           body.id = 'c' + Date.now().toString(36).toUpperCase();
+        }
+        if (!body.dateOfOccurrence && body.dateFiled) {
+          body.dateOfOccurrence = body.dateFiled;
         }
         await saveRecord('complaints', body);
         res.status(201).json(sanitizeRecord('complaints', body));

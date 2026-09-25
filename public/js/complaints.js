@@ -78,6 +78,7 @@ function renderAdminComplaints() {
               <th>Homeowner</th>
               <th>Category</th>
               <th>Description</th>
+              <th>Date of Occurrence</th>
               <th>Date Filed</th>
               <th>Status</th>
               <th>Actions</th>
@@ -99,7 +100,7 @@ function renderAdminComplaintTable(filtered = null) {
   if (!tbody) return;
 
   if (!complaints.length) {
-    tbody.innerHTML = `<tr><td colspan="7"><div class="no-results">
+    tbody.innerHTML = `<tr><td colspan="8"><div class="no-results">
       <svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-flag"/></svg>
       No complaints found.
     </div></td></tr>`;
@@ -121,7 +122,8 @@ function renderAdminComplaintTable(filtered = null) {
       <td><div class="cell-user">${avatarHTML(ho, 'avatar-sm')}<div><strong>${ho ? ho.name : 'Unknown'}</strong><br><span style="font-size:0.75rem;color:var(--text-3)">${ho ? (ho.block || '') + ' ' + (ho.lot || '') : ''}</span></div></div></td>
       <td>${complaintCategoryBadge(c.category, c.otherCategory)}</td>
       <td style="max-width:200px;font-size:0.85rem;color:var(--text-2)">${shortDesc}${mediaBadge}</td>
-      <td>${c.dateFiled}</td>
+      <td style="white-space:nowrap">${formatComplaintDate(c.dateOfOccurrence || c.dateFiled)}</td>
+      <td style="white-space:nowrap">${formatComplaintDate(c.dateFiled)}</td>
       <td>${complaintStatusBadge(c.status)}</td>
       <td><div class="td-actions">
         <button class="btn ${canManageComplaints() ? 'btn-primary' : 'btn-secondary'} btn-sm" onclick="openManageComplaint('${c.id}')">${canManageComplaints() ? 'Manage' : 'View'}</button>
@@ -162,9 +164,19 @@ function openManageComplaint(id) {
   if (!canManageComplaints()) {
     openModal(`Complaint - ${ho ? ho.name : 'Unknown'}`, `
       <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:18px">
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;flex-wrap:wrap">
           <div>${complaintCategoryBadge(c.category, c.otherCategory)}</div>
           <div>${complaintStatusBadge(c.status)}</div>
+        </div>
+        <div style="display:flex;gap:24px;margin-bottom:12px;flex-wrap:wrap">
+          <div>
+            <span style="font-size:0.75rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em">Date of Occurrence</span><br>
+            <span style="font-size:0.88rem;color:var(--text-2);font-weight:600">${formatComplaintDate(c.dateOfOccurrence || c.dateFiled)}</span>
+          </div>
+          <div>
+            <span style="font-size:0.75rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em">Date Filed</span><br>
+            <span style="font-size:0.88rem;color:var(--text-2)">${formatComplaintDate(c.dateFiled)}</span>
+          </div>
         </div>
         <p style="font-size:0.9rem;color:var(--text-2);line-height:1.6">${c.description}</p>
         ${renderComplaintMediaPreview(c.attachment || c.media_url, c.media_type, c.attachments)}
@@ -181,14 +193,18 @@ function openManageComplaint(id) {
 
   openModal(`Manage Complaint — ${ho ? ho.name : 'Unknown'}`, `
     <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:18px">
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:12px;flex-wrap:wrap">
         <div>
           <span style="font-size:0.75rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em">Category</span><br>
           ${complaintCategoryBadge(c.category, c.otherCategory)}
         </div>
+        <div>
+          <span style="font-size:0.75rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em">Date of Occurrence</span><br>
+          <span style="font-size:0.88rem;color:var(--text-2);font-weight:600">${formatComplaintDate(c.dateOfOccurrence || c.dateFiled)}</span>
+        </div>
         <div style="text-align:right">
           <span style="font-size:0.75rem;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.08em">Date Filed</span><br>
-          <span style="font-size:0.88rem;color:var(--text-2)">${c.dateFiled}</span>
+          <span style="font-size:0.88rem;color:var(--text-2)">${formatComplaintDate(c.dateFiled)}</span>
         </div>
       </div>
       <div>
@@ -324,8 +340,9 @@ function renderHOComplaintCards(complaints) {
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px">
             ${complaintCategoryBadge(c.category, c.otherCategory)}
             ${complaintStatusBadge(c.status)}
-            <span style="font-size:0.78rem;color:var(--text-3)">Filed: ${c.dateFiled}</span>
-            ${c.updatedAt ? `<span style="font-size:0.78rem;color:var(--text-3)">· Updated: ${c.updatedAt}</span>` : ''}
+            <span style="font-size:0.78rem;color:var(--text-3)">Occurred: <strong>${formatComplaintDate(c.dateOfOccurrence || c.dateFiled)}</strong></span>
+            <span style="font-size:0.78rem;color:var(--text-3)">· Filed: ${formatComplaintDate(c.dateFiled)}</span>
+            ${c.updatedAt ? `<span style="font-size:0.78rem;color:var(--text-3)">· Updated: ${formatComplaintDate(c.updatedAt)}</span>` : ''}
           </div>
           <div style="font-size:0.9rem;color:var(--text-2);line-height:1.6">${c.description}</div>
           ${renderComplaintMediaPreview(c.attachment || c.media_url, c.media_type, c.attachments)}
@@ -597,20 +614,27 @@ function clearSelectedComplaintMedia(keepError = false) {
 function openFileComplaintForm() {
   pendingComplaintMediaFiles = [];
   pendingComplaintMediaFile = null;
+  const today = getLocalDateValue();
 
   openModal('File a Complaint', `
     <div style="background:var(--gold-50);border:1px solid var(--gold-100);border-left:3px solid var(--gold-400);border-radius:var(--radius-sm);padding:10px 14px;margin-bottom:18px;font-size:0.84rem;color:var(--text-2);line-height:1.6">
       Please provide complete and accurate information. Your complaint will be reviewed by the HOA administration.
     </div>
-    <div class="form-group">
-      <label>Category *</label>
-      <select id="hc_category" onchange="handleComplaintCategoryChange(this)">
-        <option value="">-- Select a category --</option>
-        <option value="Maintenance">Maintenance</option>
-        <option value="Noise">Noise</option>
-        <option value="Security">Security</option>
-        <option value="Others">Others</option>
-      </select>
+    <div class="grid-2">
+      <div class="form-group">
+        <label>Category *</label>
+        <select id="hc_category" onchange="handleComplaintCategoryChange(this)">
+          <option value="">-- Select a category --</option>
+          <option value="Maintenance">Maintenance</option>
+          <option value="Noise">Noise</option>
+          <option value="Security">Security</option>
+          <option value="Others">Others</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Date of Occurrence *</label>
+        <input type="date" id="hc_dateOfOccurrence" max="${today}" value="${today}" required />
+      </div>
     </div>
     <div class="form-group hidden" id="hc_other_group" style="display:none">
       <label>Specify Complaint *</label>
@@ -652,7 +676,7 @@ function openFileComplaintForm() {
     </div>
     <div class="form-group">
       <label>Date Filed</label>
-      <input type="text" value="${getLocalDateValue()}" disabled style="background:var(--surface-2);color:var(--text-3);cursor:not-allowed"/>
+      <input type="text" value="${today}" disabled style="background:var(--surface-2);color:var(--text-3);cursor:not-allowed"/>
     </div>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
@@ -663,6 +687,16 @@ function openFileComplaintForm() {
     const catSelect = document.getElementById('hc_category');
     if (catSelect) {
       catSelect.addEventListener('change', () => handleComplaintCategoryChange(catSelect));
+    }
+    const occInput = document.getElementById('hc_dateOfOccurrence');
+    if (occInput) {
+      occInput.addEventListener('change', () => {
+        const currentToday = getLocalDateValue();
+        if (occInput.value && occInput.value > currentToday) {
+          showToast('error', 'Invalid Date', 'Date of Occurrence cannot be in the future.');
+          occInput.value = currentToday;
+        }
+      });
     }
     const ta = document.getElementById('hc_description');
     const counter = document.getElementById('hc_charCount');
@@ -683,6 +717,8 @@ function confirmSubmitComplaint() {
   const otherInput     = document.getElementById('hc_other_category');
   const otherText      = (otherInput?.value || '').trim();
   const description    = (document.getElementById('hc_description')?.value || '').trim();
+  const dateOfOccurrence = (document.getElementById('hc_dateOfOccurrence')?.value || '').trim();
+  const today          = getLocalDateValue();
 
   if (!category) {
     showToast('error', 'Category Required', 'Please select a complaint category.');
@@ -691,6 +727,21 @@ function confirmSubmitComplaint() {
   if (category === 'Others' && !otherText) {
     showToast('error', 'Specification Required', 'Please specify your complaint.');
     if (otherInput) otherInput.focus();
+    return;
+  }
+  if (!dateOfOccurrence) {
+    showToast('error', 'Date of Occurrence Required', 'Please select the date when the incident occurred.');
+    const occInput = document.getElementById('hc_dateOfOccurrence');
+    if (occInput) occInput.focus();
+    return;
+  }
+  if (dateOfOccurrence > today) {
+    showToast('error', 'Invalid Date', 'Date of Occurrence cannot be in the future.');
+    const occInput = document.getElementById('hc_dateOfOccurrence');
+    if (occInput) {
+      occInput.value = today;
+      occInput.focus();
+    }
     return;
   }
   if (!description) {
@@ -704,18 +755,19 @@ function confirmSubmitComplaint() {
 
   const finalCategory = (category === 'Others' && otherText) ? `Others: ${otherText}` : category;
   const safeFinalCategory = typeof escapeHtml === 'function' ? escapeHtml(finalCategory) : finalCategory;
+  const formattedOccDate = formatComplaintDate(dateOfOccurrence);
   const mediaFilesToUpload = [...pendingComplaintMediaFiles];
   const fileCount = mediaFilesToUpload.length;
   const mediaNote = fileCount > 0 ? `<br><span style="font-size:0.82rem;color:var(--teal-700)">(${fileCount} evidence file${fileCount > 1 ? 's' : ''} attached)</span>` : '';
 
   openConfirm(
     'Submit Complaint',
-    `Are you sure you want to submit this <strong>${safeFinalCategory}</strong> complaint? It will be sent to the HOA administration for review.${mediaNote}`,
-    () => submitHOComplaint(finalCategory, description, otherText, mediaFilesToUpload)
+    `Are you sure you want to submit this <strong>${safeFinalCategory}</strong> complaint (occurred on <strong>${formattedOccDate}</strong>)? It will be sent to the HOA administration for review.${mediaNote}`,
+    () => submitHOComplaint(finalCategory, description, otherText, mediaFilesToUpload, dateOfOccurrence)
   );
 }
 
-async function submitHOComplaint(category, description, otherText = '', mediaFiles = []) {
+async function submitHOComplaint(category, description, otherText = '', mediaFiles = [], dateOfOccurrence = '') {
   showLoading();
   let mediaUrl = null;
   let mediaType = null;
@@ -754,10 +806,12 @@ async function submitHOComplaint(category, description, otherText = '', mediaFil
     }
 
     const derivedOther = otherText || (category && category.startsWith('Others: ') ? category.substring(8).trim() : (category === 'Others' ? '' : null));
+    const occDate = dateOfOccurrence || getLocalDateValue();
     const complaint = {
       id:            db.newId('c'),
       homeownerId:   currentUser.id,
       category,
+      dateOfOccurrence: occDate,
       otherCategory: derivedOther || null,
       attachment:    mediaUrl || null,
       media_url:     mediaUrl || null,
@@ -790,6 +844,30 @@ async function submitHOComplaint(category, description, otherText = '', mediaFil
 
 
 // SECTION 17: COMPLAINT HELPERS
+
+function formatComplaintDate(dateStr) {
+  if (!dateStr) return 'N/A';
+  try {
+    const str = String(dateStr).trim();
+    const m = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      const year = parseInt(m[1], 10);
+      const month = parseInt(m[2], 10) - 1;
+      const day = parseInt(m[3], 10);
+      const d = new Date(year, month, day);
+      if (!isNaN(d.getTime())) {
+        return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+      }
+    }
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+    }
+    return str;
+  } catch {
+    return String(dateStr);
+  }
+}
 
 
 function complaintStatusBadge(status) {

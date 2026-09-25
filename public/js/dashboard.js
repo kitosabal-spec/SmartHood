@@ -154,7 +154,7 @@ function renderAdminDashboard() {
         <div style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px">
           <div>
             <div style="font-weight:600;font-size:0.85rem;color:var(--text)">${ho ? ho.name : 'Unknown'} — ${c.category}</div>
-            <div style="font-size:0.78rem;color:var(--text-3);margin-top:2px">${c.dateFiled}</div>
+            <div style="font-size:0.78rem;color:var(--text-3);margin-top:2px">${c.dateOfOccurrence ? `Occurred: ${typeof formatComplaintDate === 'function' ? formatComplaintDate(c.dateOfOccurrence) : c.dateOfOccurrence} · ` : ''}Filed: ${typeof formatComplaintDate === 'function' ? formatComplaintDate(c.dateFiled) : c.dateFiled}</div>
           </div>
           ${complaintStatusBadge(c.status)}
         </div>`;
