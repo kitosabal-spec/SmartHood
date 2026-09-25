@@ -95,7 +95,6 @@ const ADMIN_NAV = [
 const HOMEOWNER_NAV = [
   { id: 'ho-dashboard',     icon: 'ico-dashboard',  label: 'Dashboard',       section: 'MAIN' },
   { id: 'ho-billing',       icon: 'ico-file',       label: 'My Bills',        section: 'ACCOUNT' },
-  { id: 'ho-payments',      icon: 'ico-upload',     label: 'Submit Payment',  section: 'ACCOUNT' },
   { id: 'ho-history',       icon: 'ico-history',    label: 'Payment History', section: 'ACCOUNT' },
   { id: 'ho-amenities',     icon: 'ico-building',   label: 'Book Amenities',  section: 'ACCOUNT' },
   { id: 'ho-vehicles',      icon: 'ico-parking',    label: 'My Vehicles',     section: 'ACCOUNT' },
@@ -304,10 +303,10 @@ const api = {
     return this.request(`/api/announcements/${announcementId}/comments`);
   },
 
-  async addComment(announcementId, comment) {
+  async addComment(announcementId, comment, parentId = null, replyToUserId = null) {
     return this.request(`/api/announcements/${announcementId}/comments`, {
       method: 'POST',
-      body: JSON.stringify({ comment }),
+      body: JSON.stringify({ comment, parent_id: parentId, reply_to_user_id: replyToUserId }),
     });
   },
 
@@ -686,7 +685,6 @@ function getSidebarBadgeItems(viewId) {
     announcements: () => db.get('announcements'),
     auditlog: () => db.get('auditLog'),
     'ho-billing': () => unpaidHomeownerBillings(),
-    'ho-payments': () => unpaidHomeownerBillings(),
     'ho-history': () => homeownerPayments().filter(payment => payment.status === 'pending'),
     'ho-amenities': () => amenityBookings.filter(booking => booking.homeownerId === currentUser.id && booking.status === 'Pending'),
     'ho-vehicles': () => vehicles.filter(vehicle =>
@@ -3145,13 +3143,28 @@ function getAllVisibleNotifications() {
   return db.get('notifications').filter(canSeeNotification);
 }
 
+function handleNotificationClick(notifId) {
+  const notifs = db.get('notifications') || [];
+  const n = notifs.find(x => x.id === notifId);
+  const panel = document.getElementById('notifPanel');
+  if (panel) panel.classList.add('hidden');
+  if (!n) return;
+
+  const t = (n.title || '').toLowerCase();
+  const m = (n.message || '').toLowerCase();
+  if (t.includes('announcement') || t.includes('comment') || t.includes('reply') || t.includes('mention') || m.includes('announcement')) {
+    const targetView = (currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin')) ? 'announcements' : 'ho-announcements';
+    navigate(targetView);
+  }
+}
+
 function renderNotificationList() {
   const list = document.getElementById('notifList');
   if (!list) return;
   const notifs = getVisibleNotifications();
   list.innerHTML = notifs.length ? notifs.map(n => `
     <div class="notif-item">
-      <div class="notif-item-content">
+      <div class="notif-item-content" onclick="handleNotificationClick('${n.id}')" title="Click to view">
         <strong>${escapeHtml(n.title || '')}</strong>
         ${escapeHtml(n.message || '')}
         <div class="notif-time">${escapeHtml(n.time || '')}</div>

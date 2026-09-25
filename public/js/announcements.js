@@ -858,6 +858,17 @@ async function loadAndRenderComments(announcementId) {
   }
 }
 
+function formatCommentTextWithMentions(text) {
+  if (!text) return '';
+  const escaped = escapeHtml(text);
+  return escaped.replace(/@([A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+){0,2})/g, (match) => {
+    return `<span class="comment-mention">${match}</span>`;
+  });
+}
+
+// Active reply targets map: rootCommentId -> { replyToUserId, replyToUserName }
+const activeReplyTargets = {};
+
 function renderCommentsIntoContainer(announcementId) {
   const container = document.getElementById(`comments-list-${announcementId}`);
   const countEl = document.getElementById(`comm-count-${announcementId}`);
@@ -876,10 +887,38 @@ function renderCommentsIntoContainer(announcementId) {
     return;
   }
 
-  container.innerHTML = comments.map(c => renderSingleCommentHTML(announcementId, c)).join('');
+  const rootComments = [];
+  const repliesByParentId = {};
+
+  comments.forEach(c => {
+    if (c.parent_id) {
+      if (!repliesByParentId[c.parent_id]) {
+        repliesByParentId[c.parent_id] = [];
+      }
+      repliesByParentId[c.parent_id].push(c);
+    } else {
+      rootComments.push(c);
+    }
+  });
+
+  // Handle any orphaned replies whose parent was removed/not found
+  const rootIds = new Set(rootComments.map(c => c.id));
+  Object.keys(repliesByParentId).forEach(parentId => {
+    if (!rootIds.has(parentId)) {
+      repliesByParentId[parentId].forEach(orphan => {
+        rootComments.push(orphan);
+      });
+      delete repliesByParentId[parentId];
+    }
+  });
+
+  container.innerHTML = rootComments.map(rc => {
+    const replies = repliesByParentId[rc.id] || [];
+    return renderRootCommentWithRepliesHTML(announcementId, rc, replies);
+  }).join('');
 }
 
-function renderSingleCommentHTML(announcementId, c) {
+function renderRootCommentWithRepliesHTML(announcementId, c, replies) {
   const authorObj = {
     name: c.author_name || 'Resident',
     role: c.author_role || 'homeowner',
@@ -889,25 +928,150 @@ function renderSingleCommentHTML(announcementId, c) {
   const isAuthor = currentUserId && (String(c.user_id) === String(currentUserId));
   const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
 
+  const repliesHTML = replies.map(r => renderSingleReplyHTML(announcementId, c.id, r)).join('');
+
   return `
-  <div class="comment-item" id="comment-item-${c.id}">
-    ${avatarHTML(authorObj, 'avatar-xs')}
-    <div class="comment-bubble-container">
-      <div class="comment-bubble" id="comment-bubble-${c.id}">
-        <div class="comment-author-row">
-          <span class="comment-author-name">${escapeHtml(authorObj.name)}</span>
-          ${c.author_role === 'admin' ? '<span class="comment-role-badge">Admin</span>' : ''}
+  <div class="comment-thread-block" id="comment-thread-${c.id}">
+    <div class="comment-item" id="comment-item-${c.id}">
+      ${avatarHTML(authorObj, 'avatar-xs')}
+      <div class="comment-bubble-container">
+        <div class="comment-bubble" id="comment-bubble-${c.id}">
+          <div class="comment-author-row">
+            <span class="comment-author-name">${escapeHtml(authorObj.name)}</span>
+            ${c.author_role === 'admin' ? '<span class="comment-role-badge">Admin</span>' : ''}
+          </div>
+          <div class="comment-text" id="comment-text-${c.id}">${formatCommentTextWithMentions(c.comment)}</div>
         </div>
-        <div class="comment-text" id="comment-text-${c.id}">${escapeHtml(c.comment)}</div>
+        <div class="comment-meta-row">
+          <span>${formatPostTime(c.created_at)}</span>
+          ${c.updated_at && c.updated_at !== c.created_at ? '<span style="font-size:0.7rem;color:var(--text-3);">(edited)</span>' : ''}
+          <button type="button" class="comment-action-link reply-link" onclick="openReplyComposer('${announcementId}', '${c.id}', '${escapeHtml(authorObj.name)}', '${c.user_id || ''}')">Reply</button>
+          ${isAuthor ? `<button type="button" class="comment-action-link" onclick="startEditComment('${announcementId}', '${c.id}')">Edit</button>` : ''}
+          ${(isAuthor || isAdmin) ? `<button type="button" class="comment-action-link danger" onclick="confirmDeleteComment('${announcementId}', '${c.id}')">Delete</button>` : ''}
+        </div>
       </div>
-      <div class="comment-meta-row">
-        <span>${formatPostTime(c.created_at)}</span>
-        ${c.updated_at && c.updated_at !== c.created_at ? '<span style="font-size:0.7rem;color:var(--text-3);">(edited)</span>' : ''}
-        ${isAuthor ? `<button type="button" class="comment-action-link" onclick="startEditComment('${announcementId}', '${c.id}')">Edit</button>` : ''}
-        ${(isAuthor || isAdmin) ? `<button type="button" class="comment-action-link danger" onclick="confirmDeleteComment('${announcementId}', '${c.id}')">Delete</button>` : ''}
+    </div>
+
+    <!-- Nested Replies Container -->
+    <div class="comment-replies-container ${replies.length > 0 ? 'has-replies' : ''}" id="comment-replies-${c.id}">
+      <div class="comment-replies-list" id="comment-replies-list-${c.id}">
+        ${repliesHTML}
+      </div>
+
+      <!-- Inline Reply Composer -->
+      <div class="comment-reply-composer-wrap" id="reply-composer-wrap-${c.id}" style="display: none;">
+        ${avatarHTML(currentUser, 'avatar-xs')}
+        <div class="comment-reply-composer-box">
+          <input type="text"
+                 id="reply-input-${c.id}"
+                 class="comment-reply-composer-input"
+                 placeholder="Reply as ${escapeHtml(currentUser ? currentUser.name : 'Resident')}..."
+                 onkeydown="handleReplyKeydown(event, '${announcementId}', '${c.id}')"
+          />
+          <button type="button" class="comment-reply-submit-btn" onclick="submitReplyComment('${announcementId}', '${c.id}')" title="Send Reply">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"></line>
+              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+            </svg>
+          </button>
+          <button type="button" class="comment-reply-cancel-btn" onclick="cancelReplyComposer('${c.id}')" title="Cancel">✕</button>
+        </div>
       </div>
     </div>
   </div>`;
+}
+
+function renderSingleReplyHTML(announcementId, rootCommentId, r) {
+  const authorObj = {
+    name: r.author_name || 'Resident',
+    role: r.author_role || 'homeowner',
+    profile_photo: r.author_photo || null,
+  };
+  const currentUserId = currentUser ? (currentUser.id || currentUser.user_id) : null;
+  const isAuthor = currentUserId && (String(r.user_id) === String(currentUserId));
+  const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
+
+  return `
+  <div class="comment-item comment-reply-item" id="comment-item-${r.id}">
+    ${avatarHTML(authorObj, 'avatar-xs')}
+    <div class="comment-bubble-container">
+      <div class="comment-bubble comment-reply-bubble" id="comment-bubble-${r.id}">
+        <div class="comment-author-row">
+          <span class="comment-author-name">${escapeHtml(authorObj.name)}</span>
+          ${r.author_role === 'admin' ? '<span class="comment-role-badge">Admin</span>' : ''}
+        </div>
+        <div class="comment-text" id="comment-text-${r.id}">${formatCommentTextWithMentions(r.comment)}</div>
+      </div>
+      <div class="comment-meta-row">
+        <span>${formatPostTime(r.created_at)}</span>
+        ${r.updated_at && r.updated_at !== r.created_at ? '<span style="font-size:0.7rem;color:var(--text-3);">(edited)</span>' : ''}
+        <button type="button" class="comment-action-link reply-link" onclick="openReplyComposer('${announcementId}', '${rootCommentId}', '${escapeHtml(authorObj.name)}', '${r.user_id || ''}')">Reply</button>
+        ${isAuthor ? `<button type="button" class="comment-action-link" onclick="startEditComment('${announcementId}', '${r.id}')">Edit</button>` : ''}
+        ${(isAuthor || isAdmin) ? `<button type="button" class="comment-action-link danger" onclick="confirmDeleteComment('${announcementId}', '${r.id}')">Delete</button>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
+function openReplyComposer(announcementId, rootCommentId, authorName, authorUserId) {
+  const composerWrap = document.getElementById(`reply-composer-wrap-${rootCommentId}`);
+  const input = document.getElementById(`reply-input-${rootCommentId}`);
+  if (!composerWrap || !input) return;
+
+  composerWrap.style.display = 'flex';
+  activeReplyTargets[rootCommentId] = {
+    replyToUserId: authorUserId || null,
+    replyToUserName: authorName || ''
+  };
+
+  const mentionPrefix = authorName ? `@${authorName} ` : '';
+  input.value = mentionPrefix;
+  input.focus();
+  input.setSelectionRange(input.value.length, input.value.length);
+  composerWrap.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function cancelReplyComposer(rootCommentId) {
+  const composerWrap = document.getElementById(`reply-composer-wrap-${rootCommentId}`);
+  const input = document.getElementById(`reply-input-${rootCommentId}`);
+  if (composerWrap) composerWrap.style.display = 'none';
+  if (input) input.value = '';
+  delete activeReplyTargets[rootCommentId];
+}
+
+function handleReplyKeydown(event, announcementId, rootCommentId) {
+  if (event.key === 'Enter' && !event.shiftKey) {
+    event.preventDefault();
+    submitReplyComment(announcementId, rootCommentId);
+  } else if (event.key === 'Escape') {
+    cancelReplyComposer(rootCommentId);
+  }
+}
+
+async function submitReplyComment(announcementId, rootCommentId) {
+  const input = document.getElementById(`reply-input-${rootCommentId}`);
+  if (!input) return;
+  const replyText = input.value.trim();
+  if (!replyText) return;
+
+  const target = activeReplyTargets[rootCommentId] || {};
+  input.disabled = true;
+
+  try {
+    const created = await api.addComment(announcementId, replyText, rootCommentId, target.replyToUserId);
+    input.value = '';
+    delete activeReplyTargets[rootCommentId];
+    if (!announcementCommentsCache[announcementId]) {
+      announcementCommentsCache[announcementId] = [];
+    }
+    announcementCommentsCache[announcementId].push(created);
+    renderCommentsIntoContainer(announcementId);
+    showToast('success', 'Reply Posted', 'Your reply has been added.');
+  } catch (err) {
+    showToast('error', 'Failed', err.message || 'Could not post reply.');
+    input.disabled = false;
+    input.focus();
+  }
 }
 
 async function submitNewComment(announcementId) {
@@ -998,7 +1162,7 @@ async function saveEditComment(announcementId, commentId) {
 function confirmDeleteComment(announcementId, commentId) {
   openModal('Delete Comment?', `
     <p style="color:var(--text-2);line-height:1.6">Are you sure you want to delete this comment?</p>
-    <p style="color:var(--text-3);font-size:0.82rem;margin-top:6px;">This action cannot be undone.</p>
+    <p style="color:var(--text-3);font-size:0.82rem;margin-top:6px;">Any replies to this comment will also be deleted. This action cannot be undone.</p>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
     {
@@ -1009,7 +1173,9 @@ function confirmDeleteComment(announcementId, commentId) {
         try {
           await api.deleteComment(announcementId, commentId);
           if (announcementCommentsCache[announcementId]) {
-            announcementCommentsCache[announcementId] = announcementCommentsCache[announcementId].filter(x => x.id !== commentId);
+            announcementCommentsCache[announcementId] = announcementCommentsCache[announcementId].filter(
+              x => x.id !== commentId && x.parent_id !== commentId
+            );
           }
           renderCommentsIntoContainer(announcementId);
           showToast('success', 'Comment Deleted', 'The comment has been removed.');

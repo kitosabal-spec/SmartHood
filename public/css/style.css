@@ -1665,6 +1665,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 600; line-height: 1.
 .notif-item-content {
   flex: 1;
   min-width: 0;
+  cursor: pointer;
 }
 .notif-item:last-child { border-bottom: none; }
 .notif-item:hover {

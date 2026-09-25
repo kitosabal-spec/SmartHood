@@ -69,7 +69,7 @@ const tableConfig = {
     booleanColumns: ['urgent'],
   },
   announcement_comments: {
-    columns: ['id', 'announcement_id', 'user_id', 'comment', 'created_at', 'updated_at'],
+    columns: ['id', 'announcement_id', 'user_id', 'parent_id', 'reply_to_user_id', 'comment', 'created_at', 'updated_at'],
     jsonColumns: [],
     booleanColumns: [],
   },
@@ -564,10 +564,14 @@ async function createTables() {
     id VARCHAR(64) PRIMARY KEY,
     announcement_id VARCHAR(64),
     user_id VARCHAR(64),
+    parent_id VARCHAR(64) DEFAULT NULL,
+    reply_to_user_id VARCHAR(64) DEFAULT NULL,
     comment LONGTEXT,
     created_at TEXT,
     updated_at TEXT
   )`);
+  await run('ALTER TABLE announcement_comments ADD COLUMN parent_id VARCHAR(64) DEFAULT NULL').catch(() => {});
+  await run('ALTER TABLE announcement_comments ADD COLUMN reply_to_user_id VARCHAR(64) DEFAULT NULL').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS complaints (
     id VARCHAR(64) PRIMARY KEY,
@@ -1514,9 +1518,12 @@ app.delete('/api/announcements/:id', asyncHandler(async (req, res) => {
 
 app.get('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
   const rows = await all(
-    `SELECT c.*, u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo
+    `SELECT c.*, 
+            u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo,
+            ru.name AS reply_to_name
      FROM announcement_comments c
      LEFT JOIN users u ON c.user_id = u.id
+     LEFT JOIN users ru ON c.reply_to_user_id = ru.id
      WHERE c.announcement_id = ?
      ORDER BY c.created_at ASC`,
     [req.params.id]
@@ -1528,7 +1535,7 @@ app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
 
-  const announcement = await get('SELECT id FROM announcements WHERE id = ?', [req.params.id]);
+  const announcement = await get('SELECT id, title, createdBy, user_id FROM announcements WHERE id = ?', [req.params.id]);
   if (!announcement) {
     return res.status(404).json({ error: 'Announcement not found.' });
   }
@@ -1541,22 +1548,116 @@ app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Comment is too long (max 3000 characters).' });
   }
 
+  let parentId = (req.body.parent_id || req.body.parentId || null);
+  let replyToUserId = (req.body.reply_to_user_id || req.body.replyToUserId || null);
+
+  if (parentId) {
+    const parentComment = await get(
+      'SELECT id, parent_id, user_id FROM announcement_comments WHERE id = ? AND announcement_id = ?',
+      [parentId, req.params.id]
+    );
+    if (!parentComment) {
+      return res.status(400).json({ error: 'Parent comment not found.' });
+    }
+    // Flattening (Facebook 1-level threading model):
+    // If the parent comment is itself a reply, attach to its root parent comment
+    if (parentComment.parent_id) {
+      parentId = parentComment.parent_id;
+    }
+    if (!replyToUserId && parentComment.user_id) {
+      replyToUserId = parentComment.user_id;
+    }
+  }
+
   const id = 'cm' + Date.now().toString(36) + crypto.randomBytes(4).toString('hex');
   const nowIso = new Date().toISOString();
 
   await run(
-    `INSERT INTO announcement_comments (id, announcement_id, user_id, comment, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-    [id, req.params.id, user.id, commentText, nowIso, nowIso]
+    `INSERT INTO announcement_comments (id, announcement_id, user_id, parent_id, reply_to_user_id, comment, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, req.params.id, user.id, parentId, replyToUserId, commentText, nowIso, nowIso]
   );
 
   const created = await get(
-    `SELECT c.*, u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo
+    `SELECT c.*, 
+            u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo,
+            ru.name AS reply_to_name
      FROM announcement_comments c
      LEFT JOIN users u ON c.user_id = u.id
+     LEFT JOIN users ru ON c.reply_to_user_id = ru.id
      WHERE c.id = ?`,
     [id]
   );
+
+  // Trigger notifications (Replies, Post Author & Mentions)
+  try {
+    const annTitle = announcement.title || 'Announcement';
+    const previewText = commentText.length > 80 ? (commentText.slice(0, 77) + '...') : commentText;
+    const commenterName = user.name || 'A resident';
+    const notificationsToSend = new Map(); // targetUserId -> { title, message }
+
+    // 1. Mentions Parsing: match @Name
+    const mentionRegex = /@([A-Za-z0-9_]+(?:\s+[A-Za-z0-9_]+){0,2})/g;
+    const mentionedNames = new Set();
+    let mMatch;
+    while ((mMatch = mentionRegex.exec(commentText)) !== null) {
+      if (mMatch[1]) {
+        mentionedNames.add(mMatch[1].trim().toLowerCase());
+      }
+    }
+
+    if (mentionedNames.size > 0) {
+      const allUsers = await all('SELECT id, name, username FROM users');
+      for (const u of allUsers) {
+        const uNameLower = (u.name || '').trim().toLowerCase();
+        const uUsernameLower = (u.username || '').trim().toLowerCase();
+        if ((mentionedNames.has(uNameLower) || mentionedNames.has(uUsernameLower)) && u.id !== user.id) {
+          notificationsToSend.set(u.id, {
+            title: 'Mentioned in Announcement Comment',
+            message: `${commenterName} mentioned you in a comment on "${annTitle}": "${previewText}"`,
+          });
+        }
+      }
+    }
+
+    // 2. Comment Reply Notification
+    if (parentId) {
+      const targetRepliedUserId = replyToUserId;
+      if (targetRepliedUserId && targetRepliedUserId !== user.id) {
+        if (!notificationsToSend.has(targetRepliedUserId)) {
+          notificationsToSend.set(targetRepliedUserId, {
+            title: 'New Reply to Your Comment',
+            message: `${commenterName} replied to your comment on "${annTitle}": "${previewText}"`,
+          });
+        }
+      }
+    }
+
+    // 3. Post Author (Admin) Notification
+    const postAuthorId = announcement.user_id || announcement.createdBy || null;
+    if (postAuthorId && postAuthorId !== user.id) {
+      if (!notificationsToSend.has(postAuthorId)) {
+        notificationsToSend.set(postAuthorId, {
+          title: 'New Comment on Your Announcement',
+          message: `${commenterName} commented on your announcement "${annTitle}": "${previewText}"`,
+        });
+      }
+    } else if (!postAuthorId && user.role !== 'admin') {
+      await createServerNotification(
+        'New Comment on Announcement',
+        `${commenterName} commented on "${annTitle}": "${previewText}"`,
+        { roles: ['admin'] }
+      );
+    }
+
+    // Dispatch queued notifications
+    for (const [targetUserId, notif] of notificationsToSend.entries()) {
+      await createServerNotification(notif.title, notif.message, { userIds: [targetUserId] });
+    }
+  } catch (notifErr) {
+    console.error('Error sending announcement comment notifications:', notifErr);
+  }
+
   res.status(201).json(created);
 }));
 
@@ -1591,9 +1692,12 @@ app.put('/api/announcements/:announcementId/comments/:commentId', asyncHandler(a
   );
 
   const updated = await get(
-    `SELECT c.*, u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo
+    `SELECT c.*, 
+            u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo,
+            ru.name AS reply_to_name
      FROM announcement_comments c
      LEFT JOIN users u ON c.user_id = u.id
+     LEFT JOIN users ru ON c.reply_to_user_id = ru.id
      WHERE c.id = ?`,
     [req.params.commentId]
   );
@@ -1616,7 +1720,8 @@ app.delete('/api/announcements/:announcementId/comments/:commentId', asyncHandle
     return res.status(403).json({ error: 'You do not have permission to delete this comment.' });
   }
 
-  await run('DELETE FROM announcement_comments WHERE id = ?', [req.params.commentId]);
+  // Delete comment and any nested replies if it is a parent comment
+  await run('DELETE FROM announcement_comments WHERE id = ? OR parent_id = ?', [req.params.commentId, req.params.commentId]);
   res.json({ ok: true });
 }));
 
