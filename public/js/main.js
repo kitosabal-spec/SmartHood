@@ -3225,16 +3225,23 @@ async function refreshNotifications() {
       dbCache.notifications = latestNotifs;
     }
 
-    // Real-time toast alert for newly arrived notifications
     const visible = getVisibleNotifications();
-    if (knownNotifIds !== null) {
-      for (const n of visible) {
-        if (!knownNotifIds.has(n.id)) {
-          showToast('info', n.title || 'Notification', n.message || '');
+
+    // On initial page load or login, record all currently visible notifications as known without alerting
+    if (knownNotifIds === null) {
+      knownNotifIds = new Set(visible.map(n => n.id));
+    } else {
+      // Find new notifications that arrived since the last poll
+      const newlyArrived = visible.filter(n => !knownNotifIds.has(n.id));
+      if (newlyArrived.length > 0) {
+        // Show ONLY 1 toast for the latest new notification
+        const latest = newlyArrived[0];
+        showToast('info', latest.title || 'Notification', latest.message || '');
+        for (const n of newlyArrived) {
+          knownNotifIds.add(n.id);
         }
       }
     }
-    knownNotifIds = new Set(visible.map(n => n.id));
 
     const panel = document.getElementById('notifPanel');
     if (panel && !panel.classList.contains('hidden')) {
@@ -3254,9 +3261,11 @@ function startNotificationRefresh() {
 }
 
 function stopNotificationRefresh() {
-  if (!notificationRefreshTimer) return;
-  clearInterval(notificationRefreshTimer);
-  notificationRefreshTimer = null;
+  if (notificationRefreshTimer) {
+    clearInterval(notificationRefreshTimer);
+    notificationRefreshTimer = null;
+  }
+  knownNotifIds = null;
 }
 
 function toggleNotifPanel() {
