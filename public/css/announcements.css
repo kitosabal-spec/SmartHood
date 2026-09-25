@@ -186,7 +186,7 @@
   color: var(--text);
   margin-bottom: 8px;
   line-height: 1.35;
-  font-family: var(--font-display, serif);
+  font-family: var(--font-display, var(--font-body));
 }
 .community-post-text {
   color: var(--text);
