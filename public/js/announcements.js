@@ -940,20 +940,20 @@ async function openCommentModal(announcementId) {
         <strong style="display:block;font-size:0.96rem;color:var(--text);line-height:1.4;">${escapeHtml(ann.title)}</strong>
       </div>
       <div class="community-comments-section" style="padding:0;">
+        <div class="community-comments-list" id="comments-list-${announcementId}">
+          <div style="font-size:0.8rem;color:var(--text-3);padding:6px 0;">Loading comments...</div>
+        </div>
         <div class="comment-composer-wrap">
           ${avatarHTML(currentUser, 'avatar-xs')}
           <div class="comment-composer-input-box">
             <input type="text" id="comment-input-${announcementId}" class="comment-composer-input" placeholder="Write a comment as ${userName}..." onkeydown="handleCommentKeydown(event, '${announcementId}')" />
             <button type="button" class="comment-composer-submit-btn" onclick="submitNewComment('${announcementId}')" title="Post Comment">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
                 <line x1="22" y1="2" x2="11" y2="13"></line>
                 <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
               </svg>
             </button>
           </div>
-        </div>
-        <div class="community-comments-list" id="comments-list-${announcementId}">
-          <div style="font-size:0.8rem;color:var(--text-3);padding:6px 0;">Loading comments...</div>
         </div>
       </div>
     </div>
@@ -974,7 +974,7 @@ async function openCommentModal(announcementId) {
   // Focus comment input automatically
   setTimeout(() => {
     const input = document.getElementById(`comment-input-${announcementId}`);
-    if (input) input.focus();
+    if (input) input.focus({ preventScroll: true });
   }, 100);
 }
 
@@ -1243,6 +1243,12 @@ async function submitNewComment(announcementId) {
     }
     announcementCommentsCache[announcementId].push(created);
     renderCommentsIntoContainer(announcementId);
+    const listContainer = document.getElementById(`comments-list-${announcementId}`);
+    if (listContainer) {
+      setTimeout(() => {
+        listContainer.scrollTop = listContainer.scrollHeight;
+      }, 50);
+    }
     showToast('success', 'Comment Posted', 'Your comment has been saved.');
     if (typeof refreshNotifications === 'function') {
       refreshNotifications();
