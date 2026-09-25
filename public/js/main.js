@@ -2332,7 +2332,7 @@ function clearCreateAdditionalPermissions() {
 
 function openCreateAccountModal() {
   openModal('Create New Account', `
-    <div style="background:var(--teal-50, #f0fdfa);border:1px solid var(--teal-200, #99f6e4);border-radius:8px;padding:10px 14px;margin-bottom:14px;font-size:0.83rem;color:var(--teal-800, #115e59);line-height:1.4;">
+    <div class="account-credentials-notice">
       <strong>Sign-In Credentials Note:</strong> The account holder will log in using their <strong>Username</strong> and <strong>Password</strong>. Full Name is used as their display name in directory and records.
     </div>
 
@@ -2728,8 +2728,8 @@ function openEditUserAccountModal(userId) {
         <div class="admin-fullaccess-notice">
           <svg width="20" height="20"><use href="#ico-shield"/></svg>
           <div>
-            <strong style="color:#15803d;">Full System Access</strong>
-            <p style="margin-top:2px;font-size:0.78rem;color:#166534;">Administrator account has unrestricted access to all system modules, tables, and settings. Module configuration is not required.</p>
+            <strong>Full System Access</strong>
+            <p style="margin-top:2px;font-size:0.78rem;">Administrator account has unrestricted access to all system modules, tables, and settings. Module configuration is not required.</p>
           </div>
         </div>
       ` : `
