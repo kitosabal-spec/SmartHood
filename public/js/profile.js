@@ -366,19 +366,30 @@ function saveAdminProfile() {
 }
 
 function confirmChangeAdminPassword() {
-  const np = document.getElementById('s_newpass').value.trim();
-  const cp = document.getElementById('s_confpass').value.trim();
-  if (!np || !cp) { showToast('error', 'Empty Fields', 'Enter and confirm new password.'); return; }
-  if (np !== cp) { showToast('error', 'Mismatch', 'Passwords do not match.'); return; }
-  if (np.length < 6) { showToast('error', 'Too Short', 'Password must be at least 6 characters.'); return; }
+  const curr = (document.getElementById('s_currpass')?.value || '').trim();
+  const np = (document.getElementById('s_newpass')?.value || '').trim();
+  const cp = (document.getElementById('s_confpass')?.value || '').trim();
+  if (!curr || !np || !cp) { showToast('error', 'Empty Fields', 'Please fill in current, new, and confirm password fields.'); return; }
+  if (np !== cp) { showToast('error', 'Mismatch', 'New passwords do not match.'); return; }
+  if (np.length < 12) { showToast('error', 'Too Short', 'Password must be at least 12 characters.'); return; }
   openConfirm('Change Password', 'Are you sure you want to update your password?', changeAdminPassword);
 }
 
-function changeAdminPassword() {
-  const np = document.getElementById('s_newpass').value.trim();
-  currentUser.password = np;
-  db.save('users', currentUser);
-  showToast('success', 'Password Changed', 'Your password has been updated.');
+async function changeAdminPassword() {
+  const curr = (document.getElementById('s_currpass')?.value || '').trim();
+  const np = (document.getElementById('s_newpass')?.value || '').trim();
+  showLoading();
+  try {
+    await api.changePassword(curr, np);
+    hideLoading();
+    if (document.getElementById('s_currpass')) document.getElementById('s_currpass').value = '';
+    if (document.getElementById('s_newpass')) document.getElementById('s_newpass').value = '';
+    if (document.getElementById('s_confpass')) document.getElementById('s_confpass').value = '';
+    showToast('success', 'Password Changed', 'Your password has been updated.');
+  } catch (err) {
+    hideLoading();
+    showToast('error', 'Update Failed', err.message || 'Failed to update password.');
+  }
 }
 
 function saveDuesRateSetting() {
@@ -436,9 +447,10 @@ function renderHOProfile() {
   <div class="settings-section">
     <div class="settings-section-header"><h4>Change Password</h4></div>
     <div class="settings-section-body">
+      <div class="form-group" style="margin-bottom:12px;"><label>Current Password</label><input id="hp_currpass" type="password" placeholder="Enter current password..."/></div>
       <div class="grid-2">
-        <div class="form-group"><label>New Password</label><input id="hp_newpass" type="password" placeholder="New password..."/></div>
-        <div class="form-group"><label>Confirm</label><input id="hp_confpass" type="password" placeholder="Confirm..."/></div>
+        <div class="form-group"><label>New Password</label><input id="hp_newpass" type="password" placeholder="Min. 12 characters..."/></div>
+        <div class="form-group"><label>Confirm</label><input id="hp_confpass" type="password" placeholder="Confirm new password..."/></div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="confirmSaveHOPassword()">Update Password</button>
     </div>
@@ -460,18 +472,29 @@ function saveHOProfile() {
 }
 
 function confirmSaveHOPassword() {
-  const np = document.getElementById('hp_newpass').value.trim();
-  const cp = document.getElementById('hp_confpass').value.trim();
-  if (!np || !cp) { showToast('error', 'Empty', 'Enter both fields.'); return; }
-  if (np !== cp) { showToast('error', 'Mismatch', 'Passwords do not match.'); return; }
-  if (np.length < 6) { showToast('error', 'Too Short', 'Min 6 characters.'); return; }
+  const curr = (document.getElementById('hp_currpass')?.value || '').trim();
+  const np = (document.getElementById('hp_newpass')?.value || '').trim();
+  const cp = (document.getElementById('hp_confpass')?.value || '').trim();
+  if (!curr || !np || !cp) { showToast('error', 'Empty', 'Please fill in current, new, and confirm password fields.'); return; }
+  if (np !== cp) { showToast('error', 'Mismatch', 'New passwords do not match.'); return; }
+  if (np.length < 12) { showToast('error', 'Too Short', 'Password must be at least 12 characters.'); return; }
   openConfirm('Change Password', 'Are you sure you want to update your password?', saveHOPassword);
 }
 
-function saveHOPassword() {
-  const np = document.getElementById('hp_newpass').value.trim();
-  currentUser.password = np;
-  db.save('users', currentUser);
-  showToast('success', 'Updated', 'Password changed.');
+async function saveHOPassword() {
+  const curr = (document.getElementById('hp_currpass')?.value || '').trim();
+  const np = (document.getElementById('hp_newpass')?.value || '').trim();
+  showLoading();
+  try {
+    await api.changePassword(curr, np);
+    hideLoading();
+    if (document.getElementById('hp_currpass')) document.getElementById('hp_currpass').value = '';
+    if (document.getElementById('hp_newpass')) document.getElementById('hp_newpass').value = '';
+    if (document.getElementById('hp_confpass')) document.getElementById('hp_confpass').value = '';
+    showToast('success', 'Updated', 'Your password has been updated.');
+  } catch (err) {
+    hideLoading();
+    showToast('error', 'Update Failed', err.message || 'Failed to update password.');
+  }
 }
 

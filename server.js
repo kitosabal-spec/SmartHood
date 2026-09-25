@@ -4,6 +4,11 @@ const fs = require('fs');
 const crypto = require('crypto');
 const multer = require('multer');
 const mysql = require('mysql2/promise');
+const bcrypt = require('bcryptjs');
+
+function isBcryptHash(str) {
+  return typeof str === 'string' && /^\$2[aby]?\$\d{2}\$[./A-Za-z0-9]{53}$/.test(str);
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -717,7 +722,11 @@ async function seedIfEmpty() {
 async function ensureAdminUser() {
   const existing = await get('SELECT id, permissions, status FROM users WHERE username = ?', [adminUser.username]);
   if (!existing) {
-    await saveRecord('users', adminUser);
+    const adminRecord = { ...adminUser };
+    if (!isBcryptHash(adminRecord.password)) {
+      adminRecord.password = await bcrypt.hash(adminRecord.password, 10);
+    }
+    await saveRecord('users', adminRecord);
   } else {
     if (!existing.permissions || !existing.status) {
       await saveRecord('users', {
@@ -1955,8 +1964,8 @@ app.post('/api/login', asyncHandler(async (req, res) => {
     return;
   }
   const user = await get(
-    'SELECT * FROM users WHERE (BINARY username = ? OR BINARY email = ? OR (block IS NOT NULL AND lot IS NOT NULL AND (BINARY CONCAT(block, " ", lot) = ? OR BINARY CONCAT(block, ", ", lot) = ?))) AND BINARY password = ?',
-    [username, username, username, username, password]
+    'SELECT * FROM users WHERE (BINARY username = ? OR BINARY email = ? OR (block IS NOT NULL AND lot IS NOT NULL AND (BINARY CONCAT(block, " ", lot) = ? OR BINARY CONCAT(block, ", ", lot) = ?))) LIMIT 1',
+    [username, username, username, username]
   );
   const matchesIdentifier = Boolean(
     user && (
@@ -1968,15 +1977,80 @@ app.post('/api/login', asyncHandler(async (req, res) => {
       ))
     )
   );
-  if (!user || !matchesIdentifier || user.password !== password) {
+  if (!user || !matchesIdentifier) {
     res.status(401).json({ error: 'Invalid username or password.' });
     return;
   }
+
+  let passwordMatches = false;
+  if (isBcryptHash(user.password)) {
+    passwordMatches = await bcrypt.compare(password, user.password);
+  } else {
+    // Legacy plain-text password comparison (case-sensitive)
+    if (user.password === password) {
+      passwordMatches = true;
+      // Immediately migrate legacy plain-text password to bcrypt hash in database
+      try {
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, user.id]);
+        user.password = hashedPassword;
+      } catch (migrationErr) {
+        console.error('Password migration error:', migrationErr);
+      }
+    }
+  }
+
+  if (!passwordMatches) {
+    res.status(401).json({ error: 'Invalid username or password.' });
+    return;
+  }
+
   if (user.status === 'inactive' || user.status === 'deactivated') {
     res.status(403).json({ error: 'Your account has been deactivated. Please contact the administrator.' });
     return;
   }
   res.json(deserializeRow('users', user));
+}));
+
+app.post('/api/change-password', asyncHandler(async (req, res) => {
+  const requester = await requireAuth(req, res);
+  if (!requester) return;
+
+  const currentPassword = (req.body.currentPassword || '').trim();
+  const newPassword = (req.body.newPassword || '').trim();
+
+  if (!currentPassword || !newPassword) {
+    res.status(400).json({ error: 'Current password and new password are required.' });
+    return;
+  }
+
+  const user = await get('SELECT * FROM users WHERE id = ?', [requester.id]);
+  if (!user) {
+    res.status(404).json({ error: 'User not found.' });
+    return;
+  }
+
+  let currentValid = false;
+  if (isBcryptHash(user.password)) {
+    currentValid = await bcrypt.compare(currentPassword, user.password);
+  } else {
+    currentValid = (user.password === currentPassword);
+  }
+
+  if (!currentValid) {
+    res.status(400).json({ error: 'Current password is incorrect.' });
+    return;
+  }
+
+  if (newPassword.length < 12) {
+    res.status(400).json({ error: 'Password must be at least 12 characters long.' });
+    return;
+  }
+
+  const hashedPassword = await bcrypt.hash(newPassword, 10);
+  await run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, user.id]);
+
+  res.json({ ok: true, message: 'Password updated successfully.' });
 }));
 
 // ── PAYMENT SETTINGS APIS ──
@@ -2803,8 +2877,8 @@ app.post('/api/users', asyncHandler(async (req, res) => {
     return res.status(400).json({ error: 'Username must be at least 3 characters long.' });
   }
 
-  if (password.length < 6) {
-    return res.status(400).json({ error: 'Password must be at least 6 characters long.' });
+  if (password.length < 12) {
+    return res.status(400).json({ error: 'Password must be at least 12 characters long.' });
   }
 
   // Prevent duplicate username
@@ -2834,11 +2908,12 @@ app.post('/api/users', asyncHandler(async (req, res) => {
   }
 
   const userId = req.body.id || ('u' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase());
+  const hashedPassword = await bcrypt.hash(password, 10);
 
   const newUserRecord = {
     id: userId,
     username,
-    password,
+    password: hashedPassword,
     role,
     name,
     email,
@@ -2875,6 +2950,16 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
       const dupEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email]);
       if (dupEmail) {
         return res.status(400).json({ error: 'Email address is already registered. Please choose another email.' });
+      }
+    }
+
+    if (req.body.password) {
+      const pass = String(req.body.password).trim();
+      if (pass.length < 12) {
+        return res.status(400).json({ error: 'Password must be at least 12 characters long.' });
+      }
+      if (!isBcryptHash(pass)) {
+        req.body.password = await bcrypt.hash(pass, 10);
       }
     }
 
@@ -2918,13 +3003,26 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
     }
 
     if (allowed.role !== 'admin') {
-      // Non-admin updating their own profile cannot change role, permissions, balance, or status
+      // Non-admin updating their own profile cannot change role, permissions, balance, status, or password via PUT
       delete req.body.role;
       delete req.body.permissions;
       delete req.body.balance;
       delete req.body.status;
+      delete req.body.password;
     } else {
       // Admin updating a user
+      if (req.body.password !== undefined && req.body.password !== null && String(req.body.password).trim() !== '') {
+        const pass = String(req.body.password).trim();
+        if (pass.length < 12) {
+          return res.status(400).json({ error: 'Password must be at least 12 characters long.' });
+        }
+        if (!isBcryptHash(pass)) {
+          req.body.password = await bcrypt.hash(pass, 10);
+        }
+      } else {
+        delete req.body.password;
+      }
+
       if (req.body.username && req.body.username.trim() !== (existing.username || '')) {
         const dupUser = await get('SELECT id FROM users WHERE BINARY username = ? AND id != ?', [req.body.username.trim(), req.params.id]);
         if (dupUser) {

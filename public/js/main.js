@@ -246,6 +246,13 @@ const api = {
     });
   },
 
+  async changePassword(currentPassword, newPassword) {
+    return this.request('/api/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+  },
+
   async save(table, item, isUpdate = null) {
     const exists = isUpdate !== null ? isUpdate : db.get(table).some(x => x.id === item.id);
     return this.request(exists ? `/api/${table}/${item.id}` : `/api/${table}`, {
@@ -1926,8 +1933,9 @@ function renderSettings() {
   <div class="settings-section">
     <div class="settings-section-header"><h4>Change Password</h4></div>
     <div class="settings-section-body">
+      <div class="form-group" style="margin-bottom:12px;"><label>Current Password</label><input id="s_currpass" type="password" placeholder="Enter current password..."/></div>
       <div class="grid-2">
-        <div class="form-group"><label>New Password</label><input id="s_newpass" type="password" placeholder="New password..."/></div>
+        <div class="form-group"><label>New Password</label><input id="s_newpass" type="password" placeholder="Min. 12 characters..."/></div>
         <div class="form-group"><label>Confirm Password</label><input id="s_confpass" type="password" placeholder="Confirm password..."/></div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="confirmChangeAdminPassword()">Update Password</button>
@@ -2378,8 +2386,8 @@ function openCreateAccountModal() {
         </div>
         <div class="form-group">
           <label>Initial Password *</label>
-          <input id="ca_pass" type="password" placeholder="Min. 6 characters" autocomplete="new-password"/>
-          <small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:2px;">Minimum 6 characters</small>
+          <input id="ca_pass" type="password" placeholder="Min. 12 characters" autocomplete="new-password"/>
+          <small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:2px;">Minimum 12 characters</small>
         </div>
       </div>
     </div>
@@ -2517,8 +2525,8 @@ async function saveCreateAccount() {
     return;
   }
 
-  if (password.length < 6) {
-    showToast('error', 'Weak Password', 'Password must be at least 6 characters.');
+  if (password.length < 12) {
+    showToast('error', 'Weak Password', 'Password must be at least 12 characters.');
     return;
   }
 
@@ -2709,7 +2717,7 @@ function openEditUserAccountModal(userId) {
       <div class="form-group">
         <label>Change Password (Optional)</label>
         <input id="ea_newpass" type="password" placeholder="Leave blank to keep current password" autocomplete="new-password"/>
-        <small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:2px;">Minimum 6 characters. Leave blank if password should remain unchanged.</small>
+        <small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:2px;">Minimum 12 characters. Leave blank if password should remain unchanged.</small>
       </div>
     </div>
 
@@ -2859,11 +2867,13 @@ async function saveEditUserAccount(userId) {
   }
 
   if (newPass) {
-    if (newPass.length < 6) {
-      showToast('error', 'Weak Password', 'New password must be at least 6 characters.');
+    if (newPass.length < 12) {
+      showToast('error', 'Weak Password', 'New password must be at least 12 characters.');
       return;
     }
     u.password = newPass;
+  } else {
+    delete u.password;
   }
 
   u.name = name;

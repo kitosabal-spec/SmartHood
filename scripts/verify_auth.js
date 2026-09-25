@@ -136,6 +136,162 @@ async function runTests() {
     }
   }
 
+  // 8. New Account Creation with bcrypt hash
+  {
+    const mysql = require('mysql2/promise');
+    const conn = await mysql.createConnection({
+      host: 'localhost',
+      port: 3306,
+      user: 'root',
+      password: '',
+      database: 'san_alfonso_homes'
+    });
+
+    const testNewId = 'test_u_new_bcrypt_' + Date.now();
+    try {
+      // Login as admin first
+      const adminLogin = await postLogin('admin', 'admin123');
+      const adminId = adminLogin.data.id;
+
+      // Attempt creating user with short password (< 12 chars)
+      const resShort = await fetch(`${BASE_URL}/api/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': adminId },
+        body: JSON.stringify({
+          id: testNewId + '_short',
+          username: 'shortuser99',
+          email: 'short@example.com',
+          name: 'Short Pass User',
+          password: 'only10char', // 10 chars
+          role: 'homeowner'
+        })
+      });
+      expect('User creation with password < 12 characters rejected (400)', resShort.status === 400);
+
+      // Create user with valid 12+ character password
+      const newPlainPass = 'SecurePass2026!';
+      const resCreate = await fetch(`${BASE_URL}/api/users`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': adminId },
+        body: JSON.stringify({
+          id: testNewId,
+          username: 'bcryptuser01',
+          email: 'bcrypt01@example.com',
+          name: 'Bcrypt Test User',
+          password: newPlainPass,
+          role: 'homeowner',
+          block: 'Block 5',
+          lot: 'Lot 9'
+        })
+      });
+      const createData = await resCreate.json().catch(() => ({}));
+      expect('User creation with password >= 12 characters succeeds (201)', resCreate.status === 201);
+      expect('User creation response never exposes password or hash', createData.password === undefined && createData.password_hash === undefined);
+
+      // Check database to ensure password is stored as bcrypt hash
+      const [rows] = await conn.execute('SELECT password FROM users WHERE id = ?', [testNewId]);
+      const storedPass = rows[0]?.password || '';
+      const isHash = storedPass.startsWith('$2') && storedPass.length === 60;
+      expect('New user password in MySQL is a bcrypt hash (starts with $2, length 60)', isHash);
+      expect('New user password in MySQL is NOT plain text', storedPass !== newPlainPass);
+
+      // Test login with the newly created account
+      const resNewLogin = await postLogin('bcryptuser01', newPlainPass);
+      expect('Login with new bcrypt account succeeds (200)', resNewLogin.status === 200 && resNewLogin.data.username === 'bcryptuser01');
+      expect('Login response never exposes password or hash', resNewLogin.data.password === undefined && resNewLogin.data.password_hash === undefined);
+
+      // Test wrong password fails
+      const resNewWrongPass = await postLogin('bcryptuser01', 'WrongPassword123!');
+      expect('Login with wrong password fails (401)', resNewWrongPass.status === 401);
+
+      // 9. Change Password Flow
+      // Try wrong current password
+      const resChangeWrongCurr = await fetch(`${BASE_URL}/api/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': testNewId },
+        body: JSON.stringify({ currentPassword: 'IncorrectOldPass!', newPassword: 'BrandNewPass2026!' })
+      });
+      expect('Change password fails with incorrect current password (400)', resChangeWrongCurr.status === 400);
+
+      // Try new password < 12 characters
+      const resChangeShort = await fetch(`${BASE_URL}/api/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': testNewId },
+        body: JSON.stringify({ currentPassword: newPlainPass, newPassword: 'tooshort' })
+      });
+      expect('Change password fails when new password < 12 characters (400)', resChangeShort.status === 400);
+
+      // Successful password change
+      const updatedPlainPass = 'UpdatedSecurePass2026!';
+      const resChangeSuccess = await fetch(`${BASE_URL}/api/change-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': testNewId },
+        body: JSON.stringify({ currentPassword: newPlainPass, newPassword: updatedPlainPass })
+      });
+      expect('Change password succeeds with valid current and new password (200)', resChangeSuccess.status === 200);
+
+      // Verify old password no longer works
+      const resOldPassFail = await postLogin('bcryptuser01', newPlainPass);
+      expect('Old password no longer works after password change (401)', resOldPassFail.status === 401);
+
+      // Verify new password works
+      const resNewPassSuccess = await postLogin('bcryptuser01', updatedPlainPass);
+      expect('New password works after password change (200)', resNewPassSuccess.status === 200);
+
+      // Check DB contains updated bcrypt hash
+      const [updatedRows] = await conn.execute('SELECT password FROM users WHERE id = ?', [testNewId]);
+      const newStoredPass = updatedRows[0]?.password || '';
+      expect('Updated password in MySQL is a new bcrypt hash', newStoredPass.startsWith('$2') && newStoredPass !== storedPass);
+
+      // 10. Admin Account Editing without changing password (ensure no accidental overwrite or double-hashing)
+      const resAdminEditNoPass = await fetch(`${BASE_URL}/api/users/${testNewId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': adminId },
+        body: JSON.stringify({
+          name: 'Bcrypt Test User Updated Name',
+          contact: '09123456789'
+          // Notice: password is intentionally omitted
+        })
+      });
+      expect('Admin editing user without password succeeds (200)', resAdminEditNoPass.status === 200);
+
+      const [afterEditRows] = await conn.execute('SELECT password, name FROM users WHERE id = ?', [testNewId]);
+      expect('User password hash was NOT changed or corrupted during profile edit', afterEditRows[0]?.password === newStoredPass);
+      expect('User name was successfully updated', afterEditRows[0]?.name === 'Bcrypt Test User Updated Name');
+
+      // Verify login still works with existing password
+      const resPostEditLogin = await postLogin('bcryptuser01', updatedPlainPass);
+      expect('Login still works after admin profile update without password change (200)', resPostEditLogin.status === 200);
+
+      // 11. Admin Account Editing with new password
+      const adminSetPassword = 'AdminSetNewPass2026!';
+      const resAdminEditWithPass = await fetch(`${BASE_URL}/api/users/${testNewId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'x-user-id': adminId },
+        body: JSON.stringify({
+          password: adminSetPassword
+        })
+      });
+      expect('Admin updating user with new password succeeds (200)', resAdminEditWithPass.status === 200);
+
+      const [adminPassRows] = await conn.execute('SELECT password FROM users WHERE id = ?', [testNewId]);
+      const adminHashedPass = adminPassRows[0]?.password || '';
+      expect('Admin-updated password is stored as bcrypt hash in DB', adminHashedPass.startsWith('$2') && adminHashedPass !== adminSetPassword);
+
+      // Verify login with admin-set password works
+      const resAdminPassLogin = await postLogin('bcryptuser01', adminSetPassword);
+      expect('Login succeeds with admin-set password (200)', resAdminPassLogin.status === 200);
+
+      // 12. Roles and Permissions check
+      expect('Admin has role "admin" and full wildcard permissions', adminLogin.data.role === 'admin' && adminLogin.data.permissions.includes('*'));
+      expect('Homeowner has role "homeowner" and "resident" permission', resAdminPassLogin.data.role === 'homeowner' && resAdminPassLogin.data.permissions.includes('resident'));
+
+    } finally {
+      await conn.execute('DELETE FROM users WHERE id = ?', [testNewId]);
+      await conn.end();
+    }
+  }
+
   console.log(`\n--- Test Results: ${passed}/${total} passed ---`);
   if (passed !== total) {
     process.exit(1);
