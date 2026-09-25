@@ -180,6 +180,13 @@
   --gcash-border: #bfdbfe;
 }
 
+[data-theme="dark"] {
+  --gcash-blue: #60a5fa;
+  --gcash-blue-dark: #3b82f6;
+  --gcash-light: rgba(0, 125, 254, 0.16);
+  --gcash-border: rgba(0, 125, 254, 0.28);
+}
+
 /* GCash Badge */
 .badge-gcash {
   background: var(--gcash-light);
@@ -189,6 +196,12 @@
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+[data-theme="dark"] .badge-gcash {
+  background: rgba(0, 125, 254, 0.16);
+  color: #60a5fa;
+  border: 1px solid rgba(0, 125, 254, 0.28);
 }
 
 /* Pay Now & Payment Modals */
