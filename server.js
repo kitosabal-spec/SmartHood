@@ -1535,7 +1535,12 @@ app.patch('/api/announcements/:id/pin', asyncHandler(async (req, res) => {
   }
 
   const currentPinned = existing.is_pinned ? 1 : 0;
-  const newPinned = currentPinned === 1 ? 0 : 1;
+  let newPinned;
+  if (req.body && req.body.is_pinned !== undefined) {
+    newPinned = (req.body.is_pinned === true || req.body.is_pinned === 1 || req.body.is_pinned === '1' || req.body.is_pinned === 'true') ? 1 : 0;
+  } else {
+    newPinned = currentPinned === 1 ? 0 : 1;
+  }
 
   await run('UPDATE announcements SET is_pinned = ? WHERE id = ?', [newPinned, req.params.id]);
 

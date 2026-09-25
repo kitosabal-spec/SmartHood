@@ -1090,7 +1090,8 @@
 }
 
 /* Comment Modal (wider) */
-.modal-comments #modal {
+#modal.modal-comments,
+.modal.modal-comments {
   max-width: 640px;
 }
 .comment-modal-post-summary {
@@ -1100,10 +1101,15 @@
   font-size: 0.95rem;
   color: var(--text);
 }
+.comment-modal-container {
+  display: flex;
+  flex-direction: column;
+}
 .comment-modal-container .community-comments-list {
-  max-height: 50vh;
+  max-height: 55vh;
   overflow-y: auto;
-  padding-right: 4px;
+  padding-right: 6px;
+  margin-top: 4px;
 }
 
 

@@ -710,29 +710,55 @@ function renderAnnouncements() {
   renderAnnouncementCards();
 }
 
+function getAnnouncementTimestamp(a) {
+  if (!a) return 0;
+  if (a.created_at) {
+    const t = new Date(a.created_at).getTime();
+    if (!isNaN(t)) return t;
+  }
+  if (a.date) {
+    const t = new Date(a.date).getTime();
+    if (!isNaN(t)) return t;
+  }
+  return 0;
+}
+
+function getSortedAnnouncements() {
+  const all = [...db.get('announcements')];
+  // Sort descending by date/time (newest first)
+  all.sort((a, b) => {
+    const timeA = getAnnouncementTimestamp(a);
+    const timeB = getAnnouncementTimestamp(b);
+    if (timeA && timeB && timeA !== timeB) {
+      return timeB - timeA;
+    }
+    return 0;
+  });
+  const hasDates = all.some(a => a.created_at || a.date);
+  const baseList = hasDates ? all : [...db.get('announcements')].reverse();
+  const pinned = baseList.filter(a => a.is_pinned);
+  const unpinned = baseList.filter(a => !a.is_pinned);
+  return [...pinned, ...unpinned];
+}
+
 function renderAnnouncementCards() {
   const list = document.getElementById('announcementsList');
   if (!list) return;
 
-  const allAnnouncements = [...db.get('announcements')].reverse();
-  if (!allAnnouncements.length) {
+  const announcements = getSortedAnnouncements();
+  if (!announcements.length) {
     list.innerHTML = `<div class="no-results" style="padding:40px 20px;"><svg style="width:2.5rem;height:2.5rem;color:var(--text-3);margin-bottom:10px;"><use href="#ico-megaphone"/></svg><br><strong>No announcements posted yet.</strong><p style="color:var(--text-3);font-size:0.85rem;margin-top:4px;">Click the composer above or "New Announcement" to publish your first post.</p></div>`;
     return;
   }
 
-  // Sort: pinned announcements first (preserving date order within each group)
-  const pinned = allAnnouncements.filter(a => a.is_pinned);
-  const unpinned = allAnnouncements.filter(a => !a.is_pinned);
-  const announcements = [...pinned, ...unpinned];
-
-  const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
-  list.innerHTML = announcements.map(a => communityPostCardHTML(a, isAdmin)).join('');
+  const canManage = typeof canManageAnnouncements === 'function' ? canManageAnnouncements() : (currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin'));
+  list.innerHTML = announcements.map(a => communityPostCardHTML(a, canManage)).join('');
 
   // Load comment counts for the feed
   loadCommentCounts();
 }
 
-function communityPostCardHTML(a, isAdmin) {
+function communityPostCardHTML(a, canManage) {
   const author = db.getOne('users', a.user_id || a.createdBy) || { name: 'Administrator', role: 'admin' };
   const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#177a80', Others: '#7c3aed' };
   const baseCat = (a.category || '').startsWith('Others') ? 'Others' : (a.category || 'General');
@@ -751,7 +777,14 @@ function communityPostCardHTML(a, isAdmin) {
     mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;">🎥 ${videoCount} video${videoCount > 1 ? 's' : ''}</span>`;
   }
 
-  const commentIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
+  const commentIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
+
+  const cachedComments = announcementCommentsCache[a.id];
+  let initialCommentText = 'Comment';
+  if (Array.isArray(cachedComments)) {
+    if (cachedComments.length === 1) initialCommentText = '1 Comment';
+    else if (cachedComments.length > 1) initialCommentText = `${cachedComments.length} Comments`;
+  }
 
   return `
   <div class="community-post-card" id="announcement-card-${a.id}">
@@ -774,20 +807,21 @@ function communityPostCardHTML(a, isAdmin) {
           </div>
         </div>
       </div>
-      ${isAdmin ? `
+      ${canManage ? `
         <div class="community-post-actions-top">
-          <button type="button" class="btn-post-action ${a.is_pinned ? 'pinned-active' : ''}" onclick="togglePinAnnouncement('${a.id}')" title="${a.is_pinned ? 'Unpin Announcement' : 'Pin Announcement'}">
+          <button type="button" class="btn-post-action ${a.is_pinned ? 'pinned-active' : ''}" onclick="togglePinAnnouncement('${a.id}')" title="${a.is_pinned ? 'Unpin Announcement' : 'Pin Announcement'}" aria-label="${a.is_pinned ? 'Unpin Announcement' : 'Pin Announcement'}">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="${a.is_pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 17v5M9 2h6l-1 7h4l-7 8 1-7H8l1-8z"/>
+              <line x1="12" y1="17" x2="12" y2="22"></line>
+              <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
             </svg>
           </button>
-          <button type="button" class="btn-post-action" onclick="openEditAnnouncementModal('${a.id}')" title="Edit Announcement">
+          <button type="button" class="btn-post-action" onclick="openEditAnnouncementModal('${a.id}')" title="Edit Announcement" aria-label="Edit Announcement">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
               <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
             </svg>
           </button>
-          <button type="button" class="btn-post-action danger" onclick="confirmDeleteAnnouncement('${a.id}')" title="Delete Announcement">
+          <button type="button" class="btn-post-action danger" onclick="confirmDeleteAnnouncement('${a.id}')" title="Delete Announcement" aria-label="Delete Announcement">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="3 6 5 6 21 6"></polyline>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
@@ -799,10 +833,11 @@ function communityPostCardHTML(a, isAdmin) {
 
     ${a.is_pinned ? `
       <div class="pinned-indicator">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
-          <path d="M12 17v5M9 2h6l-1 7h4l-7 8 1-7H8l1-8z"/>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="17" x2="12" y2="22" stroke-width="2"></line>
+          <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
         </svg>
-        <span>Pinned</span>
+        <span>Pinned Announcement</span>
       </div>
     ` : ''}
 
@@ -814,8 +849,8 @@ function communityPostCardHTML(a, isAdmin) {
     ${renderPhotoGridHTML(a.id, images, a.title)}
 
     <div class="community-post-stats">
-      <span class="comment-count-link" id="comm-count-${a.id}" onclick="openCommentModal('${a.id}')" style="cursor:pointer;">
-        ${commentIcon}Comment
+      <span class="comment-count-link" id="comm-count-${a.id}" onclick="openCommentModal('${a.id}')" style="cursor:pointer;" title="View Comments">
+        ${commentIcon}${initialCommentText}
       </span>
       ${mediaStats}
     </div>
@@ -842,7 +877,11 @@ async function togglePinAnnouncement(id) {
       announcements[idx] = { ...announcements[idx], ...updated };
       dbCache.announcements = announcements;
     }
-    renderAnnouncementCards();
+    if (document.getElementById('announcementsList')) {
+      renderAnnouncementCards();
+    } else if (document.getElementById('hoAnnouncementsList')) {
+      renderHOAnnouncements();
+    }
     showToast('success',
       updated.is_pinned ? 'Announcement Pinned' : 'Announcement Unpinned',
       updated.is_pinned ? 'This announcement will appear at the top of the feed.' : 'This announcement has been unpinned.'
@@ -856,13 +895,16 @@ async function togglePinAnnouncement(id) {
 async function loadCommentCounts() {
   try {
     const counts = await api.getCommentCounts();
-    const svgIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+    const svgIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
     // Update counts for all announcements on the page
     const allAnnouncements = db.get('announcements');
     for (const ann of allAnnouncements) {
       const el = document.getElementById(`comm-count-${ann.id}`);
       if (!el) continue;
-      const count = counts[ann.id] || 0;
+      let count = counts && counts[ann.id] !== undefined ? counts[ann.id] : 0;
+      if (announcementCommentsCache[ann.id] && Array.isArray(announcementCommentsCache[ann.id])) {
+        count = announcementCommentsCache[ann.id].length;
+      }
       if (count === 0) {
         el.innerHTML = svgIcon + 'Comment';
       } else if (count === 1) {
@@ -886,7 +928,16 @@ async function openCommentModal(announcementId) {
   const modalBody = `
     <div class="comment-modal-container">
       <div class="comment-modal-post-summary">
-        <strong>${escapeHtml(ann.title)}</strong>
+        ${ann.is_pinned ? `
+          <div style="display:inline-flex;align-items:center;gap:5px;font-size:0.75rem;font-weight:700;color:var(--teal-600);margin-bottom:4px;letter-spacing:0.3px;">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="17" x2="12" y2="22" stroke-width="2"></line>
+              <path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v2a1 1 0 0 0 1 1h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path>
+            </svg>
+            Pinned Announcement
+          </div>
+        ` : ''}
+        <strong style="display:block;font-size:0.96rem;color:var(--text);line-height:1.4;">${escapeHtml(ann.title)}</strong>
       </div>
       <div class="community-comments-section" style="padding:0;">
         <div class="comment-composer-wrap">
@@ -912,16 +963,23 @@ async function openCommentModal(announcementId) {
     { label: 'Close', cls: 'btn-secondary', action: closeModal }
   ], 'modal-comments');
 
-  // Load and render comments into the modal
+  // If comments already cached, render immediately for instant feedback
+  if (announcementCommentsCache[announcementId]) {
+    renderCommentsIntoContainer(announcementId);
+  }
+
+  // Load and render fresh comments into the modal
   await loadAndRenderComments(announcementId);
+
+  // Focus comment input automatically
+  setTimeout(() => {
+    const input = document.getElementById(`comment-input-${announcementId}`);
+    if (input) input.focus();
+  }, 100);
 }
 
 function focusCommentInput(announcementId) {
-  const input = document.getElementById(`comment-input-${announcementId}`);
-  if (input) {
-    input.focus();
-    input.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-  }
+  openCommentModal(announcementId);
 }
 
 function handleCommentKeydown(event, announcementId) {
@@ -1263,7 +1321,7 @@ function confirmDeleteComment(announcementId, commentId) {
     <p style="color:var(--text-2);line-height:1.6">Are you sure you want to delete this comment?</p>
     <p style="color:var(--text-3);font-size:0.82rem;margin-top:6px;">Any replies to this comment will also be deleted. This action cannot be undone.</p>
   `, [
-    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Cancel', cls: 'btn-secondary', action: () => openCommentModal(announcementId) },
     {
       label: 'Delete Comment',
       cls: 'btn-danger',
@@ -1276,10 +1334,11 @@ function confirmDeleteComment(announcementId, commentId) {
               x => x.id !== commentId && x.parent_id !== commentId
             );
           }
-          renderCommentsIntoContainer(announcementId);
+          openCommentModal(announcementId);
           showToast('success', 'Comment Deleted', 'The comment has been removed.');
         } catch (err) {
           showToast('error', 'Failed', err.message || 'Could not delete comment.');
+          openCommentModal(announcementId);
         }
       }
     }
@@ -1876,11 +1935,8 @@ function renderHOAnnouncements() {
   const area = document.getElementById('contentArea');
   if (!area) return;
 
-  const allAnnouncements = [...db.get('announcements')].reverse();
-  // Sort: pinned announcements first (preserving date order within each group)
-  const pinned = allAnnouncements.filter(a => a.is_pinned);
-  const unpinned = allAnnouncements.filter(a => !a.is_pinned);
-  const announcements = [...pinned, ...unpinned];
+  const announcements = getSortedAnnouncements();
+  const canManage = typeof canManageAnnouncements === 'function' ? canManageAnnouncements() : false;
 
   area.innerHTML = `
   <div class="page-header">
@@ -1897,7 +1953,7 @@ function renderHOAnnouncements() {
           <svg style="width:2.5rem;height:2.5rem;color:var(--text-3);margin-bottom:10px;"><use href="#ico-megaphone"/></svg>
           <br><strong>No community announcements at this time.</strong>
         </div>
-      ` : announcements.map(a => communityPostCardHTML(a, false)).join('')}
+      ` : announcements.map(a => communityPostCardHTML(a, canManage)).join('')}
     </div>
   </div>`;
 
@@ -1909,7 +1965,8 @@ function renderHOAnnouncements() {
 function renderPublicAnnouncements() {
   const grid = document.getElementById('pubAnnGrid');
   if (!grid) return;
-  const announcements = db.get('announcements').slice(-6).reverse();
+  const allSorted = typeof getSortedAnnouncements === 'function' ? getSortedAnnouncements() : [...db.get('announcements')].reverse();
+  const announcements = allSorted.slice(0, 6);
   const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#177a80', Others: '#7c3aed' };
   if (!announcements.length) {
     grid.innerHTML = `<div class="no-results" style="grid-column:1/-1"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-megaphone"/></svg>No announcements at this time.</div>`;
@@ -1927,7 +1984,10 @@ function renderPublicAnnouncements() {
     <div class="pub-ann-card" style="--ann-color:${accentColor}">
       <div class="pub-ann-card-top">
         <div class="pub-ann-card-title">${escapeHtml(a.title)}</div>
-        <div style="flex-shrink:0">${a.urgent ? '<span class="badge badge-red">Urgent</span>' : ''}</div>
+        <div style="flex-shrink:0;display:flex;align-items:center;gap:4px;">
+          ${a.is_pinned ? '<span class="badge" style="background:var(--teal-500)20;color:var(--teal-600);font-weight:700;">📌 Pinned</span>' : ''}
+          ${a.urgent ? '<span class="badge badge-red">Urgent</span>' : ''}
+        </div>
       </div>
       ${hasImages ? `
         <div style="position:relative;width:100%;height:150px;overflow:hidden;border-radius:6px;margin:10px 0;cursor:pointer;background:#091a1c;" onclick="openAnnouncementLightbox('${a.id}', 0)">
