@@ -714,19 +714,22 @@ function renderAnnouncementCards() {
   const list = document.getElementById('announcementsList');
   if (!list) return;
 
-  const announcements = [...db.get('announcements')].reverse();
-  if (!announcements.length) {
+  const allAnnouncements = [...db.get('announcements')].reverse();
+  if (!allAnnouncements.length) {
     list.innerHTML = `<div class="no-results" style="padding:40px 20px;"><svg style="width:2.5rem;height:2.5rem;color:var(--text-3);margin-bottom:10px;"><use href="#ico-megaphone"/></svg><br><strong>No announcements posted yet.</strong><p style="color:var(--text-3);font-size:0.85rem;margin-top:4px;">Click the composer above or "New Announcement" to publish your first post.</p></div>`;
     return;
   }
 
+  // Sort: pinned announcements first (preserving date order within each group)
+  const pinned = allAnnouncements.filter(a => a.is_pinned);
+  const unpinned = allAnnouncements.filter(a => !a.is_pinned);
+  const announcements = [...pinned, ...unpinned];
+
   const isAdmin = currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin');
   list.innerHTML = announcements.map(a => communityPostCardHTML(a, isAdmin)).join('');
 
-  // Automatically fetch & render MySQL comments for each announcement
-  announcements.forEach(a => {
-    loadAndRenderComments(a.id);
-  });
+  // Load comment counts for the feed
+  loadCommentCounts();
 }
 
 function communityPostCardHTML(a, isAdmin) {
@@ -747,6 +750,8 @@ function communityPostCardHTML(a, isAdmin) {
   } else if (videoCount > 0) {
     mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;">🎥 ${videoCount} video${videoCount > 1 ? 's' : ''}</span>`;
   }
+
+  const commentIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
 
   return `
   <div class="community-post-card" id="announcement-card-${a.id}">
@@ -771,6 +776,11 @@ function communityPostCardHTML(a, isAdmin) {
       </div>
       ${isAdmin ? `
         <div class="community-post-actions-top">
+          <button type="button" class="btn-post-action ${a.is_pinned ? 'pinned-active' : ''}" onclick="togglePinAnnouncement('${a.id}')" title="${a.is_pinned ? 'Unpin Announcement' : 'Pin Announcement'}">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="${a.is_pinned ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 17v5M9 2h6l-1 7h4l-7 8 1-7H8l1-8z"/>
+            </svg>
+          </button>
           <button type="button" class="btn-post-action" onclick="openEditAnnouncementModal('${a.id}')" title="Edit Announcement">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
@@ -787,6 +797,15 @@ function communityPostCardHTML(a, isAdmin) {
       ` : ''}
     </div>
 
+    ${a.is_pinned ? `
+      <div class="pinned-indicator">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+          <path d="M12 17v5M9 2h6l-1 7h4l-7 8 1-7H8l1-8z"/>
+        </svg>
+        <span>Pinned</span>
+      </div>
+    ` : ''}
+
     <div class="community-post-content">
       <div class="community-post-title">${escapeHtml(a.title)}</div>
       <div class="community-post-text">${escapeHtml(a.content || a.description || '')}</div>
@@ -795,37 +814,106 @@ function communityPostCardHTML(a, isAdmin) {
     ${renderPhotoGridHTML(a.id, images, a.title)}
 
     <div class="community-post-stats">
-      <span id="comm-count-${a.id}">💬 0 comments</span>
+      <span class="comment-count-link" id="comm-count-${a.id}" onclick="openCommentModal('${a.id}')" style="cursor:pointer;">
+        ${commentIcon}Comment
+      </span>
       ${mediaStats}
     </div>
 
     <div class="community-post-action-bar">
-      <button type="button" class="community-post-action-btn" onclick="focusCommentInput('${a.id}')">
+      <button type="button" class="community-post-action-btn" onclick="openCommentModal('${a.id}')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
         </svg>
         <span>Comment</span>
       </button>
     </div>
+  </div>`;
+}
 
-    <div class="community-comments-section">
-      <div class="comment-composer-wrap">
-        ${avatarHTML(currentUser, 'avatar-xs')}
-        <div class="comment-composer-input-box">
-          <input type="text" id="comment-input-${a.id}" class="comment-composer-input" placeholder="Write a comment as ${escapeHtml(currentUser.name)}..." onkeydown="handleCommentKeydown(event, '${a.id}')" />
-          <button type="button" class="comment-composer-submit-btn" onclick="submitNewComment('${a.id}')" title="Post Comment">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="22" y1="2" x2="11" y2="13"></line>
-              <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
-            </svg>
-          </button>
+// ── Pin/Unpin Announcement Handler ──
+async function togglePinAnnouncement(id) {
+  try {
+    const updated = await api.pinAnnouncement(id);
+    // Update in-memory cache
+    const announcements = db.get('announcements');
+    const idx = announcements.findIndex(a => a.id === id);
+    if (idx >= 0) {
+      announcements[idx] = { ...announcements[idx], ...updated };
+      dbCache.announcements = announcements;
+    }
+    renderAnnouncementCards();
+    showToast('success',
+      updated.is_pinned ? 'Announcement Pinned' : 'Announcement Unpinned',
+      updated.is_pinned ? 'This announcement will appear at the top of the feed.' : 'This announcement has been unpinned.'
+    );
+  } catch (err) {
+    showToast('error', 'Failed', err.message || 'Could not pin/unpin announcement.');
+  }
+}
+
+// ── Comment Counts Loader ──
+async function loadCommentCounts() {
+  try {
+    const counts = await api.getCommentCounts();
+    const svgIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+    // Update counts for all announcements on the page
+    const allAnnouncements = db.get('announcements');
+    for (const ann of allAnnouncements) {
+      const el = document.getElementById(`comm-count-${ann.id}`);
+      if (!el) continue;
+      const count = counts[ann.id] || 0;
+      if (count === 0) {
+        el.innerHTML = svgIcon + 'Comment';
+      } else if (count === 1) {
+        el.innerHTML = svgIcon + '1 Comment';
+      } else {
+        el.innerHTML = svgIcon + count + ' Comments';
+      }
+    }
+  } catch (err) {
+    console.error('Could not load comment counts:', err);
+  }
+}
+
+// ── Comment Modal ──
+async function openCommentModal(announcementId) {
+  const ann = db.getOne('announcements', announcementId);
+  if (!ann) return;
+
+  const userName = (currentUser && currentUser.name) ? escapeHtml(currentUser.name) : 'Resident';
+
+  const modalBody = `
+    <div class="comment-modal-container">
+      <div class="comment-modal-post-summary">
+        <strong>${escapeHtml(ann.title)}</strong>
+      </div>
+      <div class="community-comments-section" style="padding:0;">
+        <div class="comment-composer-wrap">
+          ${avatarHTML(currentUser, 'avatar-xs')}
+          <div class="comment-composer-input-box">
+            <input type="text" id="comment-input-${announcementId}" class="comment-composer-input" placeholder="Write a comment as ${userName}..." onkeydown="handleCommentKeydown(event, '${announcementId}')" />
+            <button type="button" class="comment-composer-submit-btn" onclick="submitNewComment('${announcementId}')" title="Post Comment">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="22" y1="2" x2="11" y2="13"></line>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="community-comments-list" id="comments-list-${announcementId}">
+          <div style="font-size:0.8rem;color:var(--text-3);padding:6px 0;">Loading comments...</div>
         </div>
       </div>
-      <div class="community-comments-list" id="comments-list-${a.id}">
-        <div style="font-size:0.8rem;color:var(--text-3);padding:6px 0;">Loading comments...</div>
-      </div>
     </div>
-  </div>`;
+  `;
+
+  openModal('Comments', modalBody, [
+    { label: 'Close', cls: 'btn-secondary', action: closeModal }
+  ], 'modal-comments');
+
+  // Load and render comments into the modal
+  await loadAndRenderComments(announcementId);
 }
 
 function focusCommentInput(announcementId) {
@@ -875,9 +963,14 @@ function renderCommentsIntoContainer(announcementId) {
   const comments = announcementCommentsCache[announcementId] || [];
 
   if (countEl) {
-    countEl.textContent = comments.length === 0
-      ? 'No comments yet'
-      : (comments.length === 1 ? '💬 1 comment' : `💬 ${comments.length} comments`);
+    const svgIcon = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:3px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>';
+    if (comments.length === 0) {
+      countEl.innerHTML = svgIcon + 'Comment';
+    } else if (comments.length === 1) {
+      countEl.innerHTML = svgIcon + '1 Comment';
+    } else {
+      countEl.innerHTML = svgIcon + comments.length + ' Comments';
+    }
   }
 
   if (!container) return;
@@ -1783,7 +1876,11 @@ function renderHOAnnouncements() {
   const area = document.getElementById('contentArea');
   if (!area) return;
 
-  const announcements = [...db.get('announcements')].reverse();
+  const allAnnouncements = [...db.get('announcements')].reverse();
+  // Sort: pinned announcements first (preserving date order within each group)
+  const pinned = allAnnouncements.filter(a => a.is_pinned);
+  const unpinned = allAnnouncements.filter(a => !a.is_pinned);
+  const announcements = [...pinned, ...unpinned];
 
   area.innerHTML = `
   <div class="page-header">
@@ -1804,10 +1901,8 @@ function renderHOAnnouncements() {
     </div>
   </div>`;
 
-  // Fetch and render MySQL comments for residents
-  announcements.forEach(a => {
-    loadAndRenderComments(a.id);
-  });
+  // Load comment counts for the feed
+  loadCommentCounts();
 }
 
 

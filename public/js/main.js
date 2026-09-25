@@ -299,6 +299,16 @@ const api = {
     });
   },
 
+  async pinAnnouncement(id) {
+    return this.request(`/api/announcements/${id}/pin`, {
+      method: 'PATCH',
+    });
+  },
+
+  async getCommentCounts() {
+    return this.request('/api/announcements/comment-counts');
+  },
+
   async getComments(announcementId) {
     return this.request(`/api/announcements/${announcementId}/comments`);
   },

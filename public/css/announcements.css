@@ -1057,3 +1057,53 @@
   text-transform: uppercase;
 }
 
+/* ── Pinned Announcement Indicator ── */
+.pinned-indicator {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 20px 0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--teal-600);
+  letter-spacing: 0.3px;
+}
+.pinned-indicator svg {
+  flex-shrink: 0;
+}
+
+/* Pin button active state */
+.btn-post-action.pinned-active {
+  color: var(--teal-600);
+}
+
+/* Comment count link styling */
+.comment-count-link {
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  transition: color 0.15s ease;
+}
+.comment-count-link:hover {
+  color: var(--teal-600);
+  text-decoration: underline;
+}
+
+/* Comment Modal (wider) */
+.modal-comments #modal {
+  max-width: 640px;
+}
+.comment-modal-post-summary {
+  padding: 0 0 12px;
+  margin-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.95rem;
+  color: var(--text);
+}
+.comment-modal-container .community-comments-list {
+  max-height: 50vh;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+

@@ -64,9 +64,9 @@ const tableConfig = {
     booleanColumns: ['is_active'],
   },
   announcements: {
-    columns: ['id', 'title', 'description', 'content', 'category', 'date', 'urgent', 'createdBy', 'user_id', 'image_path', 'images', 'created_at', 'updated_at'],
+    columns: ['id', 'title', 'description', 'content', 'category', 'date', 'urgent', 'is_pinned', 'createdBy', 'user_id', 'image_path', 'images', 'created_at', 'updated_at'],
     jsonColumns: ['images'],
-    booleanColumns: ['urgent'],
+    booleanColumns: ['urgent', 'is_pinned'],
   },
   announcement_comments: {
     columns: ['id', 'announcement_id', 'user_id', 'parent_id', 'reply_to_user_id', 'comment', 'created_at', 'updated_at'],
@@ -551,6 +551,7 @@ async function createTables() {
     category TEXT,
     date TEXT,
     urgent TINYINT(1) DEFAULT 0,
+    is_pinned TINYINT(1) DEFAULT 0,
     createdBy TEXT,
     user_id TEXT,
     image_path TEXT,
@@ -563,6 +564,7 @@ async function createTables() {
   await run('ALTER TABLE announcements ADD COLUMN created_at TEXT').catch(() => {});
   await run('ALTER TABLE announcements ADD COLUMN updated_at TEXT').catch(() => {});
   await run('ALTER TABLE announcements ADD COLUMN images LONGTEXT').catch(() => {});
+  await run('ALTER TABLE announcements ADD COLUMN is_pinned TINYINT(1) DEFAULT 0').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS announcement_comments (
     id VARCHAR(64) PRIMARY KEY,
@@ -1518,6 +1520,39 @@ app.delete('/api/announcements/:id', asyncHandler(async (req, res) => {
   await run('DELETE FROM announcements WHERE id = ?', [req.params.id]);
 
   res.json({ ok: true });
+}));
+
+// ── Pin/Unpin Announcement ──
+app.patch('/api/announcements/:id/pin', asyncHandler(async (req, res) => {
+  const requester = await getRequester(req);
+  if (!requester || !userHasPermission(requester, 'announcements')) {
+    return res.status(403).json({ error: 'Access Denied: You do not have permission to pin/unpin announcements.' });
+  }
+
+  const existing = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
+  if (!existing) {
+    return res.status(404).json({ error: 'Announcement not found.' });
+  }
+
+  const currentPinned = existing.is_pinned ? 1 : 0;
+  const newPinned = currentPinned === 1 ? 0 : 1;
+
+  await run('UPDATE announcements SET is_pinned = ? WHERE id = ?', [newPinned, req.params.id]);
+
+  const updated = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
+  res.json(deserializeRow('announcements', updated));
+}));
+
+// ── Announcement Comment Counts ──
+app.get('/api/announcements/comment-counts', asyncHandler(async (req, res) => {
+  const rows = await all(
+    'SELECT announcement_id, COUNT(*) AS count FROM announcement_comments GROUP BY announcement_id'
+  );
+  const counts = {};
+  for (const row of rows) {
+    counts[row.announcement_id] = row.count;
+  }
+  res.json(counts);
 }));
 
 app.get('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
