@@ -44,6 +44,9 @@ function formatPostTime(isoStr) {
   }
 }
 
+const ANNOUNCEMENT_PHOTO_ICON_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>';
+const ANNOUNCEMENT_VIDEO_ICON_SVG = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>';
+
 function isVideoAnnouncementMedia(url) {
   if (!url || typeof url !== 'string') return false;
   return /\.(mp4|mov|webm)(\?.*)?$/i.test(url);
@@ -770,11 +773,11 @@ function communityPostCardHTML(a, canManage) {
   const videoCount = images.filter(x => isVideoAnnouncementMedia(x)).length;
   let mediaStats = '';
   if (photoCount > 0 && videoCount > 0) {
-    mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;">📷 ${photoCount} photo${photoCount > 1 ? 's' : ''} &bull; 🎥 ${videoCount} video${videoCount > 1 ? 's' : ''}</span>`;
+    mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;display:inline-flex;align-items:center;"><span style="display:inline-flex;align-items:center;">${ANNOUNCEMENT_PHOTO_ICON_SVG}${photoCount} photo${photoCount > 1 ? 's' : ''}</span><span style="margin:0 6px;">&bull;</span><span style="display:inline-flex;align-items:center;">${ANNOUNCEMENT_VIDEO_ICON_SVG}${videoCount} video${videoCount > 1 ? 's' : ''}</span></span>`;
   } else if (photoCount > 1) {
-    mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;">📷 ${photoCount} photos</span>`;
+    mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;display:inline-flex;align-items:center;">${ANNOUNCEMENT_PHOTO_ICON_SVG}${photoCount} photos</span>`;
   } else if (videoCount > 0) {
-    mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;">🎥 ${videoCount} video${videoCount > 1 ? 's' : ''}</span>`;
+    mediaStats = `<span style="color:var(--text-3);font-size:0.8rem;font-weight:600;display:inline-flex;align-items:center;">${ANNOUNCEMENT_VIDEO_ICON_SVG}${videoCount} video${videoCount > 1 ? 's' : ''}</span>`;
   }
 
   const commentIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
@@ -1525,13 +1528,17 @@ function renderSelectedAnnouncementImagesPreviews() {
   wrap.classList.remove('hidden');
   const photos = selectedAnnouncementFiles.filter(f => !isVideoAnnouncementMedia(f.name) && !(f.type && f.type.startsWith('video/'))).length;
   const videos = selectedAnnouncementFiles.length - photos;
-  let badgeText = '';
-  if (photos && videos) badgeText = `📷 ${photos} photo${photos > 1 ? 's' : ''}, 🎥 ${videos} video${videos > 1 ? 's' : ''}`;
-  else if (videos) badgeText = `🎥 ${videos} video${videos > 1 ? 's' : ''}`;
-  else badgeText = `📷 ${photos} photo${photos > 1 ? 's' : ''}`;
+  let badgeHtml = '';
+  if (photos && videos) {
+    badgeHtml = `<span style="display:inline-flex;align-items:center;">${ANNOUNCEMENT_PHOTO_ICON_SVG}${photos} photo${photos > 1 ? 's' : ''}</span>, <span style="display:inline-flex;align-items:center;margin-left:4px;">${ANNOUNCEMENT_VIDEO_ICON_SVG}${videos} video${videos > 1 ? 's' : ''}</span>`;
+  } else if (videos) {
+    badgeHtml = `<span style="display:inline-flex;align-items:center;">${ANNOUNCEMENT_VIDEO_ICON_SVG}${videos} video${videos > 1 ? 's' : ''}</span>`;
+  } else {
+    badgeHtml = `<span style="display:inline-flex;align-items:center;">${ANNOUNCEMENT_PHOTO_ICON_SVG}${photos} photo${photos > 1 ? 's' : ''}</span>`;
+  }
 
   if (badge) {
-    badge.textContent = badgeText;
+    badge.innerHTML = badgeHtml;
     badge.classList.remove('hidden');
   }
   if (label) {
@@ -1545,7 +1552,7 @@ function renderSelectedAnnouncementImagesPreviews() {
       return `
       <div class="multi-photo-thumb-wrap video-thumb" title="${escapeHtml(f.name)} (Video)">
         <video src="${url}#t=0.5" preload="metadata" muted playsinline></video>
-        <div class="video-thumb-badge">🎥 Video</div>
+        <div class="video-thumb-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>Video</div>
         <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeSelectedAnnouncementFile(${idx})" title="Remove video">&times;</button>
       </div>`;
     }
@@ -1791,11 +1798,11 @@ function renderEditPhotosPreviews() {
 
   if (badge) {
     if (totalPhotos && totalVideos) {
-      badge.textContent = `📷 ${totalPhotos} photo${totalPhotos > 1 ? 's' : ''}, 🎥 ${totalVideos} video${totalVideos > 1 ? 's' : ''}`;
+      badge.innerHTML = `<span style="display:inline-flex;align-items:center;">${ANNOUNCEMENT_PHOTO_ICON_SVG}${totalPhotos} photo${totalPhotos > 1 ? 's' : ''}</span>, <span style="display:inline-flex;align-items:center;margin-left:4px;">${ANNOUNCEMENT_VIDEO_ICON_SVG}${totalVideos} video${totalVideos > 1 ? 's' : ''}</span>`;
     } else if (totalVideos) {
-      badge.textContent = `🎥 ${totalVideos} video${totalVideos > 1 ? 's' : ''}`;
+      badge.innerHTML = `<span style="display:inline-flex;align-items:center;">${ANNOUNCEMENT_VIDEO_ICON_SVG}${totalVideos} video${totalVideos > 1 ? 's' : ''}</span>`;
     } else {
-      badge.textContent = `📷 ${totalPhotos} photo${totalPhotos === 1 ? '' : 's'}`;
+      badge.innerHTML = `<span style="display:inline-flex;align-items:center;">${ANNOUNCEMENT_PHOTO_ICON_SVG}${totalPhotos} photo${totalPhotos === 1 ? '' : 's'}</span>`;
     }
   }
   if (label) {
@@ -1810,7 +1817,7 @@ function renderEditPhotosPreviews() {
       html += `
       <div class="multi-photo-thumb-wrap video-thumb" title="Existing Video ${idx + 1}" onclick="openAnnouncementLightbox(editExistingImages, ${idx})">
         <video src="${escapeHtml(img)}#t=0.5" preload="metadata" muted playsinline></video>
-        <div class="video-thumb-badge">🎥 Video</div>
+        <div class="video-thumb-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>Video</div>
         <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeEditExistingImage(${idx})" title="Remove this video">&times;</button>
       </div>`;
     } else {
@@ -1830,7 +1837,7 @@ function renderEditPhotosPreviews() {
       html += `
       <div class="multi-photo-thumb-wrap video-thumb" title="${escapeHtml(f.name)} (New Video)" style="border-color:var(--teal-500);">
         <video src="${url}#t=0.5" preload="metadata" muted playsinline></video>
-        <div class="video-thumb-badge">🎥 Video</div>
+        <div class="video-thumb-badge"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;margin-right:3px;"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg>Video</div>
         <button type="button" class="multi-photo-thumb-remove" onclick="event.stopPropagation(); removeEditNewFile(${idx})" title="Cancel this video">&times;</button>
       </div>`;
     } else {
@@ -2006,8 +2013,8 @@ function renderPublicAnnouncements() {
             <img src="${escapeHtml(images[0])}" alt="${escapeHtml(a.title)}" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy" />
           `}
           ${images.length > 1 ? `
-            <div style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:10px;">
-              ${hasAnyVideo ? `🎬 ${images.length} media` : `📷 ${images.length} photos`}
+            <div style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:10px;display:inline-flex;align-items:center;gap:4px;">
+              ${hasAnyVideo ? `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg> ${images.length} media` : `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg> ${images.length} photos`}
             </div>
           ` : ''}
         </div>

@@ -54,11 +54,11 @@ function profileAvatarEditableHTML(user) {
     </button>
     <div class="profile-avatar-menu hidden" id="profileAvatarMenu" role="menu">
       <button type="button" class="profile-avatar-menu-item" onclick="handleAvatarMenuChangePhoto(event)" role="menuitem">
-        <span class="profile-avatar-menu-icon">📷</span>
+        <span class="profile-avatar-menu-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg></span>
         <span>Change Photo</span>
       </button>
       <button type="button" class="profile-avatar-menu-item danger" onclick="handleAvatarMenuRemovePhoto(event)" role="menuitem">
-        <span class="profile-avatar-menu-icon">🗑️</span>
+        <span class="profile-avatar-menu-icon"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"></path></svg></span>
         <span>Remove Photo</span>
       </button>
     </div>

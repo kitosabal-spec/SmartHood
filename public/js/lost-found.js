@@ -367,7 +367,7 @@ function renderLostFoundManagement(filtered = null) {
             <tr>
               <td>
                 <strong>${typeof escapeHtml === 'function' ? escapeHtml(report.itemName) : report.itemName}</strong>
-                ${report.image ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.72rem;color:var(--teal-600);margin-left:4px;" title="Media attached">${isLostFoundMediaVideo(report.image) ? '🎥 Video' : '📷 Photo'}</span>` : ''}
+                ${report.image ? `<span style="display:inline-flex;align-items:center;gap:3px;font-size:0.72rem;color:var(--teal-600);margin-left:4px;" title="Media attached">${isLostFoundMediaVideo(report.image) ? '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><polygon points="23 7 16 12 23 17 23 7"></polygon><rect x="1" y="5" width="15" height="14" rx="2" ry="2"></rect></svg> Video' : '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-1px;"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg> Photo'}</span>` : ''}
                 <br>${lostFoundTypeBadge(report.reportType)} <span style="font-size:0.78rem;color:var(--text-3)">${typeof escapeHtml === 'function' ? escapeHtml(report.itemType) : report.itemType}</span>
               </td>
               <td>${typeof escapeHtml === 'function' ? escapeHtml(report.location) : report.location}<br><span style="font-size:0.78rem;color:var(--text-3)">${report.eventDate || ''}</span></td>
