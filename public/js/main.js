@@ -94,6 +94,7 @@ const ADMIN_NAV = [
 
 const HOMEOWNER_NAV = [
   { id: 'ho-dashboard',     icon: 'ico-dashboard',  label: 'Dashboard',       section: 'MAIN' },
+  { id: 'ho-pay-now',       icon: 'ico-credit',     label: 'Pay Now',         section: 'ACCOUNT' },
   { id: 'ho-billing',       icon: 'ico-file',       label: 'My Bills',        section: 'ACCOUNT' },
   { id: 'ho-history',       icon: 'ico-history',    label: 'Payment History', section: 'ACCOUNT' },
   { id: 'ho-amenities',     icon: 'ico-building',   label: 'Book Amenities',  section: 'ACCOUNT' },
@@ -895,8 +896,9 @@ function renderView(viewId) {
     'users':             renderUserManagement,
     'settings':          renderSettings,
     'ho-dashboard':      renderHODashboard,
+    'ho-pay-now':        renderHOPayNow,
     'ho-billing':        renderHOBilling,
-    'ho-payments':       renderHOPayments,
+    'ho-payments':       renderHOPayNow,
     'ho-history':        renderHOHistory,
     'ho-amenities':      renderHOAmenityBooking,
     'ho-vehicles':       renderHOVehicles,
@@ -1044,8 +1046,18 @@ function getRecordYear(...values) {
 
 function getAnalysisYear(payments = db.get('payments'), billings = db.get('billings')) {
   const years = [
-    ...payments.map(p => getRecordYear(p.reviewedAt, p.submittedAt)),
-    ...billings.map(b => getRecordYear(b.createdAt, b.dueDate)),
+    ...payments.map(p => {
+      if (p.monthly_dues_month && /^\d{4}-\d{2}$/.test(p.monthly_dues_month)) {
+        return Number(p.monthly_dues_month.split('-')[0]);
+      }
+      return getRecordYear(p.payment_date, p.reviewedAt, p.submittedAt);
+    }),
+    ...billings.map(b => {
+      if (b.monthly_dues_month && /^\d{4}-\d{2}$/.test(b.monthly_dues_month)) {
+        return Number(b.monthly_dues_month.split('-')[0]);
+      }
+      return getRecordYear(b.createdAt, b.dueDate);
+    }),
   ].filter(Boolean);
   return years.length ? Math.max(...years) : new Date().getFullYear();
 }
@@ -1057,9 +1069,25 @@ function buildMonthlyRevenueData(payments, year) {
   payments
     .filter(p => p.status === 'approved')
     .forEach(p => {
-      const date = new Date(p.reviewedAt || p.submittedAt);
-      if (!Number.isFinite(date.getTime()) || date.getFullYear() !== year) return;
-      totals[date.getMonth()].v += toMoneyNumber(p.amount);
+      let payYear = null;
+      let monthIdx = null;
+
+      // Prioritize explicit monthly dues month over submission/review date
+      if (p.monthly_dues_month && /^\d{4}-\d{2}$/.test(p.monthly_dues_month)) {
+        const [yStr, mStr] = p.monthly_dues_month.split('-');
+        payYear = Number(yStr);
+        monthIdx = Number(mStr) - 1;
+      } else {
+        const date = new Date(p.payment_date || p.reviewedAt || p.submittedAt);
+        if (Number.isFinite(date.getTime())) {
+          payYear = date.getFullYear();
+          monthIdx = date.getMonth();
+        }
+      }
+
+      if (payYear === year && monthIdx !== null && monthIdx >= 0 && monthIdx < 12) {
+        totals[monthIdx].v += toMoneyNumber(p.amount);
+      }
     });
 
   return totals;
@@ -1201,6 +1229,35 @@ function exportReportsFinancialCSV() {
       numUnpaid
     ]));
   });
+
+  // Account for advance monthly dues payments where homeowner was excluded from billing
+  const unlinkedAdvancePayments = payments.filter(p => !p.billingId && p.monthly_dues_month && p.status === 'approved');
+  if (unlinkedAdvancePayments.length > 0) {
+    const grouped = {};
+    unlinkedAdvancePayments.forEach(p => {
+      grouped[p.monthly_dues_month] = grouped[p.monthly_dues_month] || [];
+      grouped[p.monthly_dues_month].push(p);
+    });
+
+    Object.entries(grouped).forEach(([mMonth, mPayments]) => {
+      const mName = formatBillingMonth(mMonth);
+      const totalCollected = mPayments.reduce((sum, p) => sum + toMoneyNumber(p.amount), 0);
+      const numPaid = new Set(mPayments.map(p => p.homeownerId)).size;
+
+      sumBilled += totalCollected;
+      sumCollected += totalCollected;
+      sumPaid += numPaid;
+
+      rows.push(csvRow([
+        `Monthly Dues - ${mName} (Advance)`,
+        totalCollected.toFixed(2),
+        totalCollected.toFixed(2),
+        '0.00',
+        numPaid,
+        0
+      ]));
+    });
+  }
 
   // Summary row
   rows.push(csvRow([

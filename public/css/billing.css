@@ -591,3 +591,20 @@
   border-radius: 8px;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
+
+/* Badge Teal for Advance Payments */
+.badge-teal {
+  background: var(--teal-100);
+  color: var(--teal-700);
+  border: 1px solid rgba(20, 184, 166, 0.25);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+[data-theme="dark"] .badge-teal {
+  background: rgba(20, 184, 166, 0.16);
+  color: #2dd4bf;
+  border: 1px solid rgba(20, 184, 166, 0.3);
+}

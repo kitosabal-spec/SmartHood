@@ -54,12 +54,12 @@ const tableConfig = {
     booleanColumns: [],
   },
   billings: {
-    columns: ['id', 'title', 'amount', 'dueDate', 'description', 'assignedTo', 'status', 'createdAt'],
+    columns: ['id', 'title', 'amount', 'dueDate', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month'],
     jsonColumns: ['assignedTo'],
     booleanColumns: [],
   },
   payments: {
-    columns: ['id', 'homeownerId', 'billingId', 'amount', 'refNum', 'status', 'receipt', 'submittedAt', 'remarks', 'reviewedAt', 'payment_method', 'payment_date', 'verified_by', 'verified_at', 'rejection_reason', 'created_at', 'updated_at'],
+    columns: ['id', 'homeownerId', 'billingId', 'amount', 'refNum', 'status', 'receipt', 'submittedAt', 'remarks', 'reviewedAt', 'payment_method', 'payment_date', 'verified_by', 'verified_at', 'rejection_reason', 'monthly_dues_month', 'payment_type', 'created_at', 'updated_at'],
     jsonColumns: [],
     booleanColumns: [],
   },
@@ -248,6 +248,28 @@ function quoteIdentifier(identifier) {
 function tableName(table) {
   if (!tableConfig[table]) throw new Error(`Unknown table: ${table}`);
   return quoteIdentifier(table);
+}
+
+function parseMonthFromTitle(title) {
+  if (!title || typeof title !== 'string') return null;
+  const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const regex = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i;
+  const match = title.match(regex);
+  if (match) {
+    const monthIdx = monthNames.indexOf(match[1].toLowerCase());
+    if (monthIdx !== -1) {
+      const year = match[2];
+      return `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
+    }
+  }
+  return null;
+}
+
+function formatMonthYearDisplay(monthStr) {
+  if (!monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) return monthStr || '';
+  const [yr, mo] = monthStr.split('-');
+  const date = new Date(Number(yr), Number(mo) - 1, 1);
+  return date.toLocaleString('default', { month: 'long', year: 'numeric' });
 }
 
 async function ensureDatabase() {
@@ -504,8 +526,10 @@ async function createTables() {
     description TEXT,
     assignedTo LONGTEXT,
     status TEXT,
-    createdAt TEXT
+    createdAt TEXT,
+    monthly_dues_month VARCHAR(7)
   )`);
+  await run('ALTER TABLE billings ADD COLUMN monthly_dues_month VARCHAR(7)').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS payment_settings (
     id VARCHAR(64) PRIMARY KEY,
@@ -535,6 +559,8 @@ async function createTables() {
     verified_by VARCHAR(64),
     verified_at TEXT,
     rejection_reason TEXT,
+    monthly_dues_month VARCHAR(7),
+    payment_type VARCHAR(32) DEFAULT 'billing',
     created_at TEXT,
     updated_at TEXT
   )`);
@@ -544,9 +570,33 @@ async function createTables() {
   await run('ALTER TABLE payments ADD COLUMN verified_by VARCHAR(64)').catch(() => {});
   await run('ALTER TABLE payments ADD COLUMN verified_at TEXT').catch(() => {});
   await run('ALTER TABLE payments ADD COLUMN rejection_reason TEXT').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN monthly_dues_month VARCHAR(7)').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN payment_type VARCHAR(32) DEFAULT "billing"').catch(() => {});
   await run('ALTER TABLE payments ADD COLUMN created_at TEXT').catch(() => {});
   await run('ALTER TABLE payments ADD COLUMN updated_at TEXT').catch(() => {});
   await run('ALTER TABLE payments ADD UNIQUE INDEX idx_payments_refNum (refNum)').catch(() => {});
+
+  // Backfill existing billings where monthly_dues_month IS NULL
+  try {
+    const existingBills = await all('SELECT id, title FROM billings WHERE monthly_dues_month IS NULL OR monthly_dues_month = ""');
+    for (const b of existingBills) {
+      const parsed = parseMonthFromTitle(b.title);
+      if (parsed) {
+        await run('UPDATE billings SET monthly_dues_month = ? WHERE id = ?', [parsed, b.id]);
+      }
+    }
+    // Backfill existing payments where monthly_dues_month IS NULL but billing has monthly_dues_month
+    await run(`
+      UPDATE payments p
+      JOIN billings b ON p.billingId = b.id
+      SET p.monthly_dues_month = b.monthly_dues_month,
+          p.payment_type = 'monthly_dues'
+      WHERE (p.monthly_dues_month IS NULL OR p.monthly_dues_month = '')
+        AND b.monthly_dues_month IS NOT NULL AND b.monthly_dues_month != ''
+    `).catch(() => {});
+  } catch (err) {
+    console.error('Error during monthly_dues_month migration:', err.message);
+  }
 
   await run(`CREATE TABLE IF NOT EXISTS announcements (
     id VARCHAR(64) PRIMARY KEY,
@@ -2192,6 +2242,162 @@ app.delete('/api/payment-settings/qr', asyncHandler(async (req, res) => {
   res.json({ ok: true, message: 'QR code removed successfully.' });
 }));
 
+// ── BILLING AUTO-GENERATION APIS ──
+
+app.post('/api/billings/generate-monthly-dues', asyncHandler(async (req, res) => {
+  const requester = await requirePermission(req, res, 'billing');
+  if (!requester) return;
+
+  const month = (req.body.month || req.body.monthly_dues_month || '').trim();
+  if (!month || !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) {
+    return res.status(400).json({ error: 'Valid monthly dues month is required in YYYY-MM format (e.g., 2026-09).' });
+  }
+
+  const [yrStr, moStr] = month.split('-');
+  const yr = parseInt(yrStr, 10);
+  const mo = parseInt(moStr, 10);
+  const monthDate = new Date(yr, mo - 1, 1);
+  const monthName = monthDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const lastDayDate = new Date(yr, mo, 0);
+  const defaultDueDate = `${yr}-${String(mo).padStart(2, '0')}-${String(lastDayDate.getDate()).padStart(2, '0')}`;
+  const dueDate = (req.body.dueDate || defaultDueDate).trim();
+  const today = new Date().toISOString().slice(0, 10);
+
+  const rateSetting = await get('SELECT value FROM appSettings WHERE id = "duesRatePerSqm"');
+  const rate = rateSetting && parseFloat(rateSetting.value) > 0 ? parseFloat(rateSetting.value) : 5.725;
+
+  // Retrieve all active homeowners
+  const homeowners = await all("SELECT * FROM users WHERE role = 'homeowner' AND (status = 'active' OR status IS NULL)");
+  if (!homeowners.length) {
+    return res.status(400).json({ error: 'No active homeowners found.' });
+  }
+
+  // Retrieve all existing billings for this month to prevent duplicate generation
+  const existingBillings = await all(
+    "SELECT * FROM billings WHERE monthly_dues_month = ? OR title = ? OR title LIKE ?",
+    [month, `Monthly Dues - ${monthName}`, `%Monthly Dues%${monthName}%`]
+  );
+
+  const alreadyBilledHomeownerIds = new Set();
+  existingBillings.forEach(b => {
+    let assigned = [];
+    try {
+      assigned = typeof b.assignedTo === 'string' ? JSON.parse(b.assignedTo) : b.assignedTo;
+    } catch {}
+    if (Array.isArray(assigned)) {
+      assigned.forEach(id => alreadyBilledHomeownerIds.add(id));
+    }
+  });
+
+  const createdBillings = [];
+  const excludedHomeowners = [];
+  const alreadyBilledHomeowners = [];
+
+  for (const ho of homeowners) {
+    // 1. Check if already billed for this month
+    if (alreadyBilledHomeownerIds.has(ho.id)) {
+      alreadyBilledHomeowners.push({ id: ho.id, name: ho.name });
+      continue;
+    }
+
+    // 2. Check if homeowner has an APPROVED payment for this monthly dues month
+    const approvedPayment = await get(
+      `SELECT * FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = 'approved'`,
+      [ho.id, month]
+    );
+
+    if (approvedPayment) {
+      // EXCLUDE from billing!
+      excludedHomeowners.push({
+        id: ho.id,
+        name: ho.name,
+        paymentId: approvedPayment.id,
+        refNum: approvedPayment.refNum,
+        reason: 'Approved advance payment',
+      });
+      continue;
+    }
+
+    // 3. Check if homeowner has a PENDING payment for this month
+    const pendingPayment = await get(
+      `SELECT * FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = 'pending'`,
+      [ho.id, month]
+    );
+
+    // Calculate monthly dues amount
+    const lotArea = parseFloat(ho.lotArea || 0);
+    const amount = Math.round((Number.isFinite(lotArea) && lotArea > 0 ? lotArea * rate : 1500) * 100) / 100;
+    const billId = 'b' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
+    const billTitle = `Monthly Dues - ${monthName}`;
+    const desc = pendingPayment
+      ? `Auto-generated monthly dues at PHP ${rate.toFixed(3)} per sqm for ${ho.lotArea || 0} sqm lot area. Note: Resident has a pending payment submission under review. Billing month: ${monthName}.`
+      : `Auto-generated monthly dues at PHP ${rate.toFixed(3)} per sqm for ${ho.lotArea || 0} sqm lot area. Billing month: ${monthName}.`;
+
+    const newBill = {
+      id: billId,
+      title: billTitle,
+      amount: amount,
+      dueDate: dueDate,
+      description: desc,
+      assignedTo: [ho.id],
+      status: 'active',
+      createdAt: today,
+      monthly_dues_month: month,
+    };
+
+    await saveRecord('billings', newBill);
+    createdBillings.push(newBill);
+
+    // If there is a pending payment for this month that didn't have billingId, link it
+    if (pendingPayment && !pendingPayment.billingId) {
+      await run('UPDATE payments SET billingId = ?, updated_at = ? WHERE id = ?', [
+        billId,
+        new Date().toISOString(),
+        pendingPayment.id,
+      ]);
+    }
+  }
+
+  // Audit Logs
+  await recordAuditLog(
+    `Admin generated monthly dues for ${monthName}: ${createdBillings.length} created, ${excludedHomeowners.length} excluded (advance paid), ${alreadyBilledHomeowners.length} already billed`,
+    requester.id
+  );
+
+  if (excludedHomeowners.length > 0) {
+    const excludedNames = excludedHomeowners.map(h => h.name).join(', ');
+    await recordAuditLog(
+      `Monthly dues generation for ${monthName} excluded ${excludedHomeowners.length} homeowner(s) who already paid: ${excludedNames}`,
+      requester.id
+    );
+  }
+
+  // Notifications to billed homeowners
+  if (createdBillings.length > 0) {
+    const billedUserIds = createdBillings.map(b => b.assignedTo[0]);
+    await createServerNotification(
+      'Monthly Dues Billing',
+      `Monthly Dues for ${monthName} have been generated and assigned to your account.`,
+      { userIds: billedUserIds }
+    );
+  }
+
+  res.json({
+    ok: true,
+    month,
+    monthName,
+    createdCount: createdBillings.length,
+    excludedCount: excludedHomeowners.length,
+    alreadyBilledCount: alreadyBilledHomeowners.length,
+    excludedHomeowners,
+    message: createdBillings.length > 0
+      ? `Generated ${createdBillings.length} billing(s) for ${monthName}.${excludedHomeowners.length > 0 ? ` ${excludedHomeowners.length} homeowner(s) were excluded because their dues were already paid in advance.` : ''}`
+      : (excludedHomeowners.length > 0
+          ? `All remaining homeowners have already paid in advance for ${monthName} (${excludedHomeowners.length} excluded).`
+          : `Monthly dues for ${monthName} have already been generated for all homeowners.`),
+  });
+}));
+
 // ── RESIDENT PAYMENT SUBMISSION & VERIFICATION APIS ──
 
 app.post('/api/payments/submit', (req, res) => {
@@ -2232,31 +2438,6 @@ app.post('/api/payments/submit', (req, res) => {
         return res.status(400).json({ error: 'Uploaded file is not a valid JPG, JPEG, PNG, or WebP image.' });
       }
 
-      // Validate Billing
-      const billingId = (req.body.billingId || '').trim();
-      if (!billingId) {
-        await cleanUpFile();
-        return res.status(400).json({ error: 'Billing ID is required.' });
-      }
-
-      const billing = await get('SELECT * FROM billings WHERE id = ?', [billingId]);
-      if (!billing) {
-        await cleanUpFile();
-        return res.status(404).json({ error: 'Billing record not found.' });
-      }
-
-      // Verify billing belongs to this resident
-      let assigned = [];
-      try {
-        assigned = billing.assignedTo ? (typeof billing.assignedTo === 'string' ? JSON.parse(billing.assignedTo) : billing.assignedTo) : [];
-      } catch {
-        assigned = [];
-      }
-      if (!Array.isArray(assigned) || !assigned.includes(requester.id)) {
-        await cleanUpFile();
-        return res.status(403).json({ error: 'Access Denied: You are not assigned to this billing.' });
-      }
-
       // Validate GCash Reference Number
       const refNum = (req.body.refNum || req.body.reference_number || '').trim();
       if (!refNum) {
@@ -2276,30 +2457,127 @@ app.post('/api/payments/submit', (req, res) => {
         return res.status(400).json({ error: 'This GCash reference number has already been submitted. Please check your reference number or contact admin.' });
       }
 
-      // Check if this billing already has an approved payment
-      const alreadyApproved = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "approved"', [requester.id, billing.id]);
-      if (alreadyApproved) {
+      const billingId = (req.body.billingId || '').trim();
+      const monthlyDuesMonth = (req.body.monthly_dues_month || req.body.monthlyDuesMonth || '').trim();
+
+      if (!billingId && !monthlyDuesMonth) {
         await cleanUpFile();
-        return res.status(400).json({ error: 'This bill has already been paid and approved.' });
+        return res.status(400).json({ error: 'Either Billing ID or Monthly Dues Month is required.' });
       }
 
-      // Check if there is already a pending verification payment for this billing
-      const alreadyPending = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "pending"', [requester.id, billing.id]);
-      if (alreadyPending) {
-        await cleanUpFile();
-        return res.status(400).json({ error: 'You already have a payment submission pending admin verification for this bill.' });
+      let actualAmount = 0;
+      let finalBillingId = null;
+      let finalMonthlyDuesMonth = null;
+      let paymentType = 'billing';
+      let billingTitle = '';
+
+      if (billingId) {
+        const billing = await get('SELECT * FROM billings WHERE id = ?', [billingId]);
+        if (!billing) {
+          await cleanUpFile();
+          return res.status(404).json({ error: 'Billing record not found.' });
+        }
+
+        // Verify billing belongs to this resident
+        let assigned = [];
+        try {
+          assigned = billing.assignedTo ? (typeof billing.assignedTo === 'string' ? JSON.parse(billing.assignedTo) : billing.assignedTo) : [];
+        } catch {
+          assigned = [];
+        }
+        if (!Array.isArray(assigned) || !assigned.includes(requester.id)) {
+          await cleanUpFile();
+          return res.status(403).json({ error: 'Access Denied: You are not assigned to this billing.' });
+        }
+
+        // Check if this billing already has an approved payment
+        const alreadyApproved = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "approved"', [requester.id, billing.id]);
+        if (alreadyApproved) {
+          await cleanUpFile();
+          return res.status(400).json({ error: 'This bill has already been paid and approved.' });
+        }
+
+        // Check if there is already a pending verification payment for this billing
+        const alreadyPending = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "pending"', [requester.id, billing.id]);
+        if (alreadyPending) {
+          await cleanUpFile();
+          return res.status(400).json({ error: 'You already have a payment submission pending admin verification for this bill.' });
+        }
+
+        actualAmount = Number(billing.amount) || 0;
+        if (actualAmount <= 0) {
+          await cleanUpFile();
+          return res.status(400).json({ error: 'Invalid billing amount.' });
+        }
+
+        finalBillingId = billing.id;
+        billingTitle = billing.title || 'Billing';
+        finalMonthlyDuesMonth = billing.monthly_dues_month || parseMonthFromTitle(billing.title) || null;
+        if (finalMonthlyDuesMonth) {
+          paymentType = 'monthly_dues';
+        }
+      } else {
+        // Advance Monthly Dues Payment flow
+        if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(monthlyDuesMonth)) {
+          await cleanUpFile();
+          return res.status(400).json({ error: 'Invalid monthly dues month. Format must be YYYY-MM (e.g., 2026-09).' });
+        }
+
+        finalMonthlyDuesMonth = monthlyDuesMonth;
+        paymentType = 'monthly_dues';
+        const [yrStr, moStr] = monthlyDuesMonth.split('-');
+        const monthDate = new Date(parseInt(yrStr, 10), parseInt(moStr, 10) - 1, 1);
+        const monthName = monthDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+        billingTitle = `Monthly Dues - ${monthName}`;
+
+        // Check if homeowner already has an APPROVED payment for this monthly dues month
+        const alreadyApproved = await get(
+          'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "approved"',
+          [requester.id, monthlyDuesMonth]
+        );
+        if (alreadyApproved) {
+          await cleanUpFile();
+          return res.status(400).json({ error: `You have already paid your monthly dues for ${monthName}.` });
+        }
+
+        // Check if homeowner already has a PENDING payment for this monthly dues month
+        const alreadyPending = await get(
+          'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "pending"',
+          [requester.id, monthlyDuesMonth]
+        );
+        if (alreadyPending) {
+          await cleanUpFile();
+          return res.status(400).json({ error: `You already have a payment submission under review for ${monthName}.` });
+        }
+
+        // Calculate expected monthly dues amount based on lotArea and duesRatePerSqm
+        const rateSetting = await get('SELECT value FROM appSettings WHERE id = "duesRatePerSqm"');
+        const rate = rateSetting && parseFloat(rateSetting.value) > 0 ? parseFloat(rateSetting.value) : 5.725;
+        const lotArea = parseFloat(requester.lotArea || 0);
+        const calculated = Math.round((Number.isFinite(lotArea) && lotArea > 0 ? lotArea * rate : 1500) * 100) / 100;
+        actualAmount = calculated > 0 ? calculated : 1500;
+
+        // Check if an existing billing record already exists for this homeowner and month
+        const matchingBills = await all(
+          "SELECT * FROM billings WHERE monthly_dues_month = ? OR title = ? OR title LIKE ?",
+          [monthlyDuesMonth, `Monthly Dues - ${monthName}`, `%Monthly Dues%${monthName}%`]
+        );
+        for (const mb of matchingBills) {
+          let assigned = [];
+          try {
+            assigned = typeof mb.assignedTo === 'string' ? JSON.parse(mb.assignedTo) : mb.assignedTo;
+          } catch {}
+          if (Array.isArray(assigned) && assigned.includes(requester.id)) {
+            finalBillingId = mb.id;
+            break;
+          }
+        }
       }
 
-      // Server-side Amount Integrity Check: amount must match the actual billing record
-      const actualAmount = Number(billing.amount) || 0;
-      if (actualAmount <= 0) {
-        await cleanUpFile();
-        return res.status(400).json({ error: 'Invalid billing amount.' });
-      }
-
+      // Server-side Amount Integrity Check
       if (req.body.amount && Math.abs(Number(req.body.amount) - actualAmount) > 0.01) {
         await cleanUpFile();
-        return res.status(400).json({ error: `Payment amount (₱${Number(req.body.amount).toLocaleString()}) must match the exact bill amount (₱${actualAmount.toLocaleString()}).` });
+        return res.status(400).json({ error: `Payment amount (₱${Number(req.body.amount).toLocaleString()}) must match the required dues amount (₱${actualAmount.toLocaleString()}).` });
       }
 
       // Payment Date
@@ -2312,7 +2590,7 @@ app.post('/api/payments/submit', (req, res) => {
       const paymentRecord = {
         id: paymentId,
         homeownerId: requester.id,
-        billingId: billing.id,
+        billingId: finalBillingId,
         amount: actualAmount,
         refNum: refNum,
         status: 'pending',
@@ -2325,6 +2603,8 @@ app.post('/api/payments/submit', (req, res) => {
         verified_by: null,
         verified_at: null,
         rejection_reason: null,
+        monthly_dues_month: finalMonthlyDuesMonth,
+        payment_type: paymentType,
         created_at: nowIso,
         updated_at: nowIso,
       };
@@ -2332,20 +2612,23 @@ app.post('/api/payments/submit', (req, res) => {
       await saveRecord('payments', paymentRecord);
 
       // Record in Audit Log
+      const displayDesc = finalMonthlyDuesMonth
+        ? `advance payment for "${billingTitle}" (${finalMonthlyDuesMonth})`
+        : `payment for "${billingTitle}"`;
       await recordAuditLog(
-        `Resident ${requester.name} submitted payment for "${billing.title}" (Ref: ${refNum}, Amount: ₱${actualAmount.toLocaleString()})`,
+        `Resident ${requester.name} submitted ${displayDesc} (Ref: ${refNum}, Amount: ₱${actualAmount.toLocaleString()})`,
         requester.id
       );
 
       // Create notifications
       await createServerNotification(
         'Payment Submitted',
-        `${requester.name} submitted a GCash payment of ₱${actualAmount.toLocaleString()} for "${billing.title}".`,
+        `${requester.name} submitted a GCash payment of ₱${actualAmount.toLocaleString()} for "${billingTitle}".`,
         { roles: ['admin'] }
       );
       await createServerNotification(
         'Payment Submission Received',
-        `Your payment of ₱${actualAmount.toLocaleString()} for "${billing.title}" (Ref: ${refNum}) has been received and is pending admin verification.`,
+        `Your payment of ₱${actualAmount.toLocaleString()} for "${billingTitle}" (Ref: ${refNum}) has been received and is pending admin verification.`,
         { userIds: [requester.id] }
       );
 
@@ -2381,15 +2664,38 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
   const nowIso = new Date().toISOString();
   const reviewedAt = new Date().toISOString().slice(0, 10);
 
+  // If payment has monthly_dues_month but no billingId, check if a matching billing was created
+  let updatedBillingId = payment.billingId;
+  if (!updatedBillingId && payment.monthly_dues_month) {
+    const matchingBills = await all(
+      'SELECT id, assignedTo FROM billings WHERE monthly_dues_month = ?',
+      [payment.monthly_dues_month]
+    );
+    for (const mb of matchingBills) {
+      let assigned = [];
+      try {
+        assigned = typeof mb.assignedTo === 'string' ? JSON.parse(mb.assignedTo) : mb.assignedTo;
+      } catch {}
+      if (Array.isArray(assigned) && assigned.includes(payment.homeownerId)) {
+        updatedBillingId = mb.id;
+        break;
+      }
+    }
+  }
+
   await run(
-    `UPDATE payments SET status = 'approved', verified_by = ?, verified_at = ?, reviewedAt = ?, updated_at = ? WHERE id = ?`,
-    [requester.id, nowIso, reviewedAt, nowIso, payment.id]
+    `UPDATE payments SET status = 'approved', billingId = ?, verified_by = ?, verified_at = ?, reviewedAt = ?, updated_at = ? WHERE id = ?`,
+    [updatedBillingId, requester.id, nowIso, reviewedAt, nowIso, payment.id]
   );
 
   const ho = await get('SELECT name FROM users WHERE id = ?', [payment.homeownerId]);
-  const bill = await get('SELECT title FROM billings WHERE id = ?', [payment.billingId]);
+  const bill = updatedBillingId ? await get('SELECT title FROM billings WHERE id = ?', [updatedBillingId]) : null;
   const hoName = ho ? ho.name : 'Resident';
-  const billTitle = bill ? bill.title : 'Billing';
+  let billTitle = bill ? bill.title : '';
+  if (!billTitle && payment.monthly_dues_month) {
+    billTitle = `Monthly Dues - ${formatMonthYearDisplay(payment.monthly_dues_month)}`;
+  }
+  if (!billTitle) billTitle = 'Billing';
 
   // Audit Log
   await recordAuditLog(
@@ -2437,9 +2743,13 @@ app.post('/api/payments/:id/reject', asyncHandler(async (req, res) => {
   );
 
   const ho = await get('SELECT name FROM users WHERE id = ?', [payment.homeownerId]);
-  const bill = await get('SELECT title FROM billings WHERE id = ?', [payment.billingId]);
+  const bill = payment.billingId ? await get('SELECT title FROM billings WHERE id = ?', [payment.billingId]) : null;
   const hoName = ho ? ho.name : 'Resident';
-  const billTitle = bill ? bill.title : 'Billing';
+  let billTitle = bill ? bill.title : '';
+  if (!billTitle && payment.monthly_dues_month) {
+    billTitle = `Monthly Dues - ${formatMonthYearDisplay(payment.monthly_dues_month)}`;
+  }
+  if (!billTitle) billTitle = 'Billing';
 
   // Audit Log
   await recordAuditLog(
@@ -2971,6 +3281,28 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
       const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
       const clean = perms.filter(p => validPermissions.includes(p));
       req.body.permissions = clean.length > 0 ? clean : ['resident'];
+    }
+  }
+
+  if (table === 'billings') {
+    const rawMonth = req.body.monthly_dues_month || (req.body.title ? parseMonthFromTitle(req.body.title) : null);
+    if (rawMonth) {
+      req.body.monthly_dues_month = rawMonth;
+      const assigned = getAssignedHomeownerIds(req.body);
+      for (const hid of assigned) {
+        const approvedPayment = await get(
+          'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "approved"',
+          [hid, rawMonth]
+        );
+        if (approvedPayment) {
+          const ho = await get('SELECT name FROM users WHERE id = ?', [hid]);
+          const hoName = ho ? ho.name : 'Resident';
+          const monthDisplay = formatMonthYearDisplay(rawMonth);
+          return res.status(400).json({
+            error: `This homeowner (${hoName}) has already paid the monthly dues for ${monthDisplay}.`,
+          });
+        }
+      }
     }
   }
 

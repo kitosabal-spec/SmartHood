@@ -59,14 +59,18 @@ async function run() {
     const ho2Id = ho2.userId;
 
     // 2. Admin creates billing assigned to Homeowner 1
+    // Clean up any pre-existing test billing/payment for December 2026
+    await pool.query('DELETE FROM payments WHERE homeownerId = ? AND monthly_dues_month = "2026-12"', [ho1Id]);
+    await pool.query('DELETE FROM billings WHERE title = "Monthly Association Dues - December 2026"');
+
     const testBill1 = {
-      title: 'Monthly Association Dues - October 2026',
+      title: 'Monthly Association Dues - December 2026',
       amount: 1850.50,
-      dueDate: '2026-10-31',
-      description: 'Monthly dues for October 2026',
+      dueDate: '2026-12-31',
+      description: 'Monthly dues for December 2026',
       assignedTo: [ho1Id],
       status: 'active',
-      createdAt: '2026-10-01'
+      createdAt: '2026-12-01'
     };
 
     const createRes1 = await request('/api/billings', adminId, {

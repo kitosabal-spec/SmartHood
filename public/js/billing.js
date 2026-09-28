@@ -53,8 +53,12 @@ function renderBillingTable(billings) {
     const collectionStatus = getBillingCollectionStatus(b);
     const overdue = collectionStatus === 'overdue';
     const amountStr = Number(b.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const monthText = b.monthly_dues_month ? formatBillingMonth(b.monthly_dues_month) : '';
     return `<tr class="${overdue ? 'overdue-row' : ''}">
-      <td><strong>${escapeHtml(b.title)}</strong>${overdue ? ' <span class="badge badge-red">Overdue</span>' : ''}</td>
+      <td>
+        <strong>${escapeHtml(b.title)}</strong>${overdue ? ' <span class="badge badge-red">Overdue</span>' : ''}
+        ${monthText ? `<div style="font-size:0.75rem;color:var(--teal-700);font-weight:600;margin-top:2px">Monthly Dues: ${escapeHtml(monthText)}</div>` : ''}
+      </td>
       <td class="amount-due">₱${amountStr}</td>
       <td>${escapeHtml(b.dueDate || '—')}</td>
       <td>${assignedIds.length} homeowner(s)</td>
@@ -69,13 +73,15 @@ function renderBillingTable(billings) {
 
 function openAddBillingModal() {
   const homeowners = db.get('users').filter(u => u.role === 'homeowner');
+  const currentMonthValue = getLocalMonthValue();
+  const defaultDueDate = getLocalDateValue(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0));
   openModal('Create Billing', `
-    <div class="form-group"><label>Title *</label><input id="bf_title" placeholder="e.g. Monthly Dues – April"/></div>
+    <div class="form-group"><label>Title *</label><input id="bf_title" value="Monthly Association Dues" placeholder="e.g. Monthly Dues – April"/></div>
     <div class="grid-2">
       <div class="form-group"><label>Amount (₱) *</label><input id="bf_amount" type="number" placeholder="1500"/></div>
-      <div class="form-group"><label>Due Date *</label><input id="bf_due" type="date"/></div>
+      <div class="form-group"><label>Due Date *</label><input id="bf_due" type="date" value="${defaultDueDate}"/></div>
     </div>
-    <div class="form-group"><label>Billing Month *</label><input id="bf_month" type="month"/></div>
+    <div class="form-group"><label>Billing Month *</label><input id="bf_month" type="month" value="${currentMonthValue}"/></div>
     <div class="form-group"><label>Description</label><textarea id="bf_desc" placeholder="Optional description..."></textarea></div>
     <div class="form-group">
       <label>Assign To</label>
@@ -103,17 +109,21 @@ function toggleSelectAll(cb) {
 function openProfessionalBillingModal() {
   if (!canManageBilling()) { showToast('error', 'Access Denied', 'Only the admin can create billings.'); return; }
   const homeowners = db.get('users').filter(u => u.role === 'homeowner');
+  const currentMonthValue = getLocalMonthValue();
+  const defaultDueDate = getLocalDateValue(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0));
+  const payments = db.get('payments');
+
   openModal('Create Billing', `
     <div class="billing-form">
       <section class="billing-form-section">
         <div class="billing-form-kicker">Billing details</div>
         <div class="form-group">
           <label>Title *</label>
-          <input id="bf_title" placeholder="Monthly Association Dues"/>
+          <input id="bf_title" value="Monthly Association Dues" placeholder="Monthly Association Dues"/>
         </div>
         <div class="form-group">
           <label>Billing Month *</label>
-          <input id="bf_month" type="month"/>
+          <input id="bf_month" type="month" value="${currentMonthValue}"/>
         </div>
         <div class="grid-2 billing-compact-grid">
           <div class="form-group">
@@ -123,7 +133,7 @@ function openProfessionalBillingModal() {
           </div>
           <div class="form-group">
             <label>Due Date *</label>
-            <input id="bf_due" type="date"/>
+            <input id="bf_due" type="date" value="${defaultDueDate}"/>
           </div>
         </div>
         <div class="form-group billing-desc-group">
@@ -150,15 +160,18 @@ function openProfessionalBillingModal() {
             <input id="bf_assignSearch" type="text" placeholder="Search homeowners..."/>
           </div>
         </div>
-        <div class="billing-homeowner-list">
-          ${homeowners.map(u => `
-            <label class="billing-homeowner-row" data-search="${`${u.name} ${u.block || ''} ${u.lot || ''} ${u.username || ''}`.toLowerCase()}">
+        <div class="billing-homeowner-list" id="bf_homeownerList">
+          ${homeowners.map(u => {
+            const alreadyPaid = payments.some(p => p.homeownerId === u.id && p.monthly_dues_month === currentMonthValue && p.status === 'approved');
+            return `
+            <label class="billing-homeowner-row ${alreadyPaid ? 'is-paid-advance' : ''}" data-search="${`${u.name} ${u.block || ''} ${u.lot || ''} ${u.username || ''}`.toLowerCase()}">
               <input type="checkbox" class="ho-cb" value="${u.id}" onchange="updateProfessionalBillingSummary()">
               <span class="billing-homeowner-main">
-                <span class="billing-homeowner-name">${u.name}</span>
-                <span class="billing-homeowner-meta">${u.block || 'No block'} | ${u.lot || 'No lot'}</span>
+                <span class="billing-homeowner-name">${escapeHtml(u.name)}${alreadyPaid ? ' <span class="badge badge-teal paid-advance-badge" style="font-size:0.7rem;padding:2px 6px;margin-left:6px">Paid in advance</span>' : ''}</span>
+                <span class="billing-homeowner-meta">${escapeHtml(u.block || 'No block')} | ${escapeHtml(u.lot || 'No lot')}${u.lotArea ? ` (${u.lotArea} sqm)` : ''}</span>
               </span>
-            </label>`).join('')}
+            </label>`;
+          }).join('')}
         </div>
       </section>
     </div>
@@ -185,6 +198,33 @@ function setupProfessionalBillingSearch() {
     document.querySelectorAll('.billing-homeowner-row').forEach(row => {
       row.classList.toggle('hidden', q && !row.dataset.search.includes(q));
     });
+  });
+}
+
+function refreshHomeownerPaymentBadges() {
+  const monthInput = document.getElementById('bf_month');
+  const selectedMonth = monthInput ? monthInput.value : '';
+  const payments = db.get('payments');
+  document.querySelectorAll('.billing-homeowner-row').forEach(row => {
+    const cb = row.querySelector('.ho-cb');
+    if (!cb) return;
+    const uid = cb.value;
+    const paidBadge = row.querySelector('.paid-advance-badge');
+    const alreadyPaid = Boolean(selectedMonth && payments.some(p => p.homeownerId === uid && p.monthly_dues_month === selectedMonth && p.status === 'approved'));
+    if (alreadyPaid) {
+      if (!paidBadge) {
+        const nameEl = row.querySelector('.billing-homeowner-name');
+        if (nameEl) {
+          const badge = document.createElement('span');
+          badge.className = 'badge badge-teal paid-advance-badge';
+          badge.style.cssText = 'font-size:0.7rem;padding:2px 6px;margin-left:6px';
+          badge.textContent = 'Paid in advance';
+          nameEl.appendChild(badge);
+        }
+      }
+    } else if (paidBadge) {
+      paidBadge.remove();
+    }
   });
 }
 
@@ -219,7 +259,14 @@ function isMonthlyDuesTitle(title) {
 
 function setupBillingAmountAutoFill() {
   const titleInput = document.getElementById('bf_title');
+  const monthInput = document.getElementById('bf_month');
   if (titleInput) titleInput.addEventListener('input', updateBillingAmountForMonthlyDues);
+  if (monthInput) {
+    monthInput.addEventListener('change', () => {
+      refreshHomeownerPaymentBadges();
+      updateBillingAmountForMonthlyDues();
+    });
+  }
   updateBillingAmountForMonthlyDues();
 }
 
@@ -255,28 +302,59 @@ function updateBillingAmountForMonthlyDues() {
 }
 
 async function saveAddBilling() {
-  const title = document.getElementById('bf_title').value.trim();
-  const due = document.getElementById('bf_due').value;
-  const billingMonth = formatBillingMonth(document.getElementById('bf_month')?.value);
-  if (!title || !due || !billingMonth) { showToast('error', 'Missing Fields', 'Fill all required fields.'); return; }
-  const checked = [...document.querySelectorAll('.ho-cb:checked')].map(c => c.value);
-  if (!checked.length) { showToast('error', 'No Assignment', 'Select at least one homeowner.'); return; }
-  const amount = parseFloat(document.getElementById('bf_amount').value);
-  if (isNaN(amount) || amount <= 0) { showToast('error', 'Invalid Amount', 'Enter a valid billing amount.'); return; }
-  const finalTitle = title.toLowerCase().includes(billingMonth.toLowerCase()) ? title : `${title} - ${billingMonth}`;
-  const description = document.getElementById('bf_desc').value.trim();
-  const bill = {
-    id: db.newId('b'),
-    title: finalTitle,
-    amount,
-    dueDate: due,
-    description: description ? `Billing month: ${billingMonth}. ${description}` : `Billing month: ${billingMonth}.`,
-    assignedTo: checked,
-    status: 'active',
-    createdAt: getLocalDateValue(),
-  };
-
   try {
+    const title = (document.getElementById('bf_title')?.value || '').trim();
+    const due = (document.getElementById('bf_due')?.value || '').trim();
+    const rawMonthInput = (document.getElementById('bf_month')?.value || '').trim();
+    const billingMonth = formatBillingMonth(rawMonthInput);
+    const description = (document.getElementById('bf_desc')?.value || '').trim();
+
+    if (!title || !due) {
+      showToast('error', 'Missing Fields', 'Title and Due Date are required.');
+      return;
+    }
+
+    if (rawMonthInput && !billingMonth) {
+      showToast('error', 'Invalid Month', 'Please select a valid billing month.');
+      return;
+    }
+
+    const checked = [...document.querySelectorAll('.ho-cb:checked')].map(c => c.value);
+    if (!checked.length) {
+      showToast('error', 'No Assignment', 'Select at least one homeowner.');
+      return;
+    }
+
+    const amountInput = document.getElementById('bf_amount');
+    const amount = parseFloat(amountInput ? amountInput.value : '');
+    if (isNaN(amount) || amount <= 0) {
+      showToast('error', 'Invalid Amount', 'Enter a valid billing amount.');
+      return;
+    }
+
+    const finalTitle = billingMonth && !title.toLowerCase().includes(billingMonth.toLowerCase())
+      ? `${title} - ${billingMonth}`
+      : title;
+
+    let finalDesc = '';
+    if (billingMonth) {
+      finalDesc = description ? `Billing month: ${billingMonth}. ${description}` : `Billing month: ${billingMonth}.`;
+    } else {
+      finalDesc = description;
+    }
+
+    const bill = {
+      id: db.newId('b'),
+      title: finalTitle,
+      amount,
+      dueDate: due,
+      description: finalDesc,
+      assignedTo: checked,
+      status: 'active',
+      createdAt: getLocalDateValue(),
+      monthly_dues_month: rawMonthInput || null,
+    };
+
     showLoading();
     // 1. Persist to MySQL and wait for response
     await db.save('billings', bill);
@@ -315,11 +393,13 @@ function viewBillingDetail(id) {
   const assignedIds = getAssignedHomeownerIds(b);
   const assignedNames = assignedIds.map(uid => { const u = users.find(x => x.id === uid); return u ? u.name : uid; });
   const amountStr = Number(b.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const monthText = b.monthly_dues_month ? formatBillingMonth(b.monthly_dues_month) : '';
   openModal(b.title, `
     <p style="color:var(--text-2);margin-bottom:16px">${escapeHtml(b.description || 'No description.')}</p>
+    ${monthText ? `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center"><span style="color:var(--text-3);font-size:0.84rem">Monthly Dues Month:</span><strong style="color:var(--teal-700)">${escapeHtml(monthText)}</strong></div>` : ''}
     <div class="grid-2 mb-16">
       <div class="report-summary-item"><div class="r-val">₱${amountStr}</div><div class="r-lbl">Amount</div></div>
-      <div class="report-summary-item"><div class="r-val">${escapeHtml(b.dueDate || '—')}</div><div class="r-lbl">Due Date</div></div>
+      <div class="report-summary-item"><div class="r-val">${escapeHtml(b.dueDate || '—')}</div><div class="r-lbl">Due Date (Created: ${escapeHtml(b.createdAt || '—')})</div></div>
     </div>
     <strong style="font-size:0.82rem;color:var(--text-3)">ASSIGNED TO (${assignedNames.length})</strong>
     <div style="margin-top:8px;max-height:180px;overflow-y:auto">
@@ -385,57 +465,73 @@ async function autoGenerateMonthlyDues() {
   }
 }
 
-async function autoGenerateLotAreaMonthlyDues() {
-  const month = new Date().toLocaleString('default', { month: 'long' });
-  const year = new Date().getFullYear();
-  const title = `Monthly Dues - ${month} ${year}`;
-  const homeowners = db.get('users').filter(u => u.role === 'homeowner');
-  const existing = db.get('billings').filter(b => b.title === title);
-  const alreadyAssigned = new Set(existing.flatMap(b => getAssignedHomeownerIds(b)));
-  const rate = getDuesRatePerSqm();
-  const lastDay = getLocalDateValue(new Date(year, new Date().getMonth() + 1, 0));
-  const createdAt = getLocalDateValue();
-  const toCreate = [];
+function autoGenerateLotAreaMonthlyDues() {
+  if (!canManageBilling()) { showToast('error', 'Access Denied', 'Only the admin can generate billings.'); return; }
 
-  homeowners.forEach((u, index) => {
-    if (alreadyAssigned.has(u.id)) return;
-    const amount = calculateMonthlyDues(u, rate);
-    const bill = {
-      id: `${db.newId('b')}${index}`,
-      title,
-      amount,
-      dueDate: lastDay,
-      description: `Auto-generated monthly dues at PHP ${rate.toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })} per sqm for ${u.lotArea || 0} sqm lot area.`,
-      assignedTo: [u.id],
-      status: 'active',
-      createdAt,
-    };
-    toCreate.push(bill);
-  });
+  const now = new Date();
+  const currentMonthValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-  if (!toCreate.length) {
-    showToast('warning', 'Already Exists', `Dues for ${month} already created.`);
+  openModal('Generate Monthly Dues', `
+    <div style="padding:4px 0">
+      <p style="color:var(--text-2);margin-bottom:16px;font-size:0.9rem">
+        Select the month for this billing. Homeowners with an approved advance payment for the selected month will be automatically excluded.
+      </p>
+      <div class="form-group">
+        <label style="font-weight:700">Select Month *</label>
+        <input type="month" id="gen_dues_month" class="form-control" value="${currentMonthValue}" style="width:100%;padding:10px;font-size:1rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text)" />
+      </div>
+      <div style="background:var(--surface-2);border-radius:var(--radius);padding:12px;margin-top:14px;border:1px solid var(--border);font-size:0.82rem;color:var(--text-3)">
+        <div style="font-weight:700;color:var(--text-2);margin-bottom:4px">Smart Dues Generation Rules:</div>
+        <div>✓ <strong>Approved Advance Payments:</strong> Excluded from billing automatically.</div>
+        <div style="margin-top:2px">⏳ <strong>Pending Payments:</strong> Homeowner is billed with a note noting the pending submission.</div>
+        <div style="margin-top:2px">🛡️ <strong>Duplicate Protection:</strong> Will not create duplicate billings if already generated.</div>
+      </div>
+    </div>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Generate Billing', cls: 'btn-primary', action: executeAutoGenerateMonthlyDues },
+  ]);
+}
+
+async function executeAutoGenerateMonthlyDues() {
+  const monthInput = document.getElementById('gen_dues_month');
+  const selectedMonth = monthInput ? monthInput.value.trim() : '';
+  if (!selectedMonth || !/^\d{4}-\d{2}$/.test(selectedMonth)) {
+    showToast('error', 'Select Month', 'Please select a valid month.');
     return;
   }
 
+  showLoading();
   try {
-    showLoading();
-    for (const bill of toCreate) {
-      await db.save('billings', bill);
-    }
+    const res = await api.request('/api/billings/generate-monthly-dues', {
+      method: 'POST',
+      body: JSON.stringify({ month: selectedMonth }),
+    });
+
     await api.loadAll();
     if (canManageBilling()) {
       await syncHomeownerBalances();
       await api.loadAll();
     }
-    logAction(`Auto-generated monthly dues: ${title} at PHP ${rate}/sqm for ${toCreate.length} homeowner(s)`);
+
+    closeModal();
     hideLoading();
-    showToast('success', 'Generated', `${title} created for ${toCreate.length} homeowner(s).`);
+
+    const monthDisplay = formatBillingMonth(selectedMonth);
+    if (res.createdCount > 0) {
+      const excludedMsg = res.excludedCount > 0 ? ` (${res.excludedCount} homeowner(s) excluded because dues were already paid in advance)` : '';
+      showToast('success', 'Monthly Dues Generated', `Created ${res.createdCount} billing(s) for ${monthDisplay}${excludedMsg}.`);
+    } else if (res.excludedCount > 0) {
+      showToast('info', 'Already Paid', `All eligible homeowners have already paid their dues for ${monthDisplay} in advance (${res.excludedCount} excluded).`);
+    } else {
+      showToast('warning', 'Already Generated', `Monthly dues for ${monthDisplay} have already been generated for all homeowners.`);
+    }
+
     renderBilling();
   } catch (err) {
     hideLoading();
-    console.error(err);
-    showToast('error', 'Failed', err.message || 'Could not auto-generate dues.');
+    console.error('Failed to generate monthly dues:', err);
+    showToast('error', 'Generation Failed', err.message || 'Could not auto-generate dues.');
   }
 }
 
@@ -520,6 +616,12 @@ function renderPaymentTable(filtered = null) {
     .map(p => {
       const ho = db.getOne('users', p.homeownerId);
       const bill = db.getOne('billings', p.billingId);
+      let billTitleDisplay = bill ? bill.title : '';
+      if (!billTitleDisplay && p.monthly_dues_month) {
+        billTitleDisplay = `Monthly Dues - ${formatBillingMonth(p.monthly_dues_month)}`;
+      }
+      if (!billTitleDisplay) billTitleDisplay = 'N/A';
+      const isAdvance = Boolean(!p.billingId && p.monthly_dues_month);
       const blockLot = [ho?.block, ho?.lot].filter(Boolean).join(' ') || '—';
       const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const methodBadge = `<span class="badge badge-gcash">${escapeHtml(p.payment_method || 'GCash')}</span>`;
@@ -530,7 +632,9 @@ function renderPaymentTable(filtered = null) {
       return `<tr>
         <td><strong>${escapeHtml(ho ? ho.name : 'Unknown')}</strong></td>
         <td>${escapeHtml(blockLot)}</td>
-        <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(bill ? bill.title : 'N/A')}">${escapeHtml(bill ? bill.title : 'N/A')}</td>
+        <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(billTitleDisplay)}">
+          ${escapeHtml(billTitleDisplay)}${isAdvance ? ' <span class="badge badge-teal" style="font-size:0.68rem;padding:1px 6px">Advance</span>' : ''}
+        </td>
         <td class="amount-paid">${formattedAmount}</td>
         <td>${methodBadge}</td>
         <td><code style="font-size:0.84rem;font-weight:700;color:var(--text)">${escapeHtml(p.refNum || '—')}</code></td>
@@ -619,7 +723,8 @@ function viewPaymentDetail(id) {
           <tr><td style="padding:5px 0;color:var(--text-3);width:140px">Resident Name:</td><td style="font-weight:700">${escapeHtml(ho ? ho.name : 'Unknown')}</td></tr>
           <tr><td style="padding:5px 0;color:var(--text-3)">Block &amp; Lot:</td><td>${escapeHtml(blockLot)}</td></tr>
           <tr><td style="padding:5px 0;color:var(--text-3)">Contact Number:</td><td>${escapeHtml(ho?.contact || '—')}</td></tr>
-          <tr><td style="padding:5px 0;color:var(--text-3)">Billing Title:</td><td><strong>${escapeHtml(bill ? bill.title : 'N/A')}</strong></td></tr>
+          <tr><td style="padding:5px 0;color:var(--text-3)">Billing Title:</td><td><strong>${escapeHtml(bill ? bill.title : (p.monthly_dues_month ? `Monthly Dues - ${formatBillingMonth(p.monthly_dues_month)}` : 'N/A'))}</strong></td></tr>
+          ${p.monthly_dues_month ? `<tr><td style="padding:5px 0;color:var(--text-3)">Monthly Dues Month:</td><td><strong>${escapeHtml(formatBillingMonth(p.monthly_dues_month))}</strong>${!p.billingId ? ' <span class="badge badge-teal" style="font-size:0.75rem;padding:2px 6px">Advance Payment</span>' : ''}</td></tr>` : ''}
           <tr><td style="padding:5px 0;color:var(--text-3)">Due Date:</td><td>${escapeHtml(bill?.dueDate || '—')}</td></tr>
           <tr><td style="padding:5px 0;color:var(--text-3)">Payment Method:</td><td><span class="badge badge-gcash">${escapeHtml(p.payment_method || 'GCash')}</span></td></tr>
           <tr><td style="padding:5px 0;color:var(--text-3)">GCash Reference #:</td><td><code style="font-weight:800;font-size:0.95rem;color:var(--gcash-blue)">${escapeHtml(p.refNum)}</code></td></tr>
@@ -967,6 +1072,23 @@ function renderHOBilling() {
     <div class="page-header-left">
       <h2>My Bills</h2>
       <p>View your billing records and submit payments via GCash.</p>
+    </div>
+    <div class="page-header-actions">
+      <button class="btn btn-primary" onclick="navigate('ho-pay-now')">
+        <svg width="15" height="15"><use href="#ico-credit"/></svg> Pay Dues in Advance
+      </button>
+    </div>
+  </div>
+
+  <div class="section-card" style="margin-bottom:16px;background:linear-gradient(135deg,var(--surface) 0%,var(--surface-2) 100%);border-left:4px solid var(--teal-600)">
+    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:16px">
+      <div>
+        <h4 style="margin:0 0 4px 0;color:var(--text);font-size:0.98rem">Advance Monthly Dues Payment</h4>
+        <p style="margin:0;font-size:0.83rem;color:var(--text-3)">You can pay your monthly association dues in advance before billing is generated. Approved payments exclude you from future duplicate billings.</p>
+      </div>
+      <button class="btn btn-secondary btn-sm" onclick="navigate('ho-pay-now')">
+        Go to Pay Now &rarr;
+      </button>
     </div>
   </div>
   <div class="section-card">
@@ -1378,6 +1500,12 @@ function renderHOHistory() {
               .sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '') || (b.id || '').localeCompare(a.id || ''))
               .map(p => {
                 const bill = db.getOne('billings', p.billingId);
+                let billTitleDisplay = bill ? bill.title : '';
+                if (!billTitleDisplay && p.monthly_dues_month) {
+                  billTitleDisplay = `Monthly Dues - ${formatBillingMonth(p.monthly_dues_month)}`;
+                }
+                if (!billTitleDisplay) billTitleDisplay = 'N/A';
+                const isAdvance = Boolean(!p.billingId && p.monthly_dues_month);
                 const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
                 let statusBadge = '<span class="badge badge-yellow">Pending</span>';
                 if (p.status === 'approved') statusBadge = '<span class="badge badge-green">Approved</span>';
@@ -1391,7 +1519,10 @@ function renderHOHistory() {
                 }
 
                 return `<tr>
-                  <td><strong>${escapeHtml(bill ? bill.title : 'N/A')}</strong></td>
+                  <td>
+                    <strong>${escapeHtml(billTitleDisplay)}</strong>
+                    ${isAdvance ? ' <span class="badge badge-teal" style="font-size:0.68rem;padding:1px 6px">Advance</span>' : ''}
+                  </td>
                   <td class="amount-paid">${formattedAmount}</td>
                   <td><span class="badge badge-gcash">${escapeHtml(p.payment_method || 'GCash')}</span></td>
                   <td><code style="font-size:0.84rem;font-weight:700;color:var(--text)">${escapeHtml(p.refNum)}</code></td>
@@ -1416,32 +1547,400 @@ function renderHOHistory() {
 }
 
 function renderHOPayments() {
-  const myBillings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(currentUser?.id));
-  const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser.id);
-  const unpaid = myBillings.filter(b => !myPayments.find(p => p.billingId === b.id && (p.status === 'approved' || p.status === 'pending')));
+  renderHOPayNow();
+}
 
-  if (unpaid.length === 0) {
-    const area = document.getElementById('contentArea');
-    area.innerHTML = `
-      <div class="page-header">
-        <div class="page-header-left">
-          <h2>Submit Payment</h2>
-          <p>Pay your association dues via GCash.</p>
-        </div>
-      </div>
+// ── RESIDENT PORTAL: PAY NOW (ADVANCE MONTHLY DUES) ──
+
+let currentSelectedPayNowMonth = null;
+let selectedPayNowReceiptFile = null;
+
+function renderHOPayNow() {
+  if (canManageBilling()) {
+    syncHomeownerBalances();
+  }
+
+  const now = new Date();
+  const currentMonthValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+  if (!currentSelectedPayNowMonth) {
+    currentSelectedPayNowMonth = currentMonthValue;
+  }
+
+  // Generate 15 available months: from 2 months prior to 12 months ahead
+  const availableMonths = [];
+  const startMonthDate = new Date(now.getFullYear(), now.getMonth() - 2, 1);
+  for (let i = 0; i <= 14; i++) {
+    const d = new Date(startMonthDate.getFullYear(), startMonthDate.getMonth() + i, 1);
+    const mVal = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+    const mLabel = d.toLocaleString('default', { month: 'long', year: 'numeric' });
+    availableMonths.push({ value: mVal, label: mLabel, isCurrent: mVal === currentMonthValue });
+  }
+
+  const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser?.id);
+  const myBillings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(currentUser?.id));
+
+  // Determine status for the currently selected month
+  const activeMonthPayment = myPayments.find(p => p.monthly_dues_month === currentSelectedPayNowMonth && p.status === 'approved');
+  const pendingMonthPayment = myPayments.find(p => p.monthly_dues_month === currentSelectedPayNowMonth && p.status === 'pending');
+  const rejectedMonthPayment = myPayments.find(p => p.monthly_dues_month === currentSelectedPayNowMonth && p.status === 'rejected');
+  const billingForMonth = myBillings.find(b => b.monthly_dues_month === currentSelectedPayNowMonth);
+
+  const rate = getDuesRatePerSqm();
+  const lotArea = parseFloat(currentUser?.lotArea || 0);
+  const calculatedDues = calculateMonthlyDues(currentUser, rate);
+  const duesAmount = billingForMonth ? Number(billingForMonth.amount) : (calculatedDues > 0 ? calculatedDues : 1500);
+  const formattedAmount = '₱' + duesAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const selectedMonthLabel = formatBillingMonth(currentSelectedPayNowMonth);
+
+  const gcash = db.get('payment_settings').find(s => s.payment_method === 'gcash') || {
+    account_name: 'San Alfonso Homes HOA',
+    account_number: '09171234567',
+    instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay the exact amount shown in SmartHood.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
+    is_active: 1,
+    qr_code_path: null,
+  };
+  const rawInstructions = gcash.instructions || '1. Open GCash.\n2. Scan the QR code.\n3. Pay the exact amount shown in SmartHood.\n4. Save your receipt.\n5. Submit your reference number and receipt screenshot.';
+  const instructionItems = rawInstructions.split('\n').filter(line => line.trim().length > 0);
+  const today = getLocalDateValue();
+
+  const area = document.getElementById('contentArea');
+  area.innerHTML = `
+  <div class="page-header">
+    <div class="page-header-left">
+      <h2>Pay Now - Monthly Dues</h2>
+      <p>Pay your association monthly dues in advance or for current billings via GCash.</p>
+    </div>
+  </div>
+
+  <div class="grid-2" style="align-items:start;gap:20px">
+    <!-- Left Column: Month Selection & Dues Calculation -->
+    <div style="display:flex;flex-direction:column;gap:18px">
       <div class="section-card">
-        <div class="section-card-body" style="text-align:center;padding:40px 20px">
-          <svg style="width:3.5rem;height:3.5rem;color:var(--green-600);margin-bottom:12px"><use href="#ico-check"/></svg>
-          <h3 style="margin:0 0 8px 0;color:var(--text)">You Have No Unpaid Bills</h3>
-          <p style="color:var(--text-3);max-width:400px;margin:0 auto 16px auto">All your assigned bills have been paid or are currently pending admin verification.</p>
-          <button class="btn btn-secondary" onclick="navigate('ho-history')">View Payment History</button>
+        <div class="section-card-header">
+          <div>
+            <h3 style="margin:0;font-size:1.05rem">Select Dues Month</h3>
+            <p style="font-size:0.8rem;color:var(--text-3);margin:2px 0 0 0">Choose the monthly dues month you wish to pay.</p>
+          </div>
+        </div>
+        <div class="section-card-body">
+          <div class="form-group" style="margin-bottom:12px">
+            <label style="font-weight:700">Monthly Dues Period *</label>
+            <select id="payNowMonthSelect" class="form-control" onchange="handlePayNowMonthChange(this.value)" style="width:100%;padding:10px;font-size:1rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text);font-weight:600">
+              ${availableMonths.map(m => {
+                const paid = myPayments.some(p => p.monthly_dues_month === m.value && p.status === 'approved');
+                const pend = myPayments.some(p => p.monthly_dues_month === m.value && p.status === 'pending');
+                let tag = '';
+                if (paid) tag = ' (Paid & Verified)';
+                else if (pend) tag = ' (Under Review)';
+                else if (m.isCurrent) tag = ' (Current Month)';
+                return `<option value="${m.value}" ${m.value === currentSelectedPayNowMonth ? 'selected' : ''}>${m.label}${tag}</option>`;
+              }).join('')}
+            </select>
+          </div>
+
+          <div class="payment-bill-summary" style="margin-top:16px">
+            <div class="payment-bill-meta">
+              <h4>${selectedMonthLabel} Monthly Dues</h4>
+              <p>Lot Area: <strong>${lotArea} sqm</strong> &bull; Rate: <strong>₱${rate.toFixed(3)}/sqm</strong></p>
+              ${billingForMonth ? `<p style="color:var(--teal-700);margin-top:3px;font-weight:600">Official billing already generated by admin</p>` : `<p style="color:var(--text-3);margin-top:3px">Advance payment — avoids future billing for ${selectedMonthLabel}</p>`}
+            </div>
+            <div class="payment-amount-badge">
+              <div class="pay-label">Amount to Pay</div>
+              <div class="pay-val">${formattedAmount}</div>
+            </div>
+          </div>
         </div>
       </div>
-    `;
+
+      <!-- GCash Info Card -->
+      <div class="gcash-info-card">
+        <div class="gcash-brand-header">
+          <div class="gcash-logo-text">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.41 0-8-3.59-8-8s3.59-8 8-8 8 3.59 8 8-3.59 8-8 8zm-1-13h2v6h-2zm0 8h2v2h-2z"/></svg>
+            Official HOA GCash Details
+          </div>
+          <span class="gcash-status-pill">${gcash.is_active ? 'Active' : 'Disabled'}</span>
+        </div>
+
+        ${!gcash.is_active ? `
+          <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius);padding:14px;text-align:center;color:#991b1b">
+            <strong>GCash Payments Temporarily Disabled</strong>
+            <p style="margin:4px 0 0 0;font-size:0.82rem">The administrator has temporarily disabled GCash payments. Please check back later or pay at the HOA office.</p>
+          </div>
+        ` : `
+          <div class="gcash-details-grid">
+            <div class="gcash-field">
+              <span class="gcash-field-label">Account Name</span>
+              <span class="gcash-field-val">${escapeHtml(gcash.account_name || 'San Alfonso Homes HOA')}</span>
+            </div>
+            <div class="gcash-field">
+              <span class="gcash-field-label">GCash Mobile Number</span>
+              <div class="gcash-number-wrap">
+                <span class="gcash-number-val">${escapeHtml(gcash.account_number || '09171234567')}</span>
+                <button type="button" class="btn-copy-number" id="copyGcashBtn" onclick="copyGcashNumber('${escapeHtml(gcash.account_number || '09171234567')}')" title="Copy Number">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                  Copy
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div class="gcash-qr-section">
+            ${gcash.qr_code_path ? `
+              <div class="gcash-qr-frame">
+                <img src="${gcash.qr_code_path}" class="gcash-qr-img" alt="Scan GCash QR Code" onclick="openReceiptLightbox('${gcash.qr_code_path}')" title="Click to view large"/>
+              </div>
+              <div class="gcash-qr-hint">Scan with GCash app or transfer to the mobile number above</div>
+            ` : `
+              <div class="gcash-qr-placeholder">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                <span>Please send payment to the GCash mobile number above</span>
+              </div>
+            `}
+          </div>
+
+          <div class="gcash-instructions-box">
+            <div class="gcash-instructions-title">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+              Payment Instructions
+            </div>
+            <ol class="gcash-instructions-list">
+              ${instructionItems.map(item => `<li>${escapeHtml(item.replace(/^\d+[\.\)]\s*/, ''))}</li>`).join('')}
+            </ol>
+          </div>
+        `}
+      </div>
+    </div>
+
+    <!-- Right Column: Status Banner / Payment Submission Form -->
+    <div style="display:flex;flex-direction:column;gap:18px">
+      ${activeMonthPayment ? `
+        <!-- Already Paid State -->
+        <div class="section-card" style="border-top:4px solid var(--green-600)">
+          <div class="section-card-body" style="text-align:center;padding:36px 20px">
+            <div style="width:56px;height:56px;border-radius:50%;background:#dcfce7;color:#16a34a;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h3 style="margin:0 0 6px 0;color:var(--text)">${selectedMonthLabel} Monthly Dues Already Paid</h3>
+            <p style="color:var(--text-3);max-width:420px;margin:0 auto 16px auto;font-size:0.88rem">
+              Your payment for ${selectedMonthLabel} association dues has been verified and approved by the administrator. You will not receive another billing for this month.
+            </p>
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;max-width:380px;margin:0 auto 20px auto;text-align:left;font-size:0.85rem">
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--text-3)">Amount Paid:</span><strong>₱${Number(activeMonthPayment.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--text-3)">GCash Ref #:</span><code style="font-weight:700;color:var(--gcash-blue)">${escapeHtml(activeMonthPayment.refNum)}</code></div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--text-3)">Payment Date:</span><span>${escapeHtml(activeMonthPayment.payment_date || activeMonthPayment.submittedAt || '—')}</span></div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--text-3)">Verified At:</span><span>${escapeHtml((activeMonthPayment.verified_at || '').slice(0, 10) || activeMonthPayment.reviewedAt || 'Verified')}</span></div>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:center">
+              ${activeMonthPayment.receipt ? `<button class="btn btn-secondary btn-sm" onclick="openReceiptLightbox('${activeMonthPayment.receipt}')">View Receipt</button>` : ''}
+              <button class="btn btn-primary btn-sm" onclick="navigate('ho-history')">Payment History</button>
+            </div>
+          </div>
+        </div>
+      ` : (pendingMonthPayment ? `
+        <!-- Pending Verification State -->
+        <div class="section-card" style="border-top:4px solid var(--yellow-500)">
+          <div class="section-card-body" style="text-align:center;padding:36px 20px">
+            <div style="width:56px;height:56px;border-radius:50%;background:#fef9c3;color:#ca8a04;display:inline-flex;align-items:center;justify-content:center;margin-bottom:14px">
+              <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            </div>
+            <h3 style="margin:0 0 6px 0;color:var(--text)">Payment Under Review</h3>
+            <p style="color:var(--text-3);max-width:420px;margin:0 auto 16px auto;font-size:0.88rem">
+              Your payment submission for <strong>${selectedMonthLabel}</strong> is currently pending administrator verification. Duplicate submissions for this month are temporarily disabled while under review.
+            </p>
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px;max-width:380px;margin:0 auto 20px auto;text-align:left;font-size:0.85rem">
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--text-3)">Amount Submitted:</span><strong>₱${Number(pendingMonthPayment.amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--text-3)">GCash Ref #:</span><code style="font-weight:700;color:var(--gcash-blue)">${escapeHtml(pendingMonthPayment.refNum)}</code></div>
+              <div style="display:flex;justify-content:space-between;padding:4px 0"><span style="color:var(--text-3)">Submitted On:</span><span>${escapeHtml(pendingMonthPayment.submittedAt || '—')}</span></div>
+            </div>
+            <div style="display:flex;gap:10px;justify-content:center">
+              ${pendingMonthPayment.receipt ? `<button class="btn btn-secondary btn-sm" onclick="openReceiptLightbox('${pendingMonthPayment.receipt}')">View Uploaded Proof</button>` : ''}
+              <button class="btn btn-primary btn-sm" onclick="navigate('ho-history')">View Payment History</button>
+            </div>
+          </div>
+        </div>
+      ` : `
+        <!-- Form Enabled (New submission or rejected resubmission) -->
+        <div class="section-card">
+          <div class="section-card-header">
+            <div>
+              <h3 style="margin:0;font-size:1.05rem">Submit Payment Proof</h3>
+              <p style="font-size:0.8rem;color:var(--text-3);margin:2px 0 0 0">Enter your transaction details and receipt after sending GCash payment.</p>
+            </div>
+          </div>
+          <div class="section-card-body">
+            ${rejectedMonthPayment ? `
+              <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:var(--radius);padding:14px;margin-bottom:18px;color:#991b1b;font-size:0.86rem">
+                <strong>⚠️ Previous Submission Rejected</strong>
+                <div style="margin-top:4px">Reason: ${escapeHtml(rejectedMonthPayment.rejection_reason || rejectedMonthPayment.remarks || 'Check history')}</div>
+                <div style="margin-top:4px;font-size:0.8rem;color:#7f1d1d">Please submit a clearer screenshot or corrected transaction reference number below.</div>
+              </div>
+            ` : ''}
+
+            <div class="grid-2">
+              <div class="form-group">
+                <label>Payment Method</label>
+                <input value="GCash" readonly style="background:var(--surface-2);cursor:not-allowed;font-weight:700;color:var(--gcash-blue)"/>
+              </div>
+              <div class="form-group">
+                <label>Required Amount</label>
+                <input value="${formattedAmount}" readonly style="background:var(--surface-2);cursor:not-allowed;font-weight:800;color:var(--teal-700)"/>
+                <small style="font-size:0.72rem;color:var(--text-3);display:block;margin-top:3px">Locked to official monthly dues.</small>
+              </div>
+            </div>
+
+            <div class="grid-2">
+              <div class="form-group">
+                <label>GCash Reference Number *</label>
+                <input id="paynow_ref_num" placeholder="e.g. 1002345678912" required style="font-family:monospace;font-weight:700;letter-spacing:0.04em"/>
+                <small style="font-size:0.72rem;color:var(--text-3);display:block;margin-top:3px">Found on your GCash receipt/SMS.</small>
+              </div>
+              <div class="form-group">
+                <label>Payment Date *</label>
+                <input type="date" id="paynow_pay_date" value="${today}" max="${today}" required/>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Upload GCash Receipt / Screenshot *</label>
+              <div class="receipt-upload-zone" id="payNowReceiptZone" onclick="document.getElementById('paynow_receipt_file').click()">
+                <input type="file" id="paynow_receipt_file" class="receipt-file-input" accept=".jpg,.jpeg,.png,.webp" onchange="handlePayNowReceiptSelect(this.files[0])"/>
+                <div class="receipt-upload-icon">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                </div>
+                <div class="receipt-upload-text">Click or drag &amp; drop your receipt screenshot here</div>
+                <div class="receipt-upload-subtext">JPG, JPEG, PNG, or WebP (Max 10 MB)</div>
+              </div>
+
+              <div class="receipt-preview-card hidden" id="payNowPreviewCard">
+                <img id="payNowPreviewThumb" class="receipt-preview-thumb" alt="Receipt preview"/>
+                <div class="receipt-preview-actions">
+                  <span id="payNowPreviewMeta" style="color:var(--text-2);font-weight:600"></span>
+                  <button type="button" class="btn btn-secondary btn-sm" onclick="clearSelectedPayNowReceiptFile()">Remove</button>
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label>Additional Notes (Optional)</label>
+              <textarea id="paynow_remarks" placeholder="Optional notes for HOA administration..."></textarea>
+            </div>
+
+            <button type="button" class="btn btn-primary" style="width:100%;padding:12px;font-size:1rem;font-weight:700" onclick="executeSubmitPayNow('${currentSelectedPayNowMonth}', ${duesAmount})">
+              Submit Payment for ${selectedMonthLabel}
+            </button>
+          </div>
+        </div>
+      `)}
+    </div>
+  </div>`;
+
+  setupPayNowDragDrop();
+}
+
+function handlePayNowMonthChange(monthValue) {
+  currentSelectedPayNowMonth = monthValue;
+  renderHOPayNow();
+}
+
+function setupPayNowDragDrop() {
+  const zone = document.getElementById('payNowReceiptZone');
+  if (!zone) return;
+  ['dragenter', 'dragover'].forEach(eventName => {
+    zone.addEventListener(eventName, e => { e.preventDefault(); zone.classList.add('dragover'); }, false);
+  });
+  ['dragleave', 'drop'].forEach(eventName => {
+    zone.addEventListener(eventName, e => { e.preventDefault(); zone.classList.remove('dragover'); }, false);
+  });
+  zone.addEventListener('drop', e => {
+    const dt = e.dataTransfer;
+    if (dt && dt.files && dt.files[0]) {
+      handlePayNowReceiptSelect(dt.files[0]);
+    }
+  });
+}
+
+function handlePayNowReceiptSelect(file) {
+  if (!file) return;
+  const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
+  const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
+  if (!allowed.includes(ext)) {
+    showToast('error', 'Unsupported Format', 'Please upload a JPG, PNG, or WebP receipt image.');
+    return;
+  }
+  if (file.size > 10 * 1024 * 1024) {
+    showToast('error', 'File Too Large', 'Receipt file size must be 10 MB or smaller.');
     return;
   }
 
-  // If resident has unpaid bills, open pay now for the first unpaid bill
-  openPayNowModal(unpaid[0].id);
+  selectedPayNowReceiptFile = file;
+
+  const reader = new FileReader();
+  reader.onload = e => {
+    const thumb = document.getElementById('payNowPreviewThumb');
+    const meta = document.getElementById('payNowPreviewMeta');
+    const card = document.getElementById('payNowPreviewCard');
+    const zone = document.getElementById('payNowReceiptZone');
+
+    if (thumb) thumb.src = e.target.result;
+    if (meta) meta.textContent = `${file.name} (${(file.size / 1024).toFixed(1)} KB)`;
+    if (card) card.classList.remove('hidden');
+    if (zone) zone.classList.add('hidden');
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearSelectedPayNowReceiptFile() {
+  selectedPayNowReceiptFile = null;
+  const card = document.getElementById('payNowPreviewCard');
+  const zone = document.getElementById('payNowReceiptZone');
+  const fileInput = document.getElementById('paynow_receipt_file');
+  if (card) card.classList.add('hidden');
+  if (zone) zone.classList.remove('hidden');
+  if (fileInput) fileInput.value = '';
+}
+
+async function executeSubmitPayNow(month, amount) {
+  const refNum = (document.getElementById('paynow_ref_num')?.value || '').trim();
+  const paymentDate = (document.getElementById('paynow_pay_date')?.value || '').trim();
+  const remarks = (document.getElementById('paynow_remarks')?.value || '').trim();
+
+  if (!refNum) {
+    showToast('error', 'Reference Required', 'Please enter your GCash reference number.');
+    document.getElementById('paynow_ref_num')?.focus();
+    return;
+  }
+  if (refNum.length < 5) {
+    showToast('error', 'Invalid Reference', 'Please enter a valid GCash reference number (at least 5 characters).');
+    return;
+  }
+  if (!selectedPayNowReceiptFile) {
+    showToast('error', 'Receipt Required', 'Please upload a screenshot or photo of your GCash receipt.');
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('monthly_dues_month', month);
+  formData.append('amount', amount);
+  formData.append('refNum', refNum);
+  formData.append('payment_date', paymentDate || getLocalDateValue());
+  formData.append('payment_method', 'GCash');
+  formData.append('remarks', remarks);
+  formData.append('receipt', selectedPayNowReceiptFile);
+
+  showLoading();
+  try {
+    await api.submitPayment(formData);
+    await api.loadAll();
+    syncHomeownerBalances();
+    hideLoading();
+    selectedPayNowReceiptFile = null;
+    const monthLabel = formatBillingMonth(month);
+    showToast('success', 'Payment Submitted', `Your advance payment proof for ${monthLabel} has been submitted and is pending admin verification.`);
+    renderHOPayNow();
+  } catch (error) {
+    hideLoading();
+    showToast('error', 'Submission Failed', error.message || 'Could not submit payment. Please verify your reference number.');
+  }
 }
 
