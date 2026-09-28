@@ -608,3 +608,251 @@
   color: #2dd4bf;
   border: 1px solid rgba(20, 184, 166, 0.3);
 }
+
+/* ── RESIDENT PAY NOW PORTAL ── */
+.paynow-hero-card {
+  background: linear-gradient(135deg, var(--surface) 0%, var(--surface-2) 100%);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 20px 24px;
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+}
+
+.paynow-hero-content h3 {
+  margin: 0 0 6px 0;
+  font-size: 1.15rem;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.paynow-hero-content p {
+  margin: 0;
+  font-size: 0.86rem;
+  color: var(--text-3);
+  max-width: 600px;
+  line-height: 1.45;
+}
+
+.paynow-year-control {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 8px 14px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.paynow-year-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-2);
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.paynow-year-select {
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 1.05rem;
+  font-weight: 800;
+  cursor: pointer;
+  outline: none;
+  padding: 2px 4px;
+}
+
+.paynow-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+.paynow-stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.paynow-stat-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.05);
+}
+
+.paynow-stat-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.paynow-stat-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.paynow-stat-label {
+  font-size: 0.74rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-3);
+  margin-bottom: 2px;
+}
+
+.paynow-stat-value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.2;
+}
+
+.paynow-stat-sub {
+  font-size: 0.75rem;
+  color: var(--text-3);
+  margin-top: 3px;
+}
+
+.paynow-stat-icon.green {
+  background: #dcfce7;
+  color: #16a34a;
+}
+[data-theme="dark"] .paynow-stat-icon.green {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+}
+
+.paynow-stat-icon.blue {
+  background: #e0f2fe;
+  color: #0284c7;
+}
+[data-theme="dark"] .paynow-stat-icon.blue {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+}
+
+.paynow-stat-icon.amber {
+  background: #fef3c7;
+  color: #d97706;
+}
+[data-theme="dark"] .paynow-stat-icon.amber {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+}
+
+.paynow-stat-icon.purple {
+  background: #f3e8ff;
+  color: #9333ea;
+}
+[data-theme="dark"] .paynow-stat-icon.purple {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+}
+
+.paynow-table-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.paynow-month-cell {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.paynow-month-num {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+  color: var(--text-2);
+  font-size: 0.78rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border);
+}
+
+.paynow-month-name {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.paynow-month-desc {
+  font-size: 0.76rem;
+  color: var(--text-3);
+  margin-top: 2px;
+}
+
+.badge-not-billed {
+  background: var(--surface-2);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+  font-weight: 600;
+  font-size: 0.76rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.badge-pay-now {
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  font-weight: 700;
+  font-size: 0.76rem;
+  padding: 3px 8px;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+[data-theme="dark"] .badge-pay-now {
+  background: rgba(29, 78, 216, 0.2);
+  color: #93c5fd;
+  border-color: rgba(147, 197, 253, 0.3);
+}
+
+.btn-pay-now {
+  background: var(--brand-primary, #2563eb);
+  color: #ffffff !important;
+  font-weight: 700;
+  box-shadow: 0 1px 3px rgba(37, 99, 235, 0.3);
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-pay-now:hover {
+  background: #1d4ed8;
+  box-shadow: 0 3px 8px rgba(37, 99, 235, 0.4);
+  transform: translateY(-1px);
+}
+

@@ -2515,6 +2515,26 @@ app.post('/api/payments/submit', (req, res) => {
         finalMonthlyDuesMonth = billing.monthly_dues_month || parseMonthFromTitle(billing.title) || null;
         if (finalMonthlyDuesMonth) {
           paymentType = 'monthly_dues';
+
+          // Additional verification: ensure homeowner does not already have an approved payment for this month
+          const alreadyApprovedMonth = await get(
+            'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "approved"',
+            [requester.id, finalMonthlyDuesMonth]
+          );
+          if (alreadyApprovedMonth) {
+            await cleanUpFile();
+            return res.status(400).json({ error: `You have already paid your monthly dues for this month.` });
+          }
+
+          // Ensure homeowner does not already have a pending payment for this month
+          const alreadyPendingMonth = await get(
+            'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "pending"',
+            [requester.id, finalMonthlyDuesMonth]
+          );
+          if (alreadyPendingMonth) {
+            await cleanUpFile();
+            return res.status(400).json({ error: `You already have a payment submission pending admin verification for this month.` });
+          }
         }
       } else {
         // Advance Monthly Dues Payment flow
@@ -2569,6 +2589,7 @@ app.post('/api/payments/submit', (req, res) => {
           } catch {}
           if (Array.isArray(assigned) && assigned.includes(requester.id)) {
             finalBillingId = mb.id;
+            actualAmount = Number(mb.amount) || actualAmount;
             break;
           }
         }

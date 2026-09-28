@@ -190,6 +190,7 @@ function escapeHtml(str) {
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#039;');
 }
+if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
 
 // Global In-Memory Comments Cache (Synced with MySQL)
 const announcementCommentsCache = {};
@@ -577,7 +578,7 @@ function getNavForRole(role) {
   // For resident, build base navigation plus any permitted management/analytics modules
   if (currentUser) {
     const perms = Array.isArray(currentUser.permissions) ? currentUser.permissions : [];
-    const baseNav = perms.includes('resident') ? [...HOMEOWNER_NAV] : [];
+    const baseNav = (perms.includes('resident') || role === 'homeowner') ? [...HOMEOWNER_NAV] : [];
     // Only include assignable modules, NEVER admin-only modules (users, settings) or board
     const additionalNav = ADMIN_NAV.filter(item =>
       !ADMIN_ONLY_MODULES.includes(item.id) && item.id !== 'board' && perms.includes(item.id)
@@ -591,7 +592,7 @@ function getNavForRole(role) {
 function getDefaultViewForRole(role) {
   const nav = getNavForRole(role);
   if (nav && nav.length > 0) return nav[0].id;
-  return role === 'admin' ? ADMIN_NAV[0].id : (userHasModulePermission('resident') ? HOMEOWNER_NAV[0].id : 'dashboard');
+  return role === 'admin' ? ADMIN_NAV[0].id : (role === 'homeowner' || userHasModulePermission('resident') ? HOMEOWNER_NAV[0].id : 'dashboard');
 }
 
 function userHasModulePermission(moduleId) {
@@ -628,9 +629,9 @@ function canAccessView(viewId) {
   // Block admin-only views for non-admin accounts
   if (ADMIN_ONLY_MODULES.includes(viewId)) return false;
 
-  // Base resident views require resident permission
+  // Base resident views require resident permission or homeowner role
   if (viewId === 'resident' || viewId.startsWith('ho-')) {
-    return userHasModulePermission('resident');
+    return userHasModulePermission('resident') || currentUser.role === 'homeowner';
   }
 
   if (Array.isArray(currentUser.permissions) && currentUser.permissions.length > 0) {
@@ -941,6 +942,21 @@ function formatBillingMonth(value) {
   return date.toLocaleString('default', { month: 'long', year: 'numeric' });
 }
 
+function parseMonthFromTitle(title) {
+  if (!title || typeof title !== 'string') return null;
+  const monthNames = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december'];
+  const regex = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{4})/i;
+  const match = title.match(regex);
+  if (match) {
+    const monthIdx = monthNames.indexOf(match[1].toLowerCase());
+    if (monthIdx !== -1) {
+      const year = match[2];
+      return `${year}-${String(monthIdx + 1).padStart(2, '0')}`;
+    }
+  }
+  return null;
+}
+
 function getLocalDateValue(date = new Date()) {
   const localDate = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
   return localDate.toISOString().slice(0, 10);
@@ -948,6 +964,11 @@ function getLocalDateValue(date = new Date()) {
 
 function getLocalMonthValue(date = new Date()) {
   return getLocalDateValue(date).slice(0, 7);
+}
+
+if (typeof window !== 'undefined') {
+  window.getLocalDateValue = getLocalDateValue;
+  window.getLocalMonthValue = getLocalMonthValue;
 }
 
 function getAssignedHomeownerIds(billing) {
@@ -965,6 +986,7 @@ function getAssignedHomeownerIds(billing) {
     return billing.assignedTo.split(',').map(id => id.trim()).filter(Boolean);
   }
 }
+if (typeof window !== 'undefined') window.getAssignedHomeownerIds = getAssignedHomeownerIds;
 
 function getBillingTotal(billing) {
   return toMoneyNumber(billing?.amount) * getAssignedHomeownerIds(billing).length;
@@ -3117,6 +3139,7 @@ function showToast(type, title, message) {
   const colors = { success: '#16a34a', error: '#dc2626', warning: '#d97706', info: '#2271c3' };
   const icons  = { success: '<svg width="16" height="16"><use href="#ico-check"/></svg>', error: '<svg width="16" height="16"><use href="#ico-x"/></svg>', warning: '<svg width="16" height="16"><use href="#ico-shield"/></svg>', info: '<svg width="16" height="16"><use href="#ico-megaphone"/></svg>' };
   const container = document.getElementById('toastContainer');
+  if (!container) return;
   const toast = document.createElement('div');
   toast.className = 'toast';
   toast.style.setProperty('--toast-color', colors[type] || colors.info);
@@ -3131,6 +3154,13 @@ function showToast(type, title, message) {
     toast.classList.add('removing');
     setTimeout(() => toast.remove(), 350);
   }, 3500);
+}
+
+if (typeof window !== 'undefined') {
+  window.openModal = openModal;
+  window.closeModal = closeModal;
+  window.openConfirm = openConfirm;
+  window.showToast = showToast;
 }
 
 
@@ -3406,6 +3436,7 @@ function badgeHtml(status) {
 
 function showLoading() { document.getElementById('loadingOverlay').classList.remove('hidden'); }
 function hideLoading() { document.getElementById('loadingOverlay').classList.add('hidden'); }
+if (typeof window !== 'undefined') { window.showLoading = showLoading; window.hideLoading = hideLoading; }
 
 // ── TOPBAR PROFILE MENU & DROPDOWN ──
 
