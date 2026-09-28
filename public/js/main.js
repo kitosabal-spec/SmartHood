@@ -101,6 +101,7 @@ const HOMEOWNER_NAV = [
   { id: 'ho-vehicles',      icon: 'ico-parking',    label: 'My Vehicles',     section: 'ACCOUNT' },
   { id: 'ho-complaints',    icon: 'ico-flag',       label: 'File a Complaint',   section: 'ACCOUNT' },
   { id: 'ho-announcements', icon: 'ico-megaphone',  label: 'Announcements',   section: 'INFO' },
+  { id: 'ho-lostfound',     icon: 'ico-search',     label: 'Lost & Found',    section: 'INFO' },
   { id: 'ho-profile',       icon: 'ico-user',       label: 'My Profile',      section: 'ACCOUNT' },
 ];
 
@@ -384,6 +385,20 @@ const api = {
     return this.request(`/api/payments/${id}/reject`, {
       method: 'POST',
       body: JSON.stringify({ rejection_reason: reason }),
+    });
+  },
+
+  async approveLostFound(id, remarks = '') {
+    return this.request(`/api/lostfound/${id}/approve`, {
+      method: 'POST',
+      body: JSON.stringify({ remarks }),
+    });
+  },
+
+  async rejectLostFound(id, reason = '') {
+    return this.request(`/api/lostfound/${id}/reject`, {
+      method: 'POST',
+      body: JSON.stringify({ reason }),
     });
   },
 };
@@ -716,6 +731,7 @@ function getSidebarBadgeItems(viewId) {
       ['Reviewed', 'In Progress'].includes(normalizeComplaintStatus(complaint.status))
     ),
     'ho-announcements': () => db.get('announcements'),
+    'ho-lostfound': () => lostFound.filter(report => report.homeownerId === currentUser.id && report.status === 'Pending'),
   };
 
 
@@ -905,6 +921,7 @@ function renderView(viewId) {
     'ho-vehicles':       renderHOVehicles,
     'ho-complaints':     renderHOComplaints,
     'ho-announcements':  renderHOAnnouncements,
+    'ho-lostfound':      renderHOLostFound,
     'ho-profile':        renderHOProfile,
   };
   if (renders[viewId]) renders[viewId]();

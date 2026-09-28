@@ -94,7 +94,7 @@ const tableConfig = {
     booleanColumns: [],
   },
   lostFound: {
-    columns: ['id', 'reportType', 'itemType', 'itemName', 'description', 'location', 'eventDate', 'contactName', 'contactNumber', 'image', 'images', 'media_type', 'status', 'remarks', 'createdAt', 'updatedAt', 'claimedAt'],
+    columns: ['id', 'homeownerId', 'reportType', 'itemType', 'itemName', 'description', 'location', 'eventDate', 'contactName', 'contactNumber', 'image', 'images', 'media_type', 'status', 'remarks', 'createdAt', 'updatedAt', 'claimedAt'],
     jsonColumns: ['images'],
     booleanColumns: [],
   },
@@ -488,6 +488,15 @@ async function loadAllData(requester = null) {
     if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'vehicles'))) {
       data.vehicleRegistrations = [];
     }
+    const canManageLf = requester && (requester.role === 'admin' || userHasPermission(requester, 'lostfound'));
+    if (!canManageLf) {
+      const requesterId = requester?.id;
+      data.lostFound = (data.lostFound || []).filter(item => {
+        const isPublic = ['Approved', 'Posted', 'Claimed'].includes(item.status);
+        const isOwn = Boolean(requesterId && item.homeownerId === requesterId);
+        return isPublic || isOwn;
+      });
+    }
   }
   return data;
 }
@@ -688,6 +697,7 @@ async function createTables() {
 
   await run(`CREATE TABLE IF NOT EXISTS lostFound (
     id VARCHAR(64) PRIMARY KEY,
+    homeownerId VARCHAR(64),
     reportType TEXT,
     itemType TEXT,
     itemName TEXT,
@@ -703,6 +713,7 @@ async function createTables() {
     updatedAt TEXT,
     claimedAt TEXT
   )`);
+  await run('ALTER TABLE lostFound ADD COLUMN homeownerId VARCHAR(64)').catch(() => {});
   await run('ALTER TABLE lostFound ADD COLUMN media_type TEXT').catch(() => {});
   await run('ALTER TABLE lostFound ADD COLUMN images LONGTEXT').catch(() => {});
 
@@ -2791,6 +2802,94 @@ app.post('/api/payments/:id/reject', asyncHandler(async (req, res) => {
   });
 }));
 
+// ── LOST & FOUND APPROVE / REJECT APIS ──
+
+app.post(['/api/lostfound/:id/approve', '/api/lost-found/:id/approve'], asyncHandler(async (req, res) => {
+  const requester = await requirePermission(req, res, 'lostfound');
+  if (!requester) return;
+
+  const report = await get('SELECT * FROM lostFound WHERE id = ?', [req.params.id]);
+  if (!report) {
+    return res.status(404).json({ error: 'Lost & Found report not found.' });
+  }
+
+  const nowIso = new Date().toISOString();
+  const remarks = req.body.remarks !== undefined ? String(req.body.remarks).trim() : (report.remarks || '');
+  await run('UPDATE lostFound SET status = ?, remarks = ?, updatedAt = ? WHERE id = ?', [
+    'Approved',
+    remarks,
+    nowIso,
+    req.params.id
+  ]);
+
+  if (report.homeownerId) {
+    try {
+      await createServerNotification(
+        'Lost & Found Report Approved',
+        `Your lost & found report for "${report.itemName}" has been approved and published to the community board.`,
+        { userIds: [report.homeownerId] }
+      );
+    } catch (e) {
+      console.warn('Notification warning:', e.message);
+    }
+  }
+
+  await recordAuditLog(
+    `Admin approved lost and found report for "${report.itemName}" (${report.id})`,
+    requester.id
+  );
+
+  const updated = await get('SELECT * FROM lostFound WHERE id = ?', [req.params.id]);
+  res.json({
+    ok: true,
+    message: 'Report approved successfully and published to community.',
+    report: deserializeRow('lostFound', updated)
+  });
+}));
+
+app.post(['/api/lostfound/:id/reject', '/api/lost-found/:id/reject'], asyncHandler(async (req, res) => {
+  const requester = await requirePermission(req, res, 'lostfound');
+  if (!requester) return;
+
+  const report = await get('SELECT * FROM lostFound WHERE id = ?', [req.params.id]);
+  if (!report) {
+    return res.status(404).json({ error: 'Lost & Found report not found.' });
+  }
+
+  const nowIso = new Date().toISOString();
+  const reason = (req.body.reason || req.body.remarks || '').trim();
+  await run('UPDATE lostFound SET status = ?, remarks = ?, updatedAt = ? WHERE id = ?', [
+    'Rejected',
+    reason,
+    nowIso,
+    req.params.id
+  ]);
+
+  if (report.homeownerId) {
+    try {
+      await createServerNotification(
+        'Lost & Found Report Rejected',
+        `Your lost & found report for "${report.itemName}" was not approved.${reason ? ' Reason: ' + reason : ''}`,
+        { userIds: [report.homeownerId] }
+      );
+    } catch (e) {
+      console.warn('Notification warning:', e.message);
+    }
+  }
+
+  await recordAuditLog(
+    `Admin rejected lost and found report for "${report.itemName}" (${report.id}). Reason: ${reason || 'None provided'}`,
+    requester.id
+  );
+
+  const updated = await get('SELECT * FROM lostFound WHERE id = ?', [req.params.id]);
+  res.json({
+    ok: true,
+    message: 'Report rejected.',
+    report: deserializeRow('lostFound', updated)
+  });
+}));
+
 
 app.get('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
@@ -2801,6 +2900,17 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
   let data = await getTableData(table);
   if (table === 'billings' && allowed.role !== 'admin' && !userHasPermission(allowed, 'billing')) {
     data = data.filter(b => getAssignedHomeownerIds(b).includes(allowed.id));
+  }
+  if (table === 'lostFound') {
+    const isManager = allowed && typeof allowed === 'object' && (allowed.role === 'admin' || userHasPermission(allowed, 'lostfound'));
+    if (!isManager) {
+      const requesterId = (allowed && typeof allowed === 'object') ? allowed.id : null;
+      data = data.filter(item => {
+        const isPublic = ['Approved', 'Posted', 'Claimed'].includes(item.status);
+        const isOwn = Boolean(requesterId && item.homeownerId === requesterId);
+        return isPublic || isOwn;
+      });
+    }
   }
   if (table === 'auditLog' && (req.query.filter || req.query.date || req.query.startDate || req.query.endDate || req.query.q)) {
     const filterMode = req.query.filter || 'all';
@@ -3325,6 +3435,24 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
         }
       }
     }
+  }
+
+  if (table === 'lostFound') {
+    const isManager = allowed && typeof allowed === 'object' && (allowed.role === 'admin' || userHasPermission(allowed, 'lostfound'));
+    if (!isManager) {
+      req.body.status = 'Pending';
+      if (allowed && typeof allowed === 'object') {
+        req.body.homeownerId = allowed.id;
+      }
+    }
+    if (!req.body.status) {
+      req.body.status = 'Pending';
+    }
+    const nowIso = new Date().toISOString();
+    if (!req.body.createdAt) {
+      req.body.createdAt = nowIso;
+    }
+    req.body.updatedAt = nowIso;
   }
 
   const body = stripProfilePhotoField(table, req.body);
