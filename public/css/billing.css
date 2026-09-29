@@ -3,6 +3,52 @@
   gap: 18px;
 }
 
+/* Custom Select Dropdown Arrow with comfortable right spacing */
+.billing-form select,
+.payment-flow-modal select,
+.modal select,
+.form-group select,
+.filter-select {
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-color: var(--surface);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23475569' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 14px center;
+  background-size: 14px 14px;
+  padding-right: 38px !important;
+  cursor: pointer;
+}
+
+.billing-form select::-ms-expand,
+.payment-flow-modal select::-ms-expand,
+.modal select::-ms-expand,
+.form-group select::-ms-expand,
+.filter-select::-ms-expand {
+  display: none;
+}
+
+[data-theme="dark"] .billing-form select,
+[data-theme="dark"] .payment-flow-modal select,
+[data-theme="dark"] .modal select,
+[data-theme="dark"] .form-group select,
+[data-theme="dark"] .filter-select {
+  background-color: var(--surface-2);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+}
+
+/* Date and month picker indicator margin */
+.billing-form input[type="date"]::-webkit-calendar-picker-indicator,
+.billing-form input[type="month"]::-webkit-calendar-picker-indicator,
+.payment-flow-modal input[type="date"]::-webkit-calendar-picker-indicator,
+.payment-flow-modal input[type="month"]::-webkit-calendar-picker-indicator,
+.modal input[type="date"]::-webkit-calendar-picker-indicator,
+.modal input[type="month"]::-webkit-calendar-picker-indicator {
+  cursor: pointer;
+  margin-right: 6px;
+}
+
 .billing-form-section {
   border: 1px solid var(--border);
   border-radius: var(--radius);
@@ -235,12 +281,12 @@
 .manual-payment-search-input {
   width: 100%;
   padding-left: 36px !important;
-  padding-right: 64px !important;
+  padding-right: 72px !important;
 }
 
 .manual-payment-search-controls {
   position: absolute;
-  right: 8px;
+  right: 14px;
   display: flex;
   align-items: center;
   gap: 4px;
