@@ -1,4 +1,4 @@
-// PROFILE PHOTOS (served from /uploads/profile/, stored as path in users.profile_photo)
+// Profile photos come from an authenticated /api/files link, never /uploads.
 function userInitials(name) {
   return (name || '?').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase();
 }
@@ -7,8 +7,7 @@ function profilePhotoUrl(user) {
   const value = user && user.profile_photo;
   if (!value || typeof value !== 'string') return null;
   if (/^(https?:|data:|blob:)/i.test(value)) return value;
-  if (value.startsWith('/uploads/profile/')) return value;
-  if (/^[a-zA-Z0-9][a-zA-Z0-9._-]*\.(jpg|jpeg|png|webp)$/i.test(value)) return `/uploads/profile/${value}`;
+  if (value.startsWith('/api/files/profile-photos/')) return value;
   return null;
 }
 
@@ -497,4 +496,3 @@ async function saveHOPassword() {
     showToast('error', 'Update Failed', err.message || 'Failed to update password.');
   }
 }
-

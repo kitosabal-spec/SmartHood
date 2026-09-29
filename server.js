@@ -42,18 +42,15 @@ app.use('/css', express.static(path.join(__dirname, 'public', 'css')));
 app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
 
 // Public media is deliberately limited to community-facing images and videos.
-// Never add receipts, complaint evidence, or resident documents to this tree.
+// Never add resident profiles, payment QR codes, receipts, complaint evidence,
+// or resident documents to this tree.
 const PUBLIC_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads');
-const PROFILE_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'profile');
-fs.mkdirSync(PROFILE_UPLOAD_DIR, { recursive: true });
 const ANNOUNCEMENT_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'announcements');
 fs.mkdirSync(ANNOUNCEMENT_UPLOAD_DIR, { recursive: true });
 const BOARD_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'board');
 fs.mkdirSync(BOARD_UPLOAD_DIR, { recursive: true });
 const LOSTFOUND_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'lostfound');
 fs.mkdirSync(LOSTFOUND_UPLOAD_DIR, { recursive: true });
-const QRCODE_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'qrcodes');
-fs.mkdirSync(QRCODE_UPLOAD_DIR, { recursive: true });
 
 // Private uploads are not served by express.static. They are returned only by
 // the authorization-checked /api/files routes below.
@@ -61,18 +58,19 @@ const PRIVATE_UPLOAD_DIR = path.join(__dirname, 'private_uploads');
 const PRIVATE_RECEIPT_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'receipts');
 const PRIVATE_COMPLAINT_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'complaints');
 const PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'resident-documents');
-for (const directory of [PRIVATE_RECEIPT_UPLOAD_DIR, PRIVATE_COMPLAINT_UPLOAD_DIR, PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR]) {
+const PRIVATE_PROFILE_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'profile-photos');
+const PRIVATE_QRCODE_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'payment-qrcodes');
+for (const directory of [PRIVATE_RECEIPT_UPLOAD_DIR, PRIVATE_COMPLAINT_UPLOAD_DIR, PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR, PRIVATE_PROFILE_UPLOAD_DIR, PRIVATE_QRCODE_UPLOAD_DIR]) {
   fs.mkdirSync(directory, { recursive: true });
 }
 
 // Keep only genuinely public content public. In particular, there is no
-// /uploads/receipts or /uploads/complaints static route.
+// /uploads/profile, /uploads/qrcodes, /uploads/receipts, or
+// /uploads/complaints static route.
 for (const [urlPath, directory] of [
-  ['/uploads/profile', PROFILE_UPLOAD_DIR],
   ['/uploads/announcements', ANNOUNCEMENT_UPLOAD_DIR],
   ['/uploads/board', BOARD_UPLOAD_DIR],
   ['/uploads/lostfound', LOSTFOUND_UPLOAD_DIR],
-  ['/uploads/qrcodes', QRCODE_UPLOAD_DIR],
 ]) {
   app.use(urlPath, express.static(directory));
 }
@@ -92,6 +90,8 @@ function moveLegacyPrivateUploads(legacyDirectory, privateDirectory) {
 
 moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'receipts'), PRIVATE_RECEIPT_UPLOAD_DIR);
 moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'complaints'), PRIVATE_COMPLAINT_UPLOAD_DIR);
+moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'profile'), PRIVATE_PROFILE_UPLOAD_DIR);
+moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'qrcodes'), PRIVATE_QRCODE_UPLOAD_DIR);
 
 const tableConfig = {
   users: {
@@ -661,8 +661,10 @@ async function loadAllData(requester = null) {
   // Replace storage keys with short-lived, record-specific secure URLs only
   // after permission filtering. Raw private filenames never leave the server.
   if (requester) {
+    data.users = (data.users || []).map(record => presentPrivateFiles('users', record, requester));
     data.payments = (data.payments || []).map(record => presentPrivateFiles('payments', record, requester));
     data.complaints = (data.complaints || []).map(record => presentPrivateFiles('complaints', record, requester));
+    data.payment_settings = (data.payment_settings || []).map(record => presentPrivateFiles('payment_settings', record, requester));
   }
   return data;
 }
@@ -1036,7 +1038,7 @@ function randomUploadName(prefix, extension) {
 
 const profileUpload = multer({
   storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, PROFILE_UPLOAD_DIR),
+    destination: (req, file, cb) => cb(null, PRIVATE_PROFILE_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || '.jpg';
       const unique = randomUploadName('profile', ext);
@@ -1094,7 +1096,7 @@ const receiptUpload = multer({
 
 const qrUpload = multer({
   storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, QRCODE_UPLOAD_DIR),
+    destination: (req, file, cb) => cb(null, PRIVATE_QRCODE_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const origExt = path.extname(file.originalname || '').toLowerCase();
       const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || (ALLOWED_PHOTO_EXTS.has(origExt) ? origExt : '.jpg');
@@ -1531,7 +1533,8 @@ function claimStagedPrivateUpload(kind, filename, requester) {
 function storedPrivateFilename(value, kind) {
   if (!value || typeof value !== 'string') return null;
   const prefix = `private:${kind}/`;
-  const legacyPrefix = `/uploads/${kind}/`;
+  const legacyFolder = { 'profile-photos': 'profile', 'payment-qrcodes': 'qrcodes' }[kind] || kind;
+  const legacyPrefix = `/uploads/${legacyFolder}/`;
   const candidate = value.startsWith(prefix)
     ? value.slice(prefix.length)
     : (value.startsWith(legacyPrefix) ? value.slice(legacyPrefix.length) : null);
@@ -1614,6 +1617,8 @@ function privateFilePath(kind, filename) {
     receipts: PRIVATE_RECEIPT_UPLOAD_DIR,
     complaints: PRIVATE_COMPLAINT_UPLOAD_DIR,
     'resident-documents': PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR,
+    'profile-photos': PRIVATE_PROFILE_UPLOAD_DIR,
+    'payment-qrcodes': PRIVATE_QRCODE_UPLOAD_DIR,
   };
   const directory = directories[kind];
   if (!directory || !filename || path.basename(filename) !== filename) return null;
@@ -1635,6 +1640,12 @@ function presentPrivateFiles(table, record, requester) {
   if (table === 'payments' && output.receipt) {
     output.receipt = privateFileUrl('receipts', output.id, requester);
   }
+  if (table === 'users' && output.profile_photo) {
+    output.profile_photo = privateFileUrl('profile-photos', output.id, requester);
+  }
+  if (table === 'payment_settings' && output.qr_code_path) {
+    output.qr_code_path = privateFileUrl('payment-qrcodes', output.id, requester);
+  }
   if (table === 'complaints') {
     const items = complaintAttachmentItems(record);
     const safeItems = items.map((item, index) => {
@@ -1650,6 +1661,14 @@ function presentPrivateFiles(table, record, requester) {
       output.attachment = typeof first === 'string' ? first : (first.url || first.media_url || first.attachment);
       output.media_url = output.attachment;
     }
+  }
+  return output;
+}
+
+function presentCommentAuthorPhoto(comment, requester) {
+  const output = { ...comment };
+  if (output.author_photo) {
+    output.author_photo = requester ? privateFileUrl('profile-photos', output.user_id, requester) : null;
   }
   return output;
 }
@@ -1714,14 +1733,12 @@ function requireOwnPhotoAccess(req, res) {
 
 function photoRecordToUrl(value) {
   if (!value) return null;
-  return `/uploads/profile/${path.basename(value)}`;
+  return privateStorageKey('profile-photos', path.basename(value));
 }
 
 function deleteProfileFile(photoPath) {
-  if (!photoPath) return;
-  const filePath = path.join(PROFILE_UPLOAD_DIR, path.basename(photoPath));
-  if (!filePath.startsWith(PROFILE_UPLOAD_DIR)) return;
-  fs.promises.unlink(filePath).catch(() => {});
+  const filename = storedPrivateFilename(photoPath, 'profile-photos');
+  if (filename) deletePrivateFiles('profile-photos', [filename]);
 }
 
 function stripProfilePhotoField(table, body) {
@@ -1743,7 +1760,8 @@ function stripProfilePhotoField(table, body) {
 }
 
 app.post('/api/users/:id/photo', (req, res) => {
-  if (!requireOwnPhotoAccess(req, res)) return;
+  const requesterId = requireOwnPhotoAccess(req, res);
+  if (!requesterId) return;
   profileUpload.single('photo')(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE'
@@ -1772,7 +1790,7 @@ app.post('/api/users/:id/photo', (req, res) => {
       const photoPath = photoRecordToUrl(req.file.filename);
       await run('UPDATE users SET profile_photo = ? WHERE id = ?', [photoPath, req.params.id]);
       deleteProfileFile(target.profile_photo);
-      res.json({ ok: true, profile_photo: photoPath });
+      res.json({ ok: true, profile_photo: privateFileUrl('profile-photos', target.id, { id: requesterId }) });
     } catch (err) {
       await fs.promises.unlink(req.file.path).catch(() => {});
       console.error(err);
@@ -2081,6 +2099,7 @@ app.get('/api/announcements/comment-counts', asyncHandler(async (req, res) => {
 }));
 
 app.get('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
+  const requester = await getRequester(req);
   const rows = await all(
     `SELECT c.*, 
             u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo,
@@ -2092,7 +2111,7 @@ app.get('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
      ORDER BY c.created_at ASC`,
     [req.params.id]
   );
-  res.json(rows);
+  res.json(rows.map(row => presentCommentAuthorPhoto(row, requester)));
 }));
 
 app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
@@ -2222,7 +2241,7 @@ app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
     console.error('Error sending announcement comment notifications:', notifErr);
   }
 
-  res.status(201).json(created);
+  res.status(201).json(presentCommentAuthorPhoto(created, user));
 }));
 
 app.put('/api/announcements/:announcementId/comments/:commentId', asyncHandler(async (req, res) => {
@@ -2265,7 +2284,7 @@ app.put('/api/announcements/:announcementId/comments/:commentId', asyncHandler(a
      WHERE c.id = ?`,
     [req.params.commentId]
   );
-  res.json(updated);
+  res.json(presentCommentAuthorPhoto(updated, user));
 }));
 
 app.delete('/api/announcements/:announcementId/comments/:commentId', asyncHandler(async (req, res) => {
@@ -2595,7 +2614,7 @@ app.get('/api/payment-settings', asyncHandler(async (req, res) => {
     };
     await saveRecord('payment_settings', setting);
   }
-  res.json(deserializeRow('payment_settings', setting));
+  res.json(presentPrivateFiles('payment_settings', deserializeRow('payment_settings', setting), requester));
 }));
 
 app.put('/api/payment-settings', asyncHandler(async (req, res) => {
@@ -2636,7 +2655,7 @@ app.put('/api/payment-settings', asyncHandler(async (req, res) => {
     await recordAuditLog('Admin configured GCash payment settings', requester.id);
   }
 
-  res.json(deserializeRow('payment_settings', updated));
+  res.json(presentPrivateFiles('payment_settings', deserializeRow('payment_settings', updated), requester));
 }));
 
 app.post('/api/payment-settings/upload-qr', (req, res) => {
@@ -2667,11 +2686,11 @@ app.post('/api/payment-settings/upload-qr', (req, res) => {
 
       const existing = await get('SELECT * FROM payment_settings WHERE payment_method = "gcash" LIMIT 1');
       if (existing && existing.qr_code_path) {
-        const oldFile = path.join(__dirname, 'public', existing.qr_code_path.replace(/^\//, ''));
-        fs.promises.unlink(oldFile).catch(() => {});
+        const oldFilename = storedPrivateFilename(existing.qr_code_path, 'payment-qrcodes');
+        if (oldFilename) deletePrivateFiles('payment-qrcodes', [oldFilename]);
       }
 
-      const qrPath = `/uploads/qrcodes/${req.file.filename}`;
+      const qrPath = privateStorageKey('payment-qrcodes', req.file.filename);
       const record = {
         id: existing ? existing.id : 'ps_gcash',
         payment_method: 'gcash',
@@ -2686,7 +2705,7 @@ app.post('/api/payment-settings/upload-qr', (req, res) => {
       await saveRecord('payment_settings', record);
       await recordAuditLog('Admin uploaded/replaced QR code', requester.id);
 
-      res.json({ ok: true, qr_code_path: qrPath, message: 'GCash QR code updated successfully.' });
+      res.json({ ok: true, qr_code_path: privateFileUrl('payment-qrcodes', record.id, requester), message: 'GCash QR code updated successfully.' });
     } catch (err) {
       if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
       console.error(err);
@@ -2701,8 +2720,8 @@ app.delete('/api/payment-settings/qr', asyncHandler(async (req, res) => {
 
   const existing = await get('SELECT * FROM payment_settings WHERE payment_method = "gcash" LIMIT 1');
   if (existing && existing.qr_code_path) {
-    const oldFile = path.join(__dirname, 'public', existing.qr_code_path.replace(/^\//, ''));
-    fs.promises.unlink(oldFile).catch(() => {});
+    const oldFilename = storedPrivateFilename(existing.qr_code_path, 'payment-qrcodes');
+    if (oldFilename) deletePrivateFiles('payment-qrcodes', [oldFilename]);
     await run('UPDATE payment_settings SET qr_code_path = NULL, updated_by = ?, updated_at = ? WHERE id = ?', [
       requester.id,
       new Date().toISOString(),
@@ -3493,6 +3512,27 @@ app.get('/api/files/complaints/:id/:index?', asyncHandler(async (req, res) => {
   const filename = privateFilenameFromComplaintItem(item);
   if (!filename) return res.status(404).json({ error: 'Complaint attachment not found.' });
   return sendPrivateFile(res, filename, 'complaints');
+}));
+
+// Profile photos and payment QR codes are private to authenticated residents.
+// They are intentionally not ownership-restricted because logged-in residents
+// need avatars and the HOA payment QR code throughout the application.
+app.get('/api/files/profile-photos/:id', asyncHandler(async (req, res) => {
+  const requester = await requesterFromPrivateFileTicket(req, res, 'profile-photos', req.params.id);
+  if (!requester) return;
+  const user = await get('SELECT profile_photo FROM users WHERE id = ?', [req.params.id]);
+  const filename = storedPrivateFilename(user?.profile_photo, 'profile-photos');
+  if (!filename) return res.status(404).json({ error: 'Profile photo not found.' });
+  return sendPrivateFile(res, filename, 'profile-photos');
+}));
+
+app.get('/api/files/payment-qrcodes/:id', asyncHandler(async (req, res) => {
+  const requester = await requesterFromPrivateFileTicket(req, res, 'payment-qrcodes', req.params.id);
+  if (!requester) return;
+  const setting = await get('SELECT qr_code_path FROM payment_settings WHERE id = ?', [req.params.id]);
+  const filename = storedPrivateFilename(setting?.qr_code_path, 'payment-qrcodes');
+  if (!filename) return res.status(404).json({ error: 'Payment QR code not found.' });
+  return sendPrivateFile(res, filename, 'payment-qrcodes');
 }));
 
 // ── LOST & FOUND APPROVE / REJECT APIS ──

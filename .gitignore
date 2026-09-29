@@ -12,6 +12,10 @@ private_uploads/**/*
 !private_uploads/complaints/.gitkeep
 !private_uploads/resident-documents/
 !private_uploads/resident-documents/.gitkeep
+!private_uploads/profile-photos/
+!private_uploads/profile-photos/.gitkeep
+!private_uploads/payment-qrcodes/
+!private_uploads/payment-qrcodes/.gitkeep
 logs/
 .env
 .server.pid
