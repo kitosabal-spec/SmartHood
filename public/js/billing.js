@@ -888,12 +888,29 @@ function openCreateManualPaymentModal() {
   openModal('Create Payment', `
     <div class="payment-flow-modal">
       <p style="margin:0 0 16px;color:var(--text-2);font-size:0.88rem">Record an in-person payment against an existing billing. The payment is immediately marked as paid.</p>
-      <div class="form-group">
-        <label for="manual_payment_homeowner">Resident / Homeowner *</label>
-        <select id="manual_payment_homeowner" onchange="updateManualPaymentBillings()">
-          <option value="">-- Select resident --</option>
-          ${homeowners.map(user => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.name)}${user.block || user.lot ? ` (${escapeHtml([user.block, user.lot].filter(Boolean).join(' '))})` : ''}</option>`).join('')}
-        </select>
+      <div class="form-group" style="position:relative;">
+        <label for="manual_payment_homeowner_search">Resident / Homeowner *</label>
+        <input type="hidden" id="manual_payment_homeowner" value="">
+        <div class="manual-payment-resident-box">
+          <div class="manual-payment-search-wrap">
+            <span class="manual-payment-search-icon">
+              <svg width="15" height="15"><use href="#ico-search"/></svg>
+            </span>
+            <input 
+              id="manual_payment_homeowner_search" 
+              type="text" 
+              class="form-control manual-payment-search-input" 
+              placeholder="Type to search resident by letters or name..." 
+              autocomplete="off"
+            />
+            <div class="manual-payment-search-controls">
+              <button type="button" id="manual_payment_clear_btn" class="manual-payment-btn-clear" style="display:none;" title="Clear resident selection">&#10005;</button>
+              <button type="button" id="manual_payment_dropdown_toggle" class="manual-payment-btn-toggle" title="Show all residents">&#9662;</button>
+            </div>
+          </div>
+          <div id="manual_payment_resident_dropdown" class="manual-payment-resident-dropdown" style="display:none;"></div>
+        </div>
+        <div id="manual_payment_connected_resident_card" style="display:none;"></div>
       </div>
       <div class="form-group">
         <label for="manual_payment_billing">Billing *</label>
@@ -939,6 +956,244 @@ function openCreateManualPaymentModal() {
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
     { label: 'Create Payment', cls: 'btn-primary', action: executeCreateManualPayment },
   ]);
+
+  setupManualPaymentResidentSearch(homeowners);
+}
+
+function setupManualPaymentResidentSearch(homeowners) {
+  const hiddenInput = document.getElementById('manual_payment_homeowner');
+  const searchInput = document.getElementById('manual_payment_homeowner_search');
+  const clearBtn = document.getElementById('manual_payment_clear_btn');
+  const toggleBtn = document.getElementById('manual_payment_dropdown_toggle');
+  const dropdown = document.getElementById('manual_payment_resident_dropdown');
+  const connectedCard = document.getElementById('manual_payment_connected_resident_card');
+  if (!hiddenInput || !searchInput || !dropdown) return;
+
+  let activeIndex = -1;
+  let filteredHomeowners = [...homeowners];
+
+  function highlightMatches(text, query) {
+    if (!text) return '';
+    if (!query) return escapeHtml(text);
+    const words = query.trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return escapeHtml(text);
+    const escapedWords = words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|');
+    const regex = new RegExp(`(${escapedWords})`, 'gi');
+    return escapeHtml(text).replace(regex, '<mark class="manual-payment-search-highlight">$1</mark>');
+  }
+
+  function renderDropdown(query = '') {
+    const q = query.trim().toLowerCase();
+    const words = q.split(/\s+/).filter(Boolean);
+    filteredHomeowners = homeowners.filter(u => {
+      if (!words.length) return true;
+      const hay = `${u.name || ''} ${u.block || ''} ${u.lot || ''} ${u.username || ''} ${u.email || ''}`.toLowerCase();
+      return words.every(word => hay.includes(word));
+    });
+
+    activeIndex = -1;
+
+    if (!filteredHomeowners.length) {
+      dropdown.innerHTML = `
+        <div class="manual-payment-empty">
+          No resident found matching "<strong>${escapeHtml(query.trim())}</strong>"
+        </div>
+      `;
+      dropdown.style.display = 'block';
+      return;
+    }
+
+    dropdown.innerHTML = filteredHomeowners.map((user, idx) => {
+      const location = [user.block, user.lot].filter(Boolean).join(' ');
+      const unpaidBillings = getEligibleManualBillings(user.id);
+      const unpaidCount = unpaidBillings.length;
+      return `
+        <div class="manual-payment-resident-item" data-index="${idx}" data-id="${escapeHtml(user.id)}">
+          <div class="resident-info-left">
+            <div class="resident-item-name">${highlightMatches(user.name, q)}</div>
+            <div class="resident-item-meta">
+              ${location ? `<span>${highlightMatches(location, q)}</span>` : ''}
+              ${user.username ? `<span>@${highlightMatches(user.username, q)}</span>` : ''}
+            </div>
+          </div>
+          <div class="resident-item-badge">
+            <span class="badge ${unpaidCount > 0 ? 'badge-amber' : 'badge-gray'}" style="font-size:0.72rem;padding:2px 7px;">
+              ${unpaidCount} unpaid ${unpaidCount === 1 ? 'bill' : 'bills'}
+            </span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    dropdown.querySelectorAll('.manual-payment-resident-item').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const idx = parseInt(item.getAttribute('data-index'), 10);
+        if (filteredHomeowners[idx]) {
+          selectResident(filteredHomeowners[idx]);
+        }
+      });
+    });
+
+    dropdown.style.display = 'block';
+  }
+
+  function selectResident(user) {
+    hiddenInput.value = user.id;
+    const location = [user.block, user.lot].filter(Boolean).join(' ');
+    searchInput.value = `${user.name}${location ? ` (${location})` : ''}`;
+    if (clearBtn) clearBtn.style.display = 'inline-flex';
+    dropdown.style.display = 'none';
+
+    // Render connected resident card
+    if (connectedCard) {
+      const unpaidBillings = getEligibleManualBillings(user.id);
+      const unpaidCount = unpaidBillings.length;
+      connectedCard.innerHTML = `
+        <div class="manual-payment-connected-card">
+          <div class="connected-card-header">
+            <div class="connected-left">
+              <div class="connected-icon">&#10003;</div>
+              <div style="min-width:0;">
+                <div class="connected-title">Connected Resident</div>
+                <div class="connected-name">${escapeHtml(user.name)}</div>
+                <div class="connected-sub">${escapeHtml([user.block, user.lot].filter(Boolean).join(' · ') || 'No block/lot')}${user.username ? ` · @${escapeHtml(user.username)}` : ''}${user.email ? ` · ${escapeHtml(user.email)}` : ''}</div>
+              </div>
+            </div>
+            <div class="connected-right">
+              <span class="badge ${unpaidCount > 0 ? 'badge-teal' : 'badge-gray'}" style="font-size:0.74rem;padding:3px 8px;">
+                ${unpaidCount > 0 ? `${unpaidCount} unpaid ${unpaidCount === 1 ? 'billing' : 'billings'}` : 'No unpaid billings'}
+              </span>
+              <button type="button" class="btn btn-secondary btn-sm" id="manual_payment_change_resident" style="padding:3px 8px;font-size:0.75rem;">Change</button>
+            </div>
+          </div>
+        </div>
+      `;
+      connectedCard.style.display = 'block';
+
+      const changeBtn = document.getElementById('manual_payment_change_resident');
+      if (changeBtn) {
+        changeBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          searchInput.focus();
+          searchInput.select();
+          renderDropdown('');
+        });
+      }
+    }
+
+    updateManualPaymentBillings();
+
+    // Auto-select first unpaid billing if only one is available
+    const billings = getEligibleManualBillings(user.id);
+    const billingSelect = document.getElementById('manual_payment_billing');
+    if (billingSelect && billings.length === 1) {
+      billingSelect.value = billings[0].id;
+      updateManualPaymentSummary();
+    }
+  }
+
+  function clearResident() {
+    hiddenInput.value = '';
+    searchInput.value = '';
+    if (clearBtn) clearBtn.style.display = 'none';
+    if (connectedCard) {
+      connectedCard.innerHTML = '';
+      connectedCard.style.display = 'none';
+    }
+    dropdown.style.display = 'none';
+    updateManualPaymentBillings();
+  }
+
+  searchInput.addEventListener('input', () => {
+    if (hiddenInput.value) {
+      hiddenInput.value = '';
+      if (connectedCard) connectedCard.style.display = 'none';
+      updateManualPaymentBillings();
+    }
+    if (searchInput.value.trim()) {
+      if (clearBtn) clearBtn.style.display = 'inline-flex';
+    } else {
+      if (clearBtn) clearBtn.style.display = 'none';
+    }
+    renderDropdown(searchInput.value);
+  });
+
+  searchInput.addEventListener('focus', () => {
+    renderDropdown(searchInput.value);
+  });
+
+  searchInput.addEventListener('keydown', (e) => {
+    const items = dropdown.querySelectorAll('.manual-payment-resident-item');
+    if (!items.length || dropdown.style.display === 'none') {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        renderDropdown(searchInput.value);
+        return;
+      }
+      return;
+    }
+
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      activeIndex = (activeIndex + 1) % items.length;
+      updateActiveItem(items);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      activeIndex = activeIndex <= 0 ? items.length - 1 : activeIndex - 1;
+      updateActiveItem(items);
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      if (activeIndex >= 0 && filteredHomeowners[activeIndex]) {
+        selectResident(filteredHomeowners[activeIndex]);
+      } else if (filteredHomeowners.length > 0) {
+        selectResident(filteredHomeowners[0]);
+      }
+    } else if (e.key === 'Escape') {
+      dropdown.style.display = 'none';
+    }
+  });
+
+  function updateActiveItem(items) {
+    items.forEach((it, i) => {
+      if (i === activeIndex) {
+        it.classList.add('active');
+        it.scrollIntoView({ block: 'nearest' });
+      } else {
+        it.classList.remove('active');
+      }
+    });
+  }
+
+  if (clearBtn) {
+    clearBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearResident();
+      searchInput.focus();
+    });
+  }
+
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (dropdown.style.display === 'block') {
+        dropdown.style.display = 'none';
+      } else {
+        searchInput.focus();
+        renderDropdown('');
+      }
+    });
+  }
+
+  const outsideClickListener = (e) => {
+    if (!dropdown.isConnected) {
+      document.removeEventListener('click', outsideClickListener);
+      return;
+    }
+    if (!e.target.closest('.manual-payment-resident-box')) {
+      dropdown.style.display = 'none';
+    }
+  };
+  document.addEventListener('click', outsideClickListener);
 }
 
 function updateManualPaymentBillings() {
@@ -952,6 +1207,9 @@ function updateManualPaymentBillings() {
     : (!billings.length
       ? '<option value="">No eligible unpaid billings</option>'
       : `<option value="">-- Select billing --</option>${billings.map(billing => `<option value="${escapeHtml(billing.id)}">${escapeHtml(manualBillingOptionLabel(billing))}</option>`).join('')}`);
+  if (billings.length === 1) {
+    select.value = billings[0].id;
+  }
   updateManualPaymentSummary();
 }
 
