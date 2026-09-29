@@ -54,7 +54,7 @@ const tableConfig = {
     booleanColumns: [],
   },
   billings: {
-    columns: ['id', 'title', 'amount', 'dueDate', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month'],
+    columns: ['id', 'title', 'amount', 'dueDate', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month', 'billing_type'],
     jsonColumns: ['assignedTo'],
     booleanColumns: [],
   },
@@ -265,6 +265,28 @@ function parseMonthFromTitle(title) {
   return null;
 }
 
+const BILLING_TYPE_MONTHLY_DUES = 'Monthly Association Dues';
+const BILLING_TYPE_OTHER = 'Other Billing';
+
+function isMonthlyDuesTitle(title) {
+  const text = String(title || '').toLowerCase();
+  return text.includes('monthly') && text.includes('dues');
+}
+
+function normalizeBillingType(value, title = '', monthlyDuesMonth = '') {
+  const raw = String(value || '').trim();
+  if (raw === BILLING_TYPE_MONTHLY_DUES || raw === BILLING_TYPE_OTHER) return raw;
+  if (isMonthlyDuesTitle(title) || monthlyDuesMonth) return BILLING_TYPE_MONTHLY_DUES;
+  return BILLING_TYPE_OTHER;
+}
+
+function isMonthlyAssociationDuesBilling(billing) {
+  if (!billing) return false;
+  if (billing.billing_type === BILLING_TYPE_MONTHLY_DUES) return true;
+  if (billing.billing_type === BILLING_TYPE_OTHER) return false;
+  return Boolean(billing.monthly_dues_month && isMonthlyDuesTitle(billing.title));
+}
+
 function formatMonthYearDisplay(monthStr) {
   if (!monthStr || !/^\d{4}-\d{2}$/.test(monthStr)) return monthStr || '';
   const [yr, mo] = monthStr.split('-');
@@ -344,6 +366,95 @@ function getAssignedHomeownerIds(billing) {
   } catch {
     return billing.assignedTo.split(',').map(id => id.trim()).filter(Boolean);
   }
+}
+
+async function findMonthlyDuesBillingForHomeowner(homeownerId, month, excludeBillingId = null) {
+  if (!homeownerId || !month) return null;
+  const rows = await all(
+    `SELECT * FROM billings
+      WHERE monthly_dues_month = ?
+        AND (billing_type = ? OR (billing_type IS NULL OR billing_type = '') OR LOWER(title) LIKE '%monthly%dues%')`,
+    [month, BILLING_TYPE_MONTHLY_DUES]
+  );
+  return rows.find((billing) => {
+    if (excludeBillingId && billing.id === excludeBillingId) return false;
+    if (!isMonthlyAssociationDuesBilling(billing)) return false;
+    return getAssignedHomeownerIds(billing).includes(homeownerId);
+  }) || null;
+}
+
+async function findApprovedMonthlyDuesPayment(homeownerId, month) {
+  if (!homeownerId || !month) return null;
+  const direct = await get(
+    `SELECT * FROM payments
+      WHERE homeownerId = ?
+        AND monthly_dues_month = ?
+        AND status = 'approved'
+        AND (payment_type = 'monthly_dues' OR billingId IS NULL OR billingId = '')`,
+    [homeownerId, month]
+  );
+  if (direct) return direct;
+
+  const linked = await all(
+    `SELECT p.*
+      FROM payments p
+      JOIN billings b ON p.billingId = b.id
+      WHERE p.homeownerId = ?
+        AND p.monthly_dues_month = ?
+        AND p.status = 'approved'
+        AND b.billing_type = ?`,
+    [homeownerId, month, BILLING_TYPE_MONTHLY_DUES]
+  );
+  return linked[0] || null;
+}
+
+async function validateAndPrepareBillingPayload(payload, res, excludeBillingId = null) {
+  const inferredMonth = payload.monthly_dues_month || payload.billingMonth || (payload.title ? parseMonthFromTitle(payload.title) : null);
+  const billingType = normalizeBillingType(payload.billing_type || payload.billingType, payload.title, inferredMonth);
+  payload.billing_type = billingType;
+
+  if (billingType !== BILLING_TYPE_MONTHLY_DUES) {
+    payload.billing_type = BILLING_TYPE_OTHER;
+    payload.monthly_dues_month = null;
+    return true;
+  }
+
+  const rawMonth = String(inferredMonth || '').trim();
+  if (!rawMonth || !/^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth)) {
+    res.status(400).json({ error: 'Billing Month is required for Monthly Association Dues.' });
+    return false;
+  }
+
+  const assigned = getAssignedHomeownerIds(payload);
+  for (const hid of assigned) {
+    const approvedPayment = await findApprovedMonthlyDuesPayment(hid, rawMonth);
+    if (approvedPayment && (!excludeBillingId || approvedPayment.billingId !== excludeBillingId)) {
+      const ho = await get('SELECT name FROM users WHERE id = ?', [hid]);
+      const hoName = ho ? ho.name : 'Resident';
+      const monthDisplay = formatMonthYearDisplay(rawMonth);
+      res.status(400).json({
+        error: `This homeowner (${hoName}) has already paid the Monthly Association Dues for ${monthDisplay}.`,
+      });
+      return false;
+    }
+
+    const existingBilling = await findMonthlyDuesBillingForHomeowner(hid, rawMonth, excludeBillingId);
+    if (existingBilling) {
+      const ho = await get('SELECT name FROM users WHERE id = ?', [hid]);
+      const hoName = ho ? ho.name : 'Resident';
+      const monthDisplay = formatMonthYearDisplay(rawMonth);
+      res.status(400).json({
+        error: `Monthly Association Dues billing already exists for ${hoName} for ${monthDisplay}.`,
+      });
+      return false;
+    }
+  }
+
+  payload.monthly_dues_month = rawMonth;
+  if (!payload.title || !String(payload.title).trim()) {
+    payload.title = `Monthly Association Dues - ${formatMonthYearDisplay(rawMonth)}`;
+  }
+  return true;
 }
 
 function deserializeRow(table, row) {
@@ -536,9 +647,11 @@ async function createTables() {
     assignedTo LONGTEXT,
     status TEXT,
     createdAt TEXT,
-    monthly_dues_month VARCHAR(7)
+    monthly_dues_month VARCHAR(7),
+    billing_type VARCHAR(64) DEFAULT 'Other Billing'
   )`);
   await run('ALTER TABLE billings ADD COLUMN monthly_dues_month VARCHAR(7)').catch(() => {});
+  await run('ALTER TABLE billings ADD COLUMN billing_type VARCHAR(64) DEFAULT "Other Billing"').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS payment_settings (
     id VARCHAR(64) PRIMARY KEY,
@@ -590,10 +703,25 @@ async function createTables() {
     const existingBills = await all('SELECT id, title FROM billings WHERE monthly_dues_month IS NULL OR monthly_dues_month = ""');
     for (const b of existingBills) {
       const parsed = parseMonthFromTitle(b.title);
-      if (parsed) {
+      if (parsed && isMonthlyDuesTitle(b.title)) {
         await run('UPDATE billings SET monthly_dues_month = ? WHERE id = ?', [parsed, b.id]);
       }
     }
+    await run(`
+      UPDATE billings
+      SET billing_type = CASE
+        WHEN (monthly_dues_month IS NOT NULL AND monthly_dues_month != '') OR LOWER(title) LIKE '%monthly%dues%'
+          THEN 'Monthly Association Dues'
+        ELSE 'Other Billing'
+      END
+      WHERE billing_type IS NULL OR billing_type = ''
+    `).catch(() => {});
+    await run(`
+      UPDATE billings
+      SET billing_type = 'Monthly Association Dues'
+      WHERE billing_type = 'Other Billing'
+        AND ((monthly_dues_month IS NOT NULL AND monthly_dues_month != '') OR LOWER(title) LIKE '%monthly%dues%')
+    `).catch(() => {});
     // Backfill existing payments where monthly_dues_month IS NULL but billing has monthly_dues_month
     await run(`
       UPDATE payments p
@@ -602,6 +730,15 @@ async function createTables() {
           p.payment_type = 'monthly_dues'
       WHERE (p.monthly_dues_month IS NULL OR p.monthly_dues_month = '')
         AND b.monthly_dues_month IS NOT NULL AND b.monthly_dues_month != ''
+        AND b.billing_type = 'Monthly Association Dues'
+    `).catch(() => {});
+    await run(`
+      UPDATE payments
+      SET payment_type = 'monthly_dues'
+      WHERE billingId IS NULL
+        AND monthly_dues_month IS NOT NULL
+        AND monthly_dues_month != ''
+        AND (payment_type IS NULL OR payment_type = '' OR payment_type = 'billing')
     `).catch(() => {});
   } catch (err) {
     console.error('Error during monthly_dues_month migration:', err.message);
@@ -2283,14 +2420,17 @@ app.post('/api/billings/generate-monthly-dues', asyncHandler(async (req, res) =>
     return res.status(400).json({ error: 'No active homeowners found.' });
   }
 
-  // Retrieve all existing billings for this month to prevent duplicate generation
+  // Retrieve existing Monthly Association Dues billings for this month to prevent duplicate generation.
   const existingBillings = await all(
-    "SELECT * FROM billings WHERE monthly_dues_month = ? OR title = ? OR title LIKE ?",
-    [month, `Monthly Dues - ${monthName}`, `%Monthly Dues%${monthName}%`]
+    `SELECT * FROM billings
+      WHERE monthly_dues_month = ?
+        AND (billing_type = ? OR (billing_type IS NULL OR billing_type = '') OR LOWER(title) LIKE '%monthly%dues%')`,
+    [month, BILLING_TYPE_MONTHLY_DUES]
   );
 
   const alreadyBilledHomeownerIds = new Set();
   existingBillings.forEach(b => {
+    if (!isMonthlyAssociationDuesBilling(b)) return;
     let assigned = [];
     try {
       assigned = typeof b.assignedTo === 'string' ? JSON.parse(b.assignedTo) : b.assignedTo;
@@ -2312,10 +2452,7 @@ app.post('/api/billings/generate-monthly-dues', asyncHandler(async (req, res) =>
     }
 
     // 2. Check if homeowner has an APPROVED payment for this monthly dues month
-    const approvedPayment = await get(
-      `SELECT * FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = 'approved'`,
-      [ho.id, month]
-    );
+    const approvedPayment = await findApprovedMonthlyDuesPayment(ho.id, month);
 
     if (approvedPayment) {
       // EXCLUDE from billing!
@@ -2354,6 +2491,7 @@ app.post('/api/billings/generate-monthly-dues', asyncHandler(async (req, res) =>
       status: 'active',
       createdAt: today,
       monthly_dues_month: month,
+      billing_type: BILLING_TYPE_MONTHLY_DUES,
     };
 
     await saveRecord('billings', newBill);
@@ -2523,7 +2661,9 @@ app.post('/api/payments/submit', (req, res) => {
 
         finalBillingId = billing.id;
         billingTitle = billing.title || 'Billing';
-        finalMonthlyDuesMonth = billing.monthly_dues_month || parseMonthFromTitle(billing.title) || null;
+        finalMonthlyDuesMonth = isMonthlyAssociationDuesBilling(billing)
+          ? (billing.monthly_dues_month || parseMonthFromTitle(billing.title) || null)
+          : null;
         if (finalMonthlyDuesMonth) {
           paymentType = 'monthly_dues';
 
@@ -2590,10 +2730,13 @@ app.post('/api/payments/submit', (req, res) => {
 
         // Check if an existing billing record already exists for this homeowner and month
         const matchingBills = await all(
-          "SELECT * FROM billings WHERE monthly_dues_month = ? OR title = ? OR title LIKE ?",
-          [monthlyDuesMonth, `Monthly Dues - ${monthName}`, `%Monthly Dues%${monthName}%`]
+          `SELECT * FROM billings
+            WHERE monthly_dues_month = ?
+              AND (billing_type = ? OR (billing_type IS NULL OR billing_type = '') OR LOWER(title) LIKE '%monthly%dues%')`,
+          [monthlyDuesMonth, BILLING_TYPE_MONTHLY_DUES]
         );
         for (const mb of matchingBills) {
+          if (!isMonthlyAssociationDuesBilling(mb)) continue;
           let assigned = [];
           try {
             assigned = typeof mb.assignedTo === 'string' ? JSON.parse(mb.assignedTo) : mb.assignedTo;
@@ -2700,10 +2843,14 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
   let updatedBillingId = payment.billingId;
   if (!updatedBillingId && payment.monthly_dues_month) {
     const matchingBills = await all(
-      'SELECT id, assignedTo FROM billings WHERE monthly_dues_month = ?',
-      [payment.monthly_dues_month]
+      `SELECT id, assignedTo, billing_type, title, monthly_dues_month
+        FROM billings
+        WHERE monthly_dues_month = ?
+          AND (billing_type = ? OR (billing_type IS NULL OR billing_type = '') OR LOWER(title) LIKE '%monthly%dues%')`,
+      [payment.monthly_dues_month, BILLING_TYPE_MONTHLY_DUES]
     );
     for (const mb of matchingBills) {
+      if (!isMonthlyAssociationDuesBilling(mb)) continue;
       let assigned = [];
       try {
         assigned = typeof mb.assignedTo === 'string' ? JSON.parse(mb.assignedTo) : mb.assignedTo;
@@ -3416,25 +3563,8 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
   }
 
   if (table === 'billings') {
-    const rawMonth = req.body.monthly_dues_month || (req.body.title ? parseMonthFromTitle(req.body.title) : null);
-    if (rawMonth) {
-      req.body.monthly_dues_month = rawMonth;
-      const assigned = getAssignedHomeownerIds(req.body);
-      for (const hid of assigned) {
-        const approvedPayment = await get(
-          'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "approved"',
-          [hid, rawMonth]
-        );
-        if (approvedPayment) {
-          const ho = await get('SELECT name FROM users WHERE id = ?', [hid]);
-          const hoName = ho ? ho.name : 'Resident';
-          const monthDisplay = formatMonthYearDisplay(rawMonth);
-          return res.status(400).json({
-            error: `This homeowner (${hoName}) has already paid the monthly dues for ${monthDisplay}.`,
-          });
-        }
-      }
-    }
+    const validBilling = await validateAndPrepareBillingPayload(req.body, res);
+    if (!validBilling) return;
   }
 
   if (table === 'lostFound') {
@@ -3527,6 +3657,18 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
         req.body.permissions = clean.length > 0 ? clean : ['resident'];
       }
     }
+  }
+
+  if (table === 'billings') {
+    const existing = await get('SELECT * FROM billings WHERE id = ?', [req.params.id]);
+    if (!existing) {
+      res.status(404).json({ error: 'Billing not found.' });
+      return;
+    }
+    const merged = { ...deserializeRow('billings', existing), ...req.body };
+    const validBilling = await validateAndPrepareBillingPayload(merged, res, req.params.id);
+    if (!validBilling) return;
+    req.body = merged;
   }
 
   const item = { ...stripProfilePhotoField(table, req.body), id: req.params.id };

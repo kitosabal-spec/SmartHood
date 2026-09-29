@@ -190,10 +190,17 @@ function openProfessionalBillingModal() {
       <section class="billing-form-section">
         <div class="billing-form-kicker">Billing details</div>
         <div class="form-group">
+          <label>Billing Type *</label>
+          <select id="bf_billing_type" class="form-control">
+            <option value="Monthly Association Dues">Monthly Association Dues</option>
+            <option value="Other Billing">Other Billing</option>
+          </select>
+        </div>
+        <div class="form-group" id="bf_title_group">
           <label>Title *</label>
           <input id="bf_title" value="Monthly Association Dues" placeholder="Monthly Association Dues"/>
         </div>
-        <div class="form-group">
+        <div class="form-group" id="bf_month_group">
           <label>Billing Month *</label>
           <input id="bf_month" type="month" value="${currentMonthValue}"/>
         </div>
@@ -208,7 +215,7 @@ function openProfessionalBillingModal() {
             <input id="bf_due" type="date" value="${defaultDueDate}"/>
           </div>
         </div>
-        <div class="form-group billing-desc-group">
+        <div class="form-group billing-desc-group" id="bf_desc_group">
           <label>Description</label>
           <textarea id="bf_desc" placeholder="Add notes, coverage period, or payment instructions..."></textarea>
         </div>
@@ -254,6 +261,7 @@ function openProfessionalBillingModal() {
 
   setupProfessionalBillingSearch();
   setupBillingAmountAutoFill();
+  setupBillingTypeSwitcher();
   updateProfessionalBillingSummary();
 }
 
@@ -276,13 +284,14 @@ function setupProfessionalBillingSearch() {
 function refreshHomeownerPaymentBadges() {
   const monthInput = document.getElementById('bf_month');
   const selectedMonth = monthInput ? monthInput.value : '';
+  const isMonthly = getSelectedBillingType() === BILLING_TYPE_MONTHLY_DUES;
   const payments = db.get('payments');
   document.querySelectorAll('.billing-homeowner-row').forEach(row => {
     const cb = row.querySelector('.ho-cb');
     if (!cb) return;
     const uid = cb.value;
     const paidBadge = row.querySelector('.paid-advance-badge');
-    const alreadyPaid = Boolean(selectedMonth && payments.some(p => p.homeownerId === uid && p.monthly_dues_month === selectedMonth && p.status === 'approved'));
+    const alreadyPaid = Boolean(isMonthly && selectedMonth && payments.some(p => p.homeownerId === uid && p.monthly_dues_month === selectedMonth && p.status === 'approved'));
     if (alreadyPaid) {
       if (!paidBadge) {
         const nameEl = row.querySelector('.billing-homeowner-name');
@@ -329,10 +338,62 @@ function isMonthlyDuesTitle(title) {
   return text.includes('monthly') && text.includes('dues');
 }
 
+const BILLING_TYPE_MONTHLY_DUES = 'Monthly Association Dues';
+const BILLING_TYPE_OTHER = 'Other Billing';
+
+function getSelectedBillingType() {
+  return document.getElementById('bf_billing_type')?.value || BILLING_TYPE_MONTHLY_DUES;
+}
+
+function isMonthlyAssociationDuesBillingRecord(billing) {
+  if (!billing) return false;
+  if (billing.billing_type === BILLING_TYPE_MONTHLY_DUES) return true;
+  if (billing.billing_type === BILLING_TYPE_OTHER) return false;
+  return Boolean(billing.monthly_dues_month && isMonthlyDuesTitle(billing.title));
+}
+
+function setupBillingTypeSwitcher() {
+  const typeInput = document.getElementById('bf_billing_type');
+  if (!typeInput) return;
+  typeInput.addEventListener('change', updateBillingTypeFields);
+  updateBillingTypeFields();
+}
+
+function updateBillingTypeFields() {
+  const billingType = getSelectedBillingType();
+  const isMonthly = billingType === BILLING_TYPE_MONTHLY_DUES;
+  const titleGroup = document.getElementById('bf_title_group');
+  const titleInput = document.getElementById('bf_title');
+  const monthGroup = document.getElementById('bf_month_group');
+  const descInput = document.getElementById('bf_desc');
+
+  if (titleGroup) titleGroup.style.display = isMonthly ? 'none' : '';
+  if (monthGroup) monthGroup.style.display = isMonthly ? '' : 'none';
+  if (titleInput) {
+    if (isMonthly) {
+      titleInput.value = BILLING_TYPE_MONTHLY_DUES;
+      titleInput.placeholder = BILLING_TYPE_MONTHLY_DUES;
+    } else {
+      titleInput.value = titleInput.value === BILLING_TYPE_MONTHLY_DUES ? '' : titleInput.value;
+      titleInput.placeholder = 'e.g. Vehicle Sticker Fee';
+    }
+  }
+  if (descInput) {
+    descInput.placeholder = isMonthly
+      ? 'Optional notes for this monthly dues billing...'
+      : 'Describe the charge, damage, service, or fee...';
+  }
+
+  refreshHomeownerPaymentBadges();
+  updateBillingAmountForMonthlyDues();
+}
+
 function setupBillingAmountAutoFill() {
   const titleInput = document.getElementById('bf_title');
   const monthInput = document.getElementById('bf_month');
+  const typeInput = document.getElementById('bf_billing_type');
   if (titleInput) titleInput.addEventListener('input', updateBillingAmountForMonthlyDues);
+  if (typeInput) typeInput.addEventListener('change', updateBillingAmountForMonthlyDues);
   if (monthInput) {
     monthInput.addEventListener('change', () => {
       refreshHomeownerPaymentBadges();
@@ -343,12 +404,11 @@ function setupBillingAmountAutoFill() {
 }
 
 function updateBillingAmountForMonthlyDues() {
-  const titleInput = document.getElementById('bf_title');
   const amountInput = document.getElementById('bf_amount');
   const hint = document.getElementById('bf_amountHint');
-  if (!titleInput || !amountInput) return;
+  if (!amountInput) return;
 
-  const monthlyDues = isMonthlyDuesTitle(titleInput.value);
+  const monthlyDues = getSelectedBillingType() === BILLING_TYPE_MONTHLY_DUES;
   const selectedIds = [...document.querySelectorAll('.ho-cb:checked')].map(c => c.value);
 
   amountInput.readOnly = false;
@@ -375,19 +435,36 @@ function updateBillingAmountForMonthlyDues() {
 
 async function saveAddBilling() {
   try {
-    const title = (document.getElementById('bf_title')?.value || '').trim();
+    const billingType = getSelectedBillingType();
+    const isMonthlyDues = billingType === BILLING_TYPE_MONTHLY_DUES;
+    const enteredTitle = (document.getElementById('bf_title')?.value || '').trim();
     const due = (document.getElementById('bf_due')?.value || '').trim();
     const rawMonthInput = (document.getElementById('bf_month')?.value || '').trim();
-    const billingMonth = formatBillingMonth(rawMonthInput);
+    const billingMonth = isMonthlyDues ? formatBillingMonth(rawMonthInput) : '';
     const description = (document.getElementById('bf_desc')?.value || '').trim();
 
-    if (!title || !due) {
-      showToast('error', 'Missing Fields', 'Title and Due Date are required.');
+    if (!billingType || ![BILLING_TYPE_MONTHLY_DUES, BILLING_TYPE_OTHER].includes(billingType)) {
+      showToast('error', 'Missing Billing Type', 'Select a valid billing type.');
       return;
     }
 
-    if (rawMonthInput && !billingMonth) {
+    if (!due) {
+      showToast('error', 'Missing Due Date', 'Due Date is required.');
+      return;
+    }
+
+    if (isMonthlyDues && !rawMonthInput) {
+      showToast('error', 'Missing Billing Month', 'Billing Month is required for Monthly Association Dues.');
+      return;
+    }
+
+    if (isMonthlyDues && !billingMonth) {
       showToast('error', 'Invalid Month', 'Please select a valid billing month.');
+      return;
+    }
+
+    if (!isMonthlyDues && !enteredTitle) {
+      showToast('error', 'Missing Title', 'Billing Title is required for Other Billing.');
       return;
     }
 
@@ -404,12 +481,36 @@ async function saveAddBilling() {
       return;
     }
 
-    const finalTitle = billingMonth && !title.toLowerCase().includes(billingMonth.toLowerCase())
-      ? `${title} - ${billingMonth}`
-      : title;
+    if (isMonthlyDues) {
+      const billings = db.get('billings');
+      const payments = db.get('payments');
+      const paidResident = checked.map(uid => db.getOne('users', uid)).find(u =>
+        payments.some(p => p.homeownerId === u?.id && p.monthly_dues_month === rawMonthInput && p.status === 'approved')
+      );
+      if (paidResident) {
+        showToast('error', 'Already Paid', 'This homeowner has already paid the Monthly Association Dues for this month.');
+        return;
+      }
+
+      const duplicateResident = checked.map(uid => db.getOne('users', uid)).find(u =>
+        billings.some(b =>
+          isMonthlyAssociationDuesBillingRecord(b) &&
+          b.monthly_dues_month === rawMonthInput &&
+          getAssignedHomeownerIds(b).includes(u?.id)
+        )
+      );
+      if (duplicateResident) {
+        showToast('error', 'Duplicate Billing', `Monthly Association Dues billing already exists for ${duplicateResident.name || 'this homeowner'} for ${billingMonth}.`);
+        return;
+      }
+    }
+
+    const finalTitle = isMonthlyDues
+      ? `${BILLING_TYPE_MONTHLY_DUES} - ${billingMonth}`
+      : enteredTitle;
 
     let finalDesc = '';
-    if (billingMonth) {
+    if (isMonthlyDues) {
       finalDesc = description ? `Billing month: ${billingMonth}. ${description}` : `Billing month: ${billingMonth}.`;
     } else {
       finalDesc = description;
@@ -424,7 +525,8 @@ async function saveAddBilling() {
       assignedTo: checked,
       status: 'active',
       createdAt: getLocalDateValue(),
-      monthly_dues_month: rawMonthInput || null,
+      monthly_dues_month: isMonthlyDues ? rawMonthInput : null,
+      billing_type: billingType,
     };
 
     showLoading();

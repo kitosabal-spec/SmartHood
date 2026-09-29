@@ -1223,8 +1223,9 @@ function exportReportsFinancialCSV() {
   if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
   syncHomeownerBalances();
 
-  const billings = db.get('billings') || [];
-  const payments = db.get('payments') || [];
+  const range = getDateRangeFilter();
+  const billings = filterByDateRange(db.get('billings') || [], getReportBillingDate, range);
+  const payments = filterByDateRange(db.get('payments') || [], getReportPaymentDate, range);
 
   const rows = [];
   rows.push(csvRow([
@@ -1316,13 +1317,122 @@ window.exportReportsFinancialCSV = exportReportsFinancialCSV;
 window.exportReportsCSV = exportReportsFinancialCSV;
 window.exportReportsSummaryCSV = exportReportsFinancialCSV;
 
+// Reports use the date that best represents activity for each record type. Payments
+// prefer their review date, then their submitted/payment date; billings use the date
+// they were created (falling back to their due date).
+let reportsDateFilterState = { preset: 'all', date: '', startDate: '', endDate: '' };
+let currentReportsData = null;
+
+function getReportDate(value) {
+  if (!value) return null;
+  const dateOnly = String(value).match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (dateOnly) return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date : null;
+}
+
+function getReportPaymentDate(payment) {
+  return payment.reviewedAt || payment.payment_date || payment.submittedAt || payment.createdAt;
+}
+
+function getReportBillingDate(billing) {
+  return billing.createdAt || billing.dueDate;
+}
+
+function getReportComplaintDate(complaint) {
+  return complaint.dateFiled || complaint.createdAt || complaint.dateOfOccurrence;
+}
+
+function getDateRangeFilter(state = reportsDateFilterState) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const endOfToday = new Date(today);
+  endOfToday.setHours(23, 59, 59, 999);
+  let start = null;
+  let end = null;
+
+  switch (state.preset) {
+    case 'today':
+      start = today;
+      end = endOfToday;
+      break;
+    case 'week': {
+      const day = today.getDay() || 7; // Monday is the start of the reporting week.
+      start = new Date(today);
+      start.setDate(today.getDate() - day + 1);
+      end = endOfToday;
+      break;
+    }
+    case 'month':
+      start = new Date(today.getFullYear(), today.getMonth(), 1);
+      end = endOfToday;
+      break;
+    case 'year':
+      start = new Date(today.getFullYear(), 0, 1);
+      end = endOfToday;
+      break;
+    case 'date':
+      start = getReportDate(state.date);
+      end = start ? new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59, 59, 999) : null;
+      break;
+    case 'range':
+      start = getReportDate(state.startDate);
+      end = getReportDate(state.endDate);
+      if (end) end.setHours(23, 59, 59, 999);
+      break;
+    default:
+      break;
+  }
+
+  if (start && end && start > end) [start, end] = [end, start];
+  return { start, end };
+}
+
+function filterByDateRange(records, getDate, range = getDateRangeFilter()) {
+  if (!range.start && !range.end) return records;
+  return records.filter(record => {
+    const date = getReportDate(getDate(record));
+    if (!date) return false;
+    return (!range.start || date >= range.start) && (!range.end || date <= range.end);
+  });
+}
+
+function updateReportsDateFilter() {
+  const preset = document.getElementById('reportsDateFilter')?.value || 'all';
+  reportsDateFilterState = {
+    preset,
+    date: document.getElementById('reportsDate')?.value || (preset === 'date' ? getLocalDateValue() : reportsDateFilterState.date),
+    startDate: document.getElementById('reportsStartDate')?.value || reportsDateFilterState.startDate,
+    endDate: document.getElementById('reportsEndDate')?.value || reportsDateFilterState.endDate,
+  };
+  renderReports();
+}
+window.updateReportsDateFilter = updateReportsDateFilter;
+
+function getReportBalance(userId, billings, payments) {
+  const billingIds = new Set(billings.map(billing => billing.id));
+  const billed = billings
+    .filter(billing => getAssignedHomeownerIds(billing).includes(userId))
+    .reduce((sum, billing) => sum + toMoneyNumber(billing.amount), 0);
+  const paid = payments
+    .filter(payment => payment.homeownerId === userId && payment.status === 'approved' && billingIds.has(payment.billingId))
+    .reduce((sum, payment) => sum + toMoneyNumber(payment.amount), 0);
+  return Math.max(0, Math.round((billed - paid) * 100) / 100);
+}
+
 function renderReports() {
   if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
   syncHomeownerBalances();
-  const payments = db.get('payments');
-  const billings = db.get('billings');
+  const range = getDateRangeFilter();
+  const payments = filterByDateRange(db.get('payments'), getReportPaymentDate, range);
+  const billings = filterByDateRange(db.get('billings'), getReportBillingDate, range);
   const users = db.get('users').filter(u => u.role === 'homeowner');
-  const complaints = db.get('complaints');
+  const complaints = filterByDateRange(db.get('complaints'), getReportComplaintDate, range);
+  const activeHomeownerIds = new Set([
+    ...billings.flatMap(getAssignedHomeownerIds),
+    ...payments.map(payment => payment.homeownerId),
+  ].filter(Boolean));
+  const reportUsers = users.filter(user => activeHomeownerIds.has(user.id));
   const approved = payments.filter(p => p.status === 'approved');
   const pending  = payments.filter(p => p.status === 'pending');
   const rejected = payments.filter(p => p.status === 'rejected');
@@ -1331,6 +1441,7 @@ function renderReports() {
   const totalOutstanding = Math.max(0, totalDue - totalPaid);
   const analysisYear = getAnalysisYear(payments, billings);
   const monthlyData = buildMonthlyRevenueData(payments, analysisYear);
+  currentReportsData = { billings, payments, users, reportUsers };
 
   const area = document.getElementById('contentArea');
   area.innerHTML = `
@@ -1346,11 +1457,30 @@ function renderReports() {
     </div>
   </div>
 
+  <div class="reports-date-filter" aria-label="Report date filter">
+    <div class="reports-date-filter-label"><svg width="16" height="16"><use href="#ico-clock"/></svg><span>Date Filter</span></div>
+    <select class="filter-select" id="reportsDateFilter" onchange="updateReportsDateFilter()">
+      <option value="today" ${reportsDateFilterState.preset === 'today' ? 'selected' : ''}>Today</option>
+      <option value="week" ${reportsDateFilterState.preset === 'week' ? 'selected' : ''}>This Week</option>
+      <option value="month" ${reportsDateFilterState.preset === 'month' ? 'selected' : ''}>This Month</option>
+      <option value="year" ${reportsDateFilterState.preset === 'year' ? 'selected' : ''}>This Year</option>
+      <option value="all" ${reportsDateFilterState.preset === 'all' ? 'selected' : ''}>All Time</option>
+      <option value="date" ${reportsDateFilterState.preset === 'date' ? 'selected' : ''}>Choose Date</option>
+      <option value="range" ${reportsDateFilterState.preset === 'range' ? 'selected' : ''}>Date Range</option>
+    </select>
+    ${reportsDateFilterState.preset === 'date' ? `
+      <input class="reports-date-input" id="reportsDate" type="date" value="${reportsDateFilterState.date}" onchange="updateReportsDateFilter()" aria-label="Choose report date">` : ''}
+    ${reportsDateFilterState.preset === 'range' ? `
+      <input class="reports-date-input" id="reportsStartDate" type="date" value="${reportsDateFilterState.startDate}" onchange="updateReportsDateFilter()" aria-label="Report start date">
+      <span class="reports-date-separator">to</span>
+      <input class="reports-date-input" id="reportsEndDate" type="date" value="${reportsDateFilterState.endDate}" onchange="updateReportsDateFilter()" aria-label="Report end date">` : ''}
+  </div>
+
   <div class="report-summary-grid">
     <div class="report-summary-item"><div class="r-val">₱${totalDue.toLocaleString()}</div><div class="r-lbl">Total Billed</div></div>
     <div class="report-summary-item"><div class="r-val" style="color:var(--green-600)">₱${totalPaid.toLocaleString()}</div><div class="r-lbl">Total Collected</div></div>
     <div class="report-summary-item"><div class="r-val" style="color:var(--red-600)">₱${totalOutstanding.toLocaleString()}</div><div class="r-lbl">Outstanding</div></div>
-    <div class="report-summary-item"><div class="r-val">${users.length}</div><div class="r-lbl">Total Homeowners</div></div>
+    <div class="report-summary-item"><div class="r-val">${reportUsers.length}</div><div class="r-lbl">Homeowners with Activity</div></div>
   </div>
 
   <div class="charts-row" style="margin-bottom:22px">
@@ -1466,7 +1596,7 @@ function renderReports() {
 
   hoBalancePaginationState.page = 1;
   currentHOBalanceFiltered = null;
-  renderHOBalanceReportTable();
+  renderHOBalanceReportTable(reportUsers, true);
 }
 
 let billingCollectionPaginationState = { page: 1, pageSize: 5 };
@@ -1488,8 +1618,8 @@ function renderBillingCollectionTable() {
   const tbody = document.getElementById('billingCollectionTableBody');
   if (!tbody) return;
 
-  const billings = db.get('billings') || [];
-  const payments = db.get('payments') || [];
+  const billings = currentReportsData?.billings || [];
+  const payments = currentReportsData?.payments || [];
   const totalItems = billings.length;
   const pageSize = billingCollectionPaginationState.pageSize || 5;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
@@ -1570,7 +1700,7 @@ function renderHOBalanceReportTable(filtered = null, resetPage = false) {
   if (filtered !== null) {
     currentHOBalanceFiltered = filtered;
   } else if (currentHOBalanceFiltered === null) {
-    currentHOBalanceFiltered = db.get('users').filter(u => u.role === 'homeowner');
+    currentHOBalanceFiltered = currentReportsData?.reportUsers || db.get('users').filter(u => u.role === 'homeowner');
   }
   const users = currentHOBalanceFiltered || [];
 
@@ -1600,7 +1730,11 @@ function renderHOBalanceReportTable(filtered = null, resetPage = false) {
   const endIndex = Math.min(startIndex + pageSize, totalItems);
   const pageItems = users.slice(startIndex, endIndex);
 
-  tbody.innerHTML = pageItems.map((u, i) => `
+  const reportBillings = currentReportsData?.billings || [];
+  const reportPayments = currentReportsData?.payments || [];
+  tbody.innerHTML = pageItems.map((u, i) => {
+    const balance = getReportBalance(u.id, reportBillings, reportPayments);
+    return `
     <tr>
       <td>${startIndex + i + 1}</td>
       <td>
@@ -1610,10 +1744,11 @@ function renderHOBalanceReportTable(filtered = null, resetPage = false) {
         </div>
       </td>
       <td>${escapeHtml(u.block || '—')}, ${escapeHtml(u.lot || '—')}</td>
-      <td class="${(u.balance || 0) > 0 ? 'amount-due' : 'amount-paid'}">₱${(u.balance || 0).toLocaleString()}</td>
-      <td>${(u.balance || 0) > 0 ? '<span class="badge badge-red">With Balance</span>' : '<span class="badge badge-green">Clear</span>'}</td>
+      <td class="${balance > 0 ? 'amount-due' : 'amount-paid'}">₱${balance.toLocaleString()}</td>
+      <td>${balance > 0 ? '<span class="badge badge-red">With Balance</span>' : '<span class="badge badge-green">Clear</span>'}</td>
     </tr>
-  `).join('');
+  `;
+  }).join('');
 
   renderPaginationComponent({
     containerId: 'hoBalancePagination',
@@ -1630,7 +1765,7 @@ function filterHOBalanceReport() {
   const q = (document.getElementById('hoBalanceSearch')?.value || '').toLowerCase().trim();
   const statusFilter = document.getElementById('hoBalanceStatusFilter')?.value || '';
 
-  let users = db.get('users').filter(u => u.role === 'homeowner');
+  let users = currentReportsData?.reportUsers || db.get('users').filter(u => u.role === 'homeowner');
   if (q) {
     users = users.filter(u =>
       (u.name || '').toLowerCase().includes(q)
@@ -1641,9 +1776,9 @@ function filterHOBalanceReport() {
     );
   }
   if (statusFilter === 'due') {
-    users = users.filter(u => (u.balance || 0) > 0);
+    users = users.filter(u => getReportBalance(u.id, currentReportsData?.billings || [], currentReportsData?.payments || []) > 0);
   } else if (statusFilter === 'clear') {
-    users = users.filter(u => (u.balance || 0) <= 0);
+    users = users.filter(u => getReportBalance(u.id, currentReportsData?.billings || [], currentReportsData?.payments || []) <= 0);
   }
 
   renderHOBalanceReportTable(users, true);
