@@ -825,7 +825,9 @@ async function submitHOComplaint(category, description, otherText = '', mediaFil
       resolvedAt:    null,
     };
 
-    db.save('complaints', complaint);
+    // Wait for the server to replace private storage keys with secure file URLs
+    // before rendering the new complaint.
+    await db.save('complaints', complaint);
     addNotification('New Complaint Submitted', `${currentUser.name} filed a ${category} complaint for review.`, { roles: ['admin', 'president', 'security'] });
     logAction && logAction(`Homeowner ${currentUser.name} filed a ${category} complaint`);
 
@@ -901,4 +903,3 @@ function complaintCategoryBadge(category, otherCategory = '') {
   }
   return map[category] || `<span class="badge badge-gray">${safeText(category || 'Others')}</span>`;
 }
-

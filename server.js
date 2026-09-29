@@ -24,28 +24,74 @@ const DB_CONFIG = {
 };
 
 let db;
+// Set FILE_ACCESS_SECRET in production so signed file links survive restarts.
+const FILE_ACCESS_SECRET = process.env.FILE_ACCESS_SECRET || crypto.randomBytes(32).toString('hex');
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const SESSION_COOKIE_NAME = 'smarthood_session';
+const ALLOW_LEGACY_USER_HEADER = process.env.NODE_ENV !== 'production';
+if (!process.env.FILE_ACCESS_SECRET) console.warn('FILE_ACCESS_SECRET is not set; private file links will expire after a server restart.');
+if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not set; sessions will expire after a server restart.');
 
 app.use(express.json({ limit: '15mb' }));
+// index.html still uses /public for CSS, JS, and images. Block its upload
+// subtree before the broad static mount so it cannot bypass /uploads rules.
+app.use('/public/uploads', (req, res) => res.status(404).end());
 app.use('/public', express.static(path.join(__dirname, 'public')));
 app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
 app.use('/css', express.static(path.join(__dirname, 'public', 'css')));
 app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
 
-const PROFILE_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'profile');
+// Public media is deliberately limited to community-facing images and videos.
+// Never add receipts, complaint evidence, or resident documents to this tree.
+const PUBLIC_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads');
+const PROFILE_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'profile');
 fs.mkdirSync(PROFILE_UPLOAD_DIR, { recursive: true });
-const ANNOUNCEMENT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'announcements');
+const ANNOUNCEMENT_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'announcements');
 fs.mkdirSync(ANNOUNCEMENT_UPLOAD_DIR, { recursive: true });
-const BOARD_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'board');
+const BOARD_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'board');
 fs.mkdirSync(BOARD_UPLOAD_DIR, { recursive: true });
-const COMPLAINT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'complaints');
-fs.mkdirSync(COMPLAINT_UPLOAD_DIR, { recursive: true });
-const LOSTFOUND_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'lostfound');
+const LOSTFOUND_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'lostfound');
 fs.mkdirSync(LOSTFOUND_UPLOAD_DIR, { recursive: true });
-const RECEIPT_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'receipts');
-fs.mkdirSync(RECEIPT_UPLOAD_DIR, { recursive: true });
-const QRCODE_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads', 'qrcodes');
+const QRCODE_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'qrcodes');
 fs.mkdirSync(QRCODE_UPLOAD_DIR, { recursive: true });
-app.use('/uploads', express.static(path.join(__dirname, 'public', 'uploads')));
+
+// Private uploads are not served by express.static. They are returned only by
+// the authorization-checked /api/files routes below.
+const PRIVATE_UPLOAD_DIR = path.join(__dirname, 'private_uploads');
+const PRIVATE_RECEIPT_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'receipts');
+const PRIVATE_COMPLAINT_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'complaints');
+const PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'resident-documents');
+for (const directory of [PRIVATE_RECEIPT_UPLOAD_DIR, PRIVATE_COMPLAINT_UPLOAD_DIR, PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR]) {
+  fs.mkdirSync(directory, { recursive: true });
+}
+
+// Keep only genuinely public content public. In particular, there is no
+// /uploads/receipts or /uploads/complaints static route.
+for (const [urlPath, directory] of [
+  ['/uploads/profile', PROFILE_UPLOAD_DIR],
+  ['/uploads/announcements', ANNOUNCEMENT_UPLOAD_DIR],
+  ['/uploads/board', BOARD_UPLOAD_DIR],
+  ['/uploads/lostfound', LOSTFOUND_UPLOAD_DIR],
+  ['/uploads/qrcodes', QRCODE_UPLOAD_DIR],
+]) {
+  app.use(urlPath, express.static(directory));
+}
+
+function moveLegacyPrivateUploads(legacyDirectory, privateDirectory) {
+  // Existing sensitive files are moved once on startup, so old /uploads URLs
+  // stop working without losing records that still contain their old paths.
+  if (!fs.existsSync(legacyDirectory)) return;
+  for (const entry of fs.readdirSync(legacyDirectory, { withFileTypes: true })) {
+    if (!entry.isFile() || entry.name === '.gitkeep') continue;
+    const source = path.join(legacyDirectory, entry.name);
+    const destination = path.join(privateDirectory, path.basename(entry.name));
+    if (!fs.existsSync(destination)) fs.renameSync(source, destination);
+    else fs.unlinkSync(source);
+  }
+}
+
+moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'receipts'), PRIVATE_RECEIPT_UPLOAD_DIR);
+moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'complaints'), PRIVATE_COMPLAINT_UPLOAD_DIR);
 
 const tableConfig = {
   users: {
@@ -595,6 +641,9 @@ async function loadAllData(requester = null) {
     }
     if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'complaints'))) {
       data.complaints = [];
+    } else if (!userHasPermission(requester, 'complaints')) {
+      // Residents can see their own cases, while complaint staff can see all.
+      data.complaints = (data.complaints || []).filter(c => c.homeownerId === requester.id);
     }
     if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'vehicles'))) {
       data.vehicleRegistrations = [];
@@ -608,6 +657,12 @@ async function loadAllData(requester = null) {
         return isPublic || isOwn;
       });
     }
+  }
+  // Replace storage keys with short-lived, record-specific secure URLs only
+  // after permission filtering. Raw private filenames never leave the server.
+  if (requester) {
+    data.payments = (data.payments || []).map(record => presentPrivateFiles('payments', record, requester));
+    data.complaints = (data.complaints || []).map(record => presentPrivateFiles('complaints', record, requester));
   }
   return data;
 }
@@ -967,13 +1022,24 @@ const ALLOWED_PHOTO_MIMES = {
 };
 const ALLOWED_PHOTO_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+const ALLOWED_VIDEO_MIMES = {
+  'video/mp4': '.mp4',
+  'video/quicktime': '.mov',
+  'video/webm': '.webm',
+};
+
+function randomUploadName(prefix, extension) {
+  // The filename never includes a user-supplied name, preventing traversal and
+  // making stored private filenames unguessable.
+  return `${prefix}-${crypto.randomUUID()}${extension}`;
+}
 
 const profileUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, PROFILE_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || '.jpg';
-      const unique = `${Date.now().toString(36)}${crypto.randomBytes(12).toString('hex')}${ext}`;
+      const unique = randomUploadName('profile', ext);
       cb(null, unique);
     },
   }),
@@ -1006,12 +1072,12 @@ const MAX_PAYMENT_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const receiptUpload = multer({
   storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, RECEIPT_UPLOAD_DIR),
+    destination: (req, file, cb) => cb(null, PRIVATE_RECEIPT_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const origExt = path.extname(file.originalname || '').toLowerCase();
       const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || (ALLOWED_PHOTO_EXTS.has(origExt) ? origExt : '.jpg');
       const cleanExt = ext === '.jpeg' ? '.jpg' : ext;
-      const unique = `receipt-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${cleanExt}`;
+      const unique = randomUploadName('receipt', cleanExt);
       cb(null, unique);
     },
   }),
@@ -1033,7 +1099,7 @@ const qrUpload = multer({
       const origExt = path.extname(file.originalname || '').toLowerCase();
       const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || (ALLOWED_PHOTO_EXTS.has(origExt) ? origExt : '.jpg');
       const cleanExt = ext === '.jpeg' ? '.jpg' : ext;
-      const unique = `qr-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${cleanExt}`;
+      const unique = randomUploadName('qr', cleanExt);
       cb(null, unique);
     },
   }),
@@ -1048,8 +1114,36 @@ const qrUpload = multer({
   },
 });
 
+function signedSessionToken(userId) {
+  const payload = Buffer.from(JSON.stringify({ userId, expires: Date.now() + (8 * 60 * 60 * 1000) })).toString('base64url');
+  const signature = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function sessionUserId(req) {
+  const cookies = Object.fromEntries(String(req.headers.cookie || '').split(';').map(part => {
+    const index = part.indexOf('=');
+    return index < 0 ? [] : [part.slice(0, index).trim(), decodeURIComponent(part.slice(index + 1).trim())];
+  }).filter(pair => pair.length));
+  const [payload, signature] = String(cookies[SESSION_COOKIE_NAME] || '').split('.');
+  if (!payload || !signature) return null;
+  const expected = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
+  if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
+  try {
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    return claims.userId && Number(claims.expires) > Date.now() ? claims.userId : null;
+  } catch {
+    return null;
+  }
+}
+
 function getRequestUserId(req) {
-  return req.get('x-user-id') || req.body.userId || req.query.userId || null;
+  const authenticatedUserId = sessionUserId(req);
+  if (authenticatedUserId) return authenticatedUserId;
+  // Existing local development UI sends this header. Production requires the
+  // signed HttpOnly session cookie issued by /api/login.
+  if (ALLOW_LEGACY_USER_HEADER) return req.get('x-user-id') || req.body?.userId || req.query.userId || null;
+  return null;
 }
 
 const ALLOWED_ANNOUNCEMENT_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -1076,12 +1170,8 @@ function isValidVideoBuffer(buffer, ext) {
   if (buffer.length >= 12 && buffer.toString('ascii', 4, 8) === 'ftyp') return true;
   // WebM: EBML header 0x1A 0x45 0xDF 0xA3
   if (buffer[0] === 0x1a && buffer[1] === 0x45 && buffer[2] === 0xdf && buffer[3] === 0xa3) return true;
-  // QuickTime / MP4 common atoms or container signature
-  if (['.mp4', '.mov', '.webm'].includes(ext)) {
-    const headerStr = buffer.slice(0, 32).toString('ascii');
-    if (headerStr.includes('moov') || headerStr.includes('mdat') || headerStr.includes('wide') || headerStr.includes('skip') || headerStr.includes('pnot') || headerStr.includes('ftyp')) return true;
-    return true;
-  }
+  // Do not trust an extension alone: a valid MP4/MOV/WebM container has one
+  // of the signatures above. Unsupported content is rejected.
   return false;
 }
 
@@ -1100,16 +1190,14 @@ const announcementUpload = multer({
     destination: (req, file, cb) => cb(null, ANNOUNCEMENT_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const ext = getAnnouncementMediaExt(file);
-      const unique = `announcement-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+      const unique = randomUploadName('announcement', ext);
       cb(null, unique);
     },
   }),
   limits: { fileSize: MAX_ANNOUNCEMENT_VIDEO_BYTES, files: 10 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
-    const isVideoMime = file.mimetype && (file.mimetype.startsWith('video/') || file.mimetype === 'video/quicktime');
-    const isImageMime = file.mimetype && file.mimetype.startsWith('image/');
-    if (!ALLOWED_ANNOUNCEMENT_MEDIA_EXTS.has(ext) && !isVideoMime && !isImageMime) {
+    if (!ALLOWED_ANNOUNCEMENT_MEDIA_EXTS.has(ext) || !isAllowedMediaMime(file.mimetype, ext)) {
       cb(new Error('Unsupported file format. Allowed formats: JPG, PNG, WebP (Images) and MP4, MOV, WebM (Videos).'));
       return;
     }
@@ -1130,7 +1218,7 @@ const boardUpload = multer({
     destination: (req, file, cb) => cb(null, BOARD_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || '.jpg';
-      const unique = `bod-${Date.now().toString(36)}-${crypto.randomBytes(6).toString('hex')}${ext}`;
+      const unique = randomUploadName('board', ext);
       cb(null, unique);
     },
   }),
@@ -1151,19 +1239,30 @@ const ALLOWED_COMPLAINT_MEDIA_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp', 
 const MAX_COMPLAINT_IMAGE_BYTES = 5 * 1024 * 1024;
 const MAX_COMPLAINT_VIDEO_BYTES = 30 * 1024 * 1024;
 
+function getSafeMediaExt(file) {
+  const extension = path.extname(file.originalname || '').toLowerCase();
+  if (!ALLOWED_COMPLAINT_MEDIA_EXTS.has(extension)) return '.bin';
+  return extension === '.jpeg' ? '.jpg' : extension;
+}
+
+function isAllowedMediaMime(mime, extension) {
+  const normalizedExt = extension === '.jpeg' ? '.jpg' : extension;
+  return ALLOWED_PHOTO_MIMES[mime] === normalizedExt || ALLOWED_VIDEO_MIMES[mime] === normalizedExt;
+}
+
 const complaintUpload = multer({
   storage: multer.diskStorage({
-    destination: (req, file, cb) => cb(null, COMPLAINT_UPLOAD_DIR),
+    destination: (req, file, cb) => cb(null, PRIVATE_COMPLAINT_UPLOAD_DIR),
     filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname || '').toLowerCase() || '.bin';
-      const unique = `complaint-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+      const ext = getSafeMediaExt(file);
+      const unique = randomUploadName('complaint', ext);
       cb(null, unique);
     },
   }),
   limits: { fileSize: MAX_COMPLAINT_VIDEO_BYTES, files: 15 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
-    if (!ALLOWED_COMPLAINT_MEDIA_EXTS.has(ext)) {
+    if (!ALLOWED_COMPLAINT_MEDIA_EXTS.has(ext) || !isAllowedMediaMime(file.mimetype, ext)) {
       cb(new Error('Unsupported file format. Allowed formats: JPG, JPEG, PNG, WEBP (Images) and MP4, MOV, WEBM (Videos).'));
       return;
     }
@@ -1175,15 +1274,15 @@ const lostFoundUpload = multer({
   storage: multer.diskStorage({
     destination: (req, file, cb) => cb(null, LOSTFOUND_UPLOAD_DIR),
     filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname || '').toLowerCase() || '.bin';
-      const unique = `lf-${Date.now().toString(36)}-${crypto.randomBytes(8).toString('hex')}${ext}`;
+      const ext = getSafeMediaExt(file);
+      const unique = randomUploadName('lostfound', ext);
       cb(null, unique);
     },
   }),
   limits: { fileSize: MAX_COMPLAINT_VIDEO_BYTES, files: 10 },
   fileFilter: (req, file, cb) => {
     const ext = path.extname(file.originalname || '').toLowerCase();
-    if (!ALLOWED_COMPLAINT_MEDIA_EXTS.has(ext)) {
+    if (!ALLOWED_COMPLAINT_MEDIA_EXTS.has(ext) || !isAllowedMediaMime(file.mimetype, ext)) {
       cb(new Error('Unsupported file format. Allowed formats: JPG, JPEG, PNG, WEBP (Images) and MP4, MOV, WEBM (Videos).'));
       return;
     }
@@ -1391,6 +1490,212 @@ async function requirePermission(req, res, permissionKey) {
   }
   res.status(403).json({ error: `Access Denied: You do not have permission to perform this action.` });
   return null;
+}
+
+const PRIVATE_FILE_TICKET_TTL_MS = 10 * 60 * 1000;
+const privateUploadTickets = new Map();
+
+function privateStorageKey(kind, filename) {
+  return `private:${kind}/${path.basename(filename)}`;
+}
+
+function registerStagedPrivateUpload(kind, filename, userId) {
+  // Complaint uploads are staged briefly before their complaint record is
+  // saved. Binding the random filename to the uploader prevents one resident
+  // from attaching another resident's staged file.
+  const now = Date.now();
+  cleanExpiredPrivateUploads(now);
+  privateUploadTickets.set(`${kind}/${filename}`, { userId, expires: now + 15 * 60 * 1000 });
+}
+
+function cleanExpiredPrivateUploads(now = Date.now()) {
+  for (const [key, value] of privateUploadTickets) {
+    if (value.expires >= now) continue;
+    privateUploadTickets.delete(key);
+    const [kind, filename] = key.split('/', 2);
+    deletePrivateFiles(kind, [filename]);
+  }
+}
+
+// Remove abandoned staged complaint uploads without touching saved records.
+setInterval(cleanExpiredPrivateUploads, 5 * 60 * 1000).unref();
+
+function claimStagedPrivateUpload(kind, filename, requester) {
+  const key = `${kind}/${filename}`;
+  const staged = privateUploadTickets.get(key);
+  if (!staged || staged.expires < Date.now() || staged.userId !== requester.id) return false;
+  privateUploadTickets.delete(key);
+  return true;
+}
+
+function storedPrivateFilename(value, kind) {
+  if (!value || typeof value !== 'string') return null;
+  const prefix = `private:${kind}/`;
+  const legacyPrefix = `/uploads/${kind}/`;
+  const candidate = value.startsWith(prefix)
+    ? value.slice(prefix.length)
+    : (value.startsWith(legacyPrefix) ? value.slice(legacyPrefix.length) : null);
+  if (!candidate || path.basename(candidate) !== candidate || !/^[A-Za-z0-9._-]+$/.test(candidate)) return null;
+  return candidate;
+}
+
+function complaintAttachmentItems(record) {
+  let items = [];
+  if (Array.isArray(record?.attachments)) items = record.attachments;
+  else if (typeof record?.attachments === 'string') {
+    try { items = JSON.parse(record.attachments); } catch { items = []; }
+  }
+  if (!Array.isArray(items) || !items.length) {
+    const value = record?.attachment || record?.media_url;
+    if (value) items = [{ url: value, media_url: value, attachment: value, media_type: record?.media_type }];
+  }
+  return items.filter(Boolean);
+}
+
+function privateFilenameFromComplaintItem(item) {
+  const value = typeof item === 'string' ? item : (item?.url || item?.media_url || item?.attachment);
+  return storedPrivateFilename(value, 'complaints');
+}
+
+function privateFileTicket(kind, recordId, requester, index = 0) {
+  if (!requester?.id) return null;
+  const payload = Buffer.from(JSON.stringify({ kind, recordId, userId: requester.id, index, expires: Date.now() + PRIVATE_FILE_TICKET_TTL_MS })).toString('base64url');
+  const signature = crypto.createHmac('sha256', FILE_ACCESS_SECRET)
+    .update(payload)
+    .digest('base64url');
+  return `${payload}.${signature}`;
+}
+
+function privateFileUrl(kind, recordId, requester, index = null) {
+  const route = index === null ? `/api/files/${kind}/${encodeURIComponent(recordId)}` : `/api/files/${kind}/${encodeURIComponent(recordId)}/${index}`;
+  const ticket = privateFileTicket(kind, recordId, requester, index || 0);
+  return ticket ? `${route}?access=${encodeURIComponent(ticket)}` : null;
+}
+
+async function requesterFromPrivateFileTicket(req, res, kind, recordId, index = 0) {
+  const ticket = String(req.query.access || '');
+  const [payload, signature] = ticket.split('.');
+  if (!payload || !signature) {
+    res.status(401).json({ error: 'Login required.' });
+    return null;
+  }
+  const expected = crypto.createHmac('sha256', FILE_ACCESS_SECRET)
+    .update(payload)
+    .digest('base64url');
+  if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    res.status(403).json({ error: 'Invalid file access link.' });
+    return null;
+  }
+  try {
+    const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
+    if (claims.kind !== kind || claims.recordId !== recordId || Number(claims.index) !== Number(index) || !claims.userId || Number(claims.expires) < Date.now()) {
+      res.status(403).json({ error: 'File access link has expired.' });
+      return null;
+    }
+    if (getRequestUserId(req) !== claims.userId) {
+      res.status(401).json({ error: 'Login required.' });
+      return null;
+    }
+    const row = await get('SELECT * FROM users WHERE id = ?', [claims.userId]);
+    const requester = row && deserializeRow('users', row);
+    if (!requester || requester.status === 'inactive' || requester.status === 'deactivated') {
+      res.status(401).json({ error: 'Login required.' });
+      return null;
+    }
+    return requester;
+  } catch {
+    res.status(403).json({ error: 'Invalid file access link.' });
+    return null;
+  }
+}
+
+function privateFilePath(kind, filename) {
+  const directories = {
+    receipts: PRIVATE_RECEIPT_UPLOAD_DIR,
+    complaints: PRIVATE_COMPLAINT_UPLOAD_DIR,
+    'resident-documents': PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR,
+  };
+  const directory = directories[kind];
+  if (!directory || !filename || path.basename(filename) !== filename) return null;
+  const candidate = path.join(directory, filename);
+  return candidate.startsWith(directory + path.sep) ? candidate : null;
+}
+
+function sendPrivateFile(res, filename, kind) {
+  const filePath = privateFilePath(kind, filename);
+  if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found.' });
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.type(path.extname(filename));
+  return res.sendFile(filePath, { headers: { 'Content-Disposition': 'inline' } });
+}
+
+function presentPrivateFiles(table, record, requester) {
+  const output = { ...record };
+  if (table === 'payments' && output.receipt) {
+    output.receipt = privateFileUrl('receipts', output.id, requester);
+  }
+  if (table === 'complaints') {
+    const items = complaintAttachmentItems(record);
+    const safeItems = items.map((item, index) => {
+      if (!privateFilenameFromComplaintItem(item)) return item;
+      const url = privateFileUrl('complaints', output.id, requester, index);
+      if (typeof item === 'string') return { url, media_url: url, attachment: url };
+      const { storage_key, ...safeItem } = item;
+      return { ...safeItem, url, media_url: url, attachment: url };
+    });
+    output.attachments = safeItems;
+    if (safeItems.length) {
+      const first = safeItems[0];
+      output.attachment = typeof first === 'string' ? first : (first.url || first.media_url || first.attachment);
+      output.media_url = output.attachment;
+    }
+  }
+  return output;
+}
+
+function complaintStoredFilenames(record) {
+  return complaintAttachmentItems(record)
+    .map(privateFilenameFromComplaintItem)
+    .filter(Boolean);
+}
+
+function deletePrivateFiles(kind, filenames) {
+  for (const filename of new Set(filenames.filter(Boolean))) {
+    const filePath = privateFilePath(kind, filename);
+    if (filePath) fs.promises.unlink(filePath).catch(() => {});
+  }
+}
+
+function prepareComplaintPrivateAttachments(body, requester, existing = null) {
+  const incomingItems = complaintAttachmentItems(body);
+  const submittedStorageKeys = incomingItems.map((item) => {
+    const value = typeof item === 'string' ? item : (item?.url || item?.media_url || item?.attachment);
+    return typeof value === 'string' && value.startsWith('private:complaints/') ? storedPrivateFilename(value, 'complaints') : null;
+  }).filter(Boolean);
+  const oldFilenames = existing ? complaintStoredFilenames(deserializeRow('complaints', existing)) : [];
+
+  // UI updates send the current signed display URLs back. They are never
+  // trusted as storage paths; keep the already saved attachment metadata.
+  if (existing && !submittedStorageKeys.length) {
+    body.attachment = existing.attachment;
+    body.media_url = existing.media_url;
+    body.media_type = existing.media_type;
+    body.attachments = deserializeRow('complaints', existing).attachments;
+    return { oldFilenames, newFilenames: oldFilenames };
+  }
+
+  if (!existing && incomingItems.length && submittedStorageKeys.length !== incomingItems.length) {
+    throw new Error('Complaint attachments must be uploaded through the secure upload endpoint.');
+  }
+
+  for (const filename of submittedStorageKeys) {
+    const staged = privateUploadTickets.get(`complaints/${filename}`);
+    if (!oldFilenames.includes(filename) && (!staged || staged.expires < Date.now() || staged.userId !== requester.id)) {
+      throw new Error('One or more complaint uploads have expired. Please upload them again.');
+    }
+  }
+  return { oldFilenames, newFilenames: submittedStorageKeys };
 }
 
 
@@ -2213,8 +2518,20 @@ app.post('/api/login', asyncHandler(async (req, res) => {
     res.status(403).json({ error: 'Your account has been deactivated. Please contact the administrator.' });
     return;
   }
+  res.cookie(SESSION_COOKIE_NAME, signedSessionToken(user.id), {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    maxAge: 8 * 60 * 60 * 1000,
+    path: '/',
+  });
   res.json(deserializeRow('users', user));
 }));
+
+app.post('/api/logout', (req, res) => {
+  res.clearCookie(SESSION_COOKIE_NAME, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
+  res.json({ ok: true });
+});
 
 app.post('/api/change-password', asyncHandler(async (req, res) => {
   const requester = await requireAuth(req, res);
@@ -2915,7 +3232,7 @@ app.post('/api/payments/submit', (req, res) => {
       // Payment Date
       const paymentDate = (req.body.payment_date || new Date().toISOString().slice(0, 10)).trim();
       const paymentMethod = (req.body.payment_method || 'GCash').trim();
-      const receiptPath = `/uploads/receipts/${req.file.filename}`;
+      const receiptPath = privateStorageKey('receipts', req.file.filename);
       const paymentId = 'p' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
       const nowIso = new Date().toISOString();
 
@@ -2968,7 +3285,7 @@ app.post('/api/payments/submit', (req, res) => {
 
       res.status(201).json({
         ok: true,
-        payment: sanitizeRecord('payments', paymentRecord),
+        payment: presentPrivateFiles('payments', sanitizeRecord('payments', paymentRecord), requester),
         message: 'Payment proof submitted successfully. Your payment is now pending admin verification.',
       });
     } catch (err) {
@@ -2981,6 +3298,45 @@ app.post('/api/payments/submit', (req, res) => {
     }
   });
 });
+
+// A replacement receipt is kept private and removes the old proof only after
+// the database points at the newly verified upload.
+app.post('/api/payments/:id/receipt', asyncHandler(async (req, res) => {
+  const requester = await requireAuth(req, res);
+  if (!requester) return;
+  receiptUpload.single('receipt')(req, res, async (uploadErr) => {
+    if (uploadErr) {
+      const message = uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Receipt image exceeds the 10 MB size limit.' : (uploadErr.message || 'Invalid receipt upload.');
+      return res.status(400).json({ error: message });
+    }
+    const cleanUpFile = () => req.file?.path && fs.promises.unlink(req.file.path).catch(() => {});
+    try {
+      const payment = await get('SELECT * FROM payments WHERE id = ?', [req.params.id]);
+      if (!payment) {
+        await cleanUpFile();
+        return res.status(404).json({ error: 'Payment record not found.' });
+      }
+      const mayReplace = requester.id === payment.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'payments');
+      if (!mayReplace) {
+        await cleanUpFile();
+        return res.status(403).json({ error: 'You do not have permission to replace this receipt.' });
+      }
+      if (!req.file || !isValidImageBuffer(await fs.promises.readFile(req.file.path))) {
+        await cleanUpFile();
+        return res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
+      }
+      const oldFilename = storedPrivateFilename(payment.receipt, 'receipts');
+      const receipt = privateStorageKey('receipts', req.file.filename);
+      await run('UPDATE payments SET receipt = ?, updated_at = ? WHERE id = ?', [receipt, new Date().toISOString(), payment.id]);
+      if (oldFilename) deletePrivateFiles('receipts', [oldFilename]);
+      res.json({ ok: true, payment: presentPrivateFiles('payments', deserializeRow('payments', { ...payment, receipt }), requester) });
+    } catch (error) {
+      await cleanUpFile();
+      console.error(error);
+      res.status(500).json({ error: 'Could not replace the receipt.' });
+    }
+  });
+}));
 
 app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
   const requester = await requirePermission(req, res, 'payments');
@@ -3108,6 +3464,37 @@ app.post('/api/payments/:id/reject', asyncHandler(async (req, res) => {
   });
 }));
 
+// ── PRIVATE FILE ACCESS ────────────────────────────────────────────────────
+// Receipts and complaint evidence never have public /uploads URLs. The short-
+// lived signed link identifies a logged-in user, then ownership/role checks
+// decide whether that user may see the specific record.
+app.get('/api/files/receipts/:id', asyncHandler(async (req, res) => {
+  const requester = await requesterFromPrivateFileTicket(req, res, 'receipts', req.params.id);
+  if (!requester) return;
+  const payment = await get('SELECT * FROM payments WHERE id = ?', [req.params.id]);
+  if (!payment) return res.status(404).json({ error: 'Payment record not found.' });
+  const mayView = requester.id === payment.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'payments');
+  if (!mayView) return res.status(403).json({ error: 'You do not have permission to view this receipt.' });
+  const filename = storedPrivateFilename(payment.receipt, 'receipts');
+  if (!filename) return res.status(404).json({ error: 'Receipt file not found.' });
+  return sendPrivateFile(res, filename, 'receipts');
+}));
+
+app.get('/api/files/complaints/:id/:index?', asyncHandler(async (req, res) => {
+  const index = Number(req.params.index || 0);
+  if (!Number.isInteger(index) || index < 0) return res.status(400).json({ error: 'Invalid attachment index.' });
+  const requester = await requesterFromPrivateFileTicket(req, res, 'complaints', req.params.id, index);
+  if (!requester) return;
+  const complaint = await get('SELECT * FROM complaints WHERE id = ?', [req.params.id]);
+  if (!complaint) return res.status(404).json({ error: 'Complaint not found.' });
+  const mayView = requester.id === complaint.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'complaints');
+  if (!mayView) return res.status(403).json({ error: 'You do not have permission to view this complaint attachment.' });
+  const item = complaintAttachmentItems(deserializeRow('complaints', complaint))[index];
+  const filename = privateFilenameFromComplaintItem(item);
+  if (!filename) return res.status(404).json({ error: 'Complaint attachment not found.' });
+  return sendPrivateFile(res, filename, 'complaints');
+}));
+
 // ── LOST & FOUND APPROVE / REJECT APIS ──
 
 app.post(['/api/lostfound/:id/approve', '/api/lost-found/:id/approve'], asyncHandler(async (req, res) => {
@@ -3218,6 +3605,9 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
       });
     }
   }
+  if (table === 'complaints' && allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) {
+    data = data.filter(item => item.homeownerId === allowed.id);
+  }
   if (table === 'auditLog' && (req.query.filter || req.query.date || req.query.startDate || req.query.endDate || req.query.q)) {
     const filterMode = req.query.filter || 'all';
     const query = (req.query.q || '').trim().toLowerCase();
@@ -3319,7 +3709,7 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
     return res.json(filtered);
   }
 
-  res.json(data);
+  res.json(data.map(record => presentPrivateFiles(table, record, allowed)));
 }));
 
 app.put('/api/:table', asyncHandler(async (req, res) => {
@@ -3332,16 +3722,42 @@ app.put('/api/:table', asyncHandler(async (req, res) => {
     return;
   }
 
+  let complaintReplaceMeta = null;
+  let previousComplaintRows = [];
+  if (table === 'complaints') {
+    previousComplaintRows = await all('SELECT * FROM complaints');
+    try {
+      complaintReplaceMeta = req.body.map((record) => {
+        const item = { ...record };
+        const existing = previousComplaintRows.find(row => row.id === item.id) || null;
+        const meta = prepareComplaintPrivateAttachments(item, allowed, existing);
+        if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) item.homeownerId = allowed.id;
+        return { item, meta };
+      });
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+    req.body = complaintReplaceMeta.map(entry => entry.item);
+  }
+
   await run(`DELETE FROM ${tableName(table)}`);
   for (const item of stripProfilePhotoField(table, req.body)) {
     await saveRecord(table, item);
   }
-  res.json(await getTableData(table));
+  if (complaintReplaceMeta) {
+    const oldFilenames = previousComplaintRows.flatMap(row => complaintStoredFilenames(deserializeRow('complaints', row)));
+    const newFilenames = complaintReplaceMeta.flatMap(entry => entry.meta.newFilenames);
+    for (const filename of newFilenames) claimStagedPrivateUpload('complaints', filename, allowed);
+    deletePrivateFiles('complaints', oldFilenames.filter(filename => !newFilenames.includes(filename)));
+  }
+  res.json((await getTableData(table)).map(record => presentPrivateFiles(table, record, allowed)));
 }));
 
 // ── COMPLAINT MEDIA UPLOAD & CREATION APIS ──
 
-app.post('/api/complaints/upload', (req, res) => {
+app.post('/api/complaints/upload', asyncHandler(async (req, res) => {
+  const requester = await requirePermission(req, res, 'resident');
+  if (!requester) return;
   complaintUpload.any()(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE'
@@ -3373,14 +3789,27 @@ app.post('/api/complaints/upload', (req, res) => {
       return res.status(400).json({ error: oversized.join(' ') });
     }
 
+    for (const file of files) {
+      const ext = path.extname(file.filename || '').toLowerCase();
+      const buffer = await fs.promises.readFile(file.path);
+      if (!isValidAnnouncementMediaBuffer(buffer, ext)) {
+        await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+        return res.status(400).json({ error: `Uploaded file "${file.originalname}" is not a valid JPG, PNG, WebP image or MP4, MOV, WebM video.` });
+      }
+    }
+
     const uploadedFiles = files.map(file => {
       const ext = path.extname(file.originalname || '').toLowerCase();
       const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
-      const mediaUrl = `/uploads/complaints/${file.filename}`;
+      const storageKey = privateStorageKey('complaints', file.filename);
+      registerStagedPrivateUpload('complaints', file.filename, requester.id);
       return {
-        url: mediaUrl,
-        media_url: mediaUrl,
-        attachment: mediaUrl,
+        // This is a storage key, not a public URL. It becomes a signed API URL
+        // only after the complaint record has been created.
+        url: storageKey,
+        media_url: storageKey,
+        attachment: storageKey,
+        storage_key: storageKey,
         media_type: isVideo ? 'video' : 'image',
         filename: file.filename,
         originalname: file.originalname,
@@ -3406,7 +3835,7 @@ app.post('/api/complaints/upload', (req, res) => {
       size: primary.size || 0,
     });
   });
-});
+}));
 
 // ── LOST & FOUND MEDIA UPLOAD API ──
 
@@ -3527,7 +3956,7 @@ app.post('/api/complaints', (req, res, next) => {
         const uploadedFiles = files.map(file => {
           const ext = path.extname(file.originalname || '').toLowerCase();
           const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
-          const mediaUrl = `/uploads/complaints/${file.filename}`;
+          const mediaUrl = privateStorageKey('complaints', file.filename);
           return {
             url: mediaUrl,
             media_url: mediaUrl,
@@ -3540,6 +3969,7 @@ app.post('/api/complaints', (req, res, next) => {
         });
 
         const body = { ...req.body };
+        if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) body.homeownerId = allowed.id;
         if (uploadedFiles.length > 0) {
           const primary = uploadedFiles[0];
           body.attachment = primary.url;
@@ -3556,7 +3986,7 @@ app.post('/api/complaints', (req, res, next) => {
           body.dateOfOccurrence = body.dateFiled;
         }
         await saveRecord('complaints', body);
-        res.status(201).json(sanitizeRecord('complaints', body));
+        res.status(201).json(presentPrivateFiles('complaints', sanitizeRecord('complaints', body), allowed));
       } catch (err) {
         if (files.length) await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
         console.error(err);
@@ -3750,9 +4180,23 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
     req.body.updatedAt = nowIso;
   }
 
+  let complaintFiles = null;
+  if (table === 'complaints') {
+    // A resident may only create a complaint in their own name.
+    if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) req.body.homeownerId = allowed.id;
+    try {
+      complaintFiles = prepareComplaintPrivateAttachments(req.body, allowed);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  }
+
   const body = stripProfilePhotoField(table, req.body);
   await saveRecord(table, body);
-  res.status(201).json(sanitizeRecord(table, body));
+  if (complaintFiles) {
+    for (const filename of complaintFiles.newFilenames) claimStagedPrivateUpload('complaints', filename, allowed);
+  }
+  res.status(201).json(presentPrivateFiles(table, sanitizeRecord(table, body), allowed));
 }));
 
 app.put('/api/:table/:id', asyncHandler(async (req, res) => {
@@ -3836,9 +4280,24 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
     req.body = merged;
   }
 
+  let complaintFiles = null;
+  if (table === 'complaints') {
+    const existing = await get('SELECT * FROM complaints WHERE id = ?', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: 'Complaint not found.' });
+    try {
+      complaintFiles = prepareComplaintPrivateAttachments(req.body, allowed, existing);
+    } catch (error) {
+      return res.status(400).json({ error: error.message });
+    }
+  }
+
   const item = { ...stripProfilePhotoField(table, req.body), id: req.params.id };
   await saveRecord(table, item);
-  res.json(sanitizeRecord(table, item));
+  if (complaintFiles) {
+    for (const filename of complaintFiles.newFilenames) claimStagedPrivateUpload('complaints', filename, allowed);
+    deletePrivateFiles('complaints', complaintFiles.oldFilenames.filter(filename => !complaintFiles.newFilenames.includes(filename)));
+  }
+  res.json(presentPrivateFiles(table, sanitizeRecord(table, item), allowed));
 }));
 
 app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
@@ -3876,6 +4335,17 @@ app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
         fs.promises.unlink(filePath).catch(() => {});
       }
     }
+  }
+
+  if (table === 'complaints') {
+    const existing = await get('SELECT * FROM complaints WHERE id = ?', [req.params.id]);
+    if (existing) deletePrivateFiles('complaints', complaintStoredFilenames(deserializeRow('complaints', existing)));
+  }
+
+  if (table === 'payments') {
+    const existing = await get('SELECT receipt FROM payments WHERE id = ?', [req.params.id]);
+    const filename = storedPrivateFilename(existing?.receipt, 'receipts');
+    if (filename) deletePrivateFiles('receipts', [filename]);
   }
 
   await run(`DELETE FROM ${tableName(table)} WHERE \`id\` = ?`, [req.params.id]);

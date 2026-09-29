@@ -375,6 +375,10 @@ const api = {
     });
   },
 
+  async logout() {
+    return this.request('/api/logout', { method: 'POST' });
+  },
+
   async createManualPayment(data) {
     return this.request('/api/payments/manual', {
       method: 'POST',
@@ -3943,6 +3947,9 @@ function showLandingPage() {
 }
 
 function performLogout() {
+  // Clear the server's HttpOnly session as well as the UI's local state.
+  // This is intentionally fire-and-forget so logout still works offline.
+  if (typeof api !== 'undefined' && typeof api.logout === 'function') api.logout().catch(() => {});
   closeProfileDropdown();
   try {
     sessionStorage.removeItem('sah_session');
