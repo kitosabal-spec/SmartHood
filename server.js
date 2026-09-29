@@ -59,7 +59,7 @@ const tableConfig = {
     booleanColumns: [],
   },
   payments: {
-    columns: ['id', 'homeownerId', 'billingId', 'amount', 'refNum', 'status', 'receipt', 'submittedAt', 'remarks', 'reviewedAt', 'payment_method', 'payment_date', 'verified_by', 'verified_at', 'rejection_reason', 'monthly_dues_month', 'payment_type', 'created_at', 'updated_at'],
+    columns: ['id', 'homeownerId', 'billingId', 'amount', 'refNum', 'status', 'receipt', 'submittedAt', 'remarks', 'reviewedAt', 'payment_method', 'payment_date', 'verified_by', 'verified_at', 'rejection_reason', 'monthly_dues_month', 'payment_type', 'payment_source', 'recorded_by', 'created_at', 'updated_at'],
     jsonColumns: [],
     booleanColumns: [],
   },
@@ -683,6 +683,8 @@ async function createTables() {
     rejection_reason TEXT,
     monthly_dues_month VARCHAR(7),
     payment_type VARCHAR(32) DEFAULT 'billing',
+    payment_source VARCHAR(32) DEFAULT 'resident_submission',
+    recorded_by VARCHAR(64),
     created_at TEXT,
     updated_at TEXT
   )`);
@@ -694,6 +696,9 @@ async function createTables() {
   await run('ALTER TABLE payments ADD COLUMN rejection_reason TEXT').catch(() => {});
   await run('ALTER TABLE payments ADD COLUMN monthly_dues_month VARCHAR(7)').catch(() => {});
   await run('ALTER TABLE payments ADD COLUMN payment_type VARCHAR(32) DEFAULT "billing"').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN payment_source VARCHAR(32) DEFAULT "resident_submission"').catch(() => {});
+  await run('ALTER TABLE payments ADD COLUMN recorded_by VARCHAR(64)').catch(() => {});
+  await run("UPDATE payments SET payment_source = 'resident_submission' WHERE payment_source IS NULL OR payment_source = ''").catch(() => {});
   await run('ALTER TABLE payments ADD COLUMN created_at TEXT').catch(() => {});
   await run('ALTER TABLE payments ADD COLUMN updated_at TEXT').catch(() => {});
   await run('ALTER TABLE payments ADD UNIQUE INDEX idx_payments_refNum (refNum)').catch(() => {});
@@ -900,6 +905,7 @@ async function seedIfEmpty() {
         await saveRecord(table, record);
       }
     }
+    await run("UPDATE payments SET payment_source = 'resident_submission' WHERE payment_source IS NULL OR payment_source = ''");
   }
 
   const bodRow = await get('SELECT COUNT(*) AS count FROM board_of_directors').catch(() => ({ count: 0 }));
@@ -2549,6 +2555,157 @@ app.post('/api/billings/generate-monthly-dues', asyncHandler(async (req, res) =>
 
 // ── RESIDENT PAYMENT SUBMISSION & VERIFICATION APIS ──
 
+// A manual payment is immediately verified because it is recorded by an authorized
+// payments administrator. It intentionally requires an existing assigned billing;
+// advance-payment handling remains exclusive to the resident payment flow.
+app.post('/api/payments/manual', asyncHandler(async (req, res) => {
+  const requester = await requirePermission(req, res, 'payments');
+  if (!requester) return;
+
+  const homeownerId = String(req.body.homeownerId || '').trim();
+  const billingId = String(req.body.billingId || '').trim();
+  const paymentMethod = String(req.body.payment_method || '').trim();
+  const paymentDate = String(req.body.payment_date || '').trim();
+  const refNum = String(req.body.refNum || req.body.reference_number || '').trim();
+  const remarks = String(req.body.remarks || '').trim();
+  const validMethods = new Set(['Cash', 'GCash', 'Other']);
+
+  if (!homeownerId) return res.status(400).json({ error: 'A resident is required.' });
+  if (!billingId) return res.status(400).json({ error: 'An existing billing is required.' });
+  if (!validMethods.has(paymentMethod)) return res.status(400).json({ error: 'Choose Cash, GCash, or Other as the payment method.' });
+  const paymentDateParts = paymentDate.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  const parsedPaymentDate = paymentDateParts
+    ? new Date(Number(paymentDateParts[1]), Number(paymentDateParts[2]) - 1, Number(paymentDateParts[3]))
+    : null;
+  if (!parsedPaymentDate || Number.isNaN(parsedPaymentDate.getTime()) ||
+    parsedPaymentDate.getFullYear() !== Number(paymentDateParts[1]) ||
+    parsedPaymentDate.getMonth() !== Number(paymentDateParts[2]) - 1 ||
+    parsedPaymentDate.getDate() !== Number(paymentDateParts[3])) {
+    return res.status(400).json({ error: 'A valid payment date is required.' });
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [residentRows] = await connection.execute('SELECT id, name, status FROM users WHERE id = ? AND role = "homeowner" FOR UPDATE', [homeownerId]);
+    const resident = residentRows[0];
+    if (!resident) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Resident not found.' });
+    }
+    if (['inactive', 'deactivated'].includes(resident.status)) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Payments cannot be recorded for an inactive resident.' });
+    }
+
+    // Lock the billing row so two fast submits cannot both create an approved payment.
+    const [billingRows] = await connection.execute('SELECT * FROM billings WHERE id = ? FOR UPDATE', [billingId]);
+    const billing = billingRows[0];
+    if (!billing) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Billing record not found.' });
+    }
+    if (!getAssignedHomeownerIds(billing).includes(homeownerId)) {
+      await connection.rollback();
+      return res.status(403).json({ error: 'The selected billing does not belong to this resident.' });
+    }
+
+    const amount = Number(billing.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'The selected billing has an invalid amount.' });
+    }
+    if (req.body.amount !== undefined && Math.abs(Number(req.body.amount) - amount) > 0.01) {
+      await connection.rollback();
+      return res.status(400).json({ error: `Payment amount must exactly match the billing balance of ₱${amount.toLocaleString()}.` });
+    }
+
+    const [existingRows] = await connection.execute(
+      `SELECT id, status FROM payments
+       WHERE homeownerId = ? AND billingId = ? AND status IN ('pending', 'approved')
+       LIMIT 1 FOR UPDATE`,
+      [homeownerId, billingId]
+    );
+    if (existingRows[0]) {
+      await connection.rollback();
+      const message = existingRows[0].status === 'approved'
+        ? 'This billing has already been paid.'
+        : 'This billing already has a payment pending verification.';
+      return res.status(409).json({ error: message });
+    }
+
+    if (refNum) {
+      const [duplicateReference] = await connection.execute(
+        'SELECT id FROM payments WHERE LOWER(TRIM(refNum)) = LOWER(TRIM(?)) LIMIT 1', [refNum]
+      );
+      if (duplicateReference[0]) {
+        await connection.rollback();
+        return res.status(400).json({ error: 'This reference or receipt number is already in use.' });
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const monthlyDuesMonth = isMonthlyAssociationDuesBilling(billing)
+      ? (billing.monthly_dues_month || parseMonthFromTitle(billing.title) || null)
+      : null;
+    const paymentRecord = {
+      id: 'p' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex'),
+      homeownerId,
+      billingId,
+      amount,
+      refNum: refNum || null,
+      status: 'approved',
+      receipt: null,
+      submittedAt: paymentDate,
+      remarks,
+      reviewedAt: paymentDate,
+      payment_method: paymentMethod,
+      payment_date: paymentDate,
+      verified_by: requester.id,
+      verified_at: nowIso,
+      rejection_reason: null,
+      monthly_dues_month: monthlyDuesMonth,
+      payment_type: monthlyDuesMonth ? 'monthly_dues' : 'billing',
+      payment_source: 'manual_admin',
+      recorded_by: requester.id,
+      created_at: nowIso,
+      updated_at: nowIso,
+    };
+    const columns = tableConfig.payments.columns;
+    await connection.execute(
+      `INSERT INTO payments (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
+      columns.map(column => serializeValue('payments', column, paymentRecord[column]))
+    );
+    await connection.commit();
+
+    const billingLabel = billing.title || 'Billing';
+    await recordAuditLog(
+      `Created manual payment: Admin ${requester.name || requester.id} recorded ₱${amount.toLocaleString()} via ${paymentMethod} for ${resident.name} — "${billingLabel}" (Payment date: ${paymentDate}${refNum ? `, Reference: ${refNum}` : ''})`,
+      requester.id
+    );
+    await createServerNotification(
+      'Payment Recorded',
+      `A ${paymentMethod} payment of ₱${amount.toLocaleString()} for "${billingLabel}" was recorded by the HOA office and is marked paid.`,
+      { userIds: [homeownerId] }
+    );
+
+    res.status(201).json({
+      ok: true,
+      payment: sanitizeRecord('payments', paymentRecord),
+      message: 'Manual payment recorded and marked as paid.',
+    });
+  } catch (err) {
+    await connection.rollback().catch(() => {});
+    console.error('Could not create manual payment:', err);
+    if (err.code === 'ER_DUP_ENTRY') {
+      return res.status(409).json({ error: 'A duplicate payment or reference number was detected.' });
+    }
+    res.status(500).json({ error: 'Could not record the manual payment. Please try again.' });
+  } finally {
+    connection.release();
+  }
+}));
+
 app.post('/api/payments/submit', (req, res) => {
   receiptUpload.single('receipt')(req, res, async (uploadErr) => {
     if (uploadErr) {
@@ -2779,8 +2936,10 @@ app.post('/api/payments/submit', (req, res) => {
         verified_at: null,
         rejection_reason: null,
         monthly_dues_month: finalMonthlyDuesMonth,
-        payment_type: paymentType,
-        created_at: nowIso,
+      payment_type: paymentType,
+      payment_source: 'resident_submission',
+      recorded_by: null,
+      created_at: nowIso,
         updated_at: nowIso,
       };
 
@@ -3524,6 +3683,12 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'create');
   if (!allowed) return;
+
+  // Payments have dedicated flows so they always receive ownership, amount,
+  // duplicate, and billing validation. Do not permit a raw unassigned record.
+  if (table === 'payments') {
+    return res.status(405).json({ error: 'Use the payment submission or manual payment endpoint.' });
+  }
 
   if (table === 'users') {
     const username = (req.body.username || '').trim();

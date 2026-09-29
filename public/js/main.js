@@ -375,6 +375,13 @@ const api = {
     });
   },
 
+  async createManualPayment(data) {
+    return this.request('/api/payments/manual', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
   async approvePayment(id) {
     return this.request(`/api/payments/${id}/approve`, {
       method: 'POST',

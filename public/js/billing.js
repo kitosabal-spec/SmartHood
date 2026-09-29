@@ -727,6 +727,10 @@ function renderPayments() {
     </div>
     ${managePayments ? `
       <div class="page-header-actions">
+        <button class="btn btn-primary" onclick="openCreateManualPaymentModal()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:-2px"><use href="#ico-plus"/></svg>
+          Create Payment
+        </button>
         <button class="btn btn-primary" onclick="openPaymentSettingsModal()">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:-2px"><use href="#ico-settings"/></svg>
           Payment Settings
@@ -798,7 +802,8 @@ function renderPaymentTable(filtered = null) {
       const isAdvance = Boolean(!p.billingId && p.monthly_dues_month);
       const blockLot = [ho?.block, ho?.lot].filter(Boolean).join(' ') || '—';
       const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const methodBadge = `<span class="badge badge-gcash">${escapeHtml(p.payment_method || 'GCash')}</span>`;
+      const isManual = p.payment_source === 'manual_admin';
+      const methodBadge = `<span class="badge ${p.payment_method === 'Cash' ? 'badge-green' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span>${isManual ? ' <span class="badge badge-teal" style="font-size:0.68rem;padding:1px 6px">Manual</span>' : ''}`;
       const statusBadge = p.status === 'pending'
         ? '<span class="badge badge-yellow">Pending</span>'
         : (p.status === 'approved' ? '<span class="badge badge-green">Approved</span>' : '<span class="badge badge-red">Rejected</span>');
@@ -849,6 +854,163 @@ function filterPayments() {
   renderPaymentTable(payments);
 }
 
+// ── ADMIN MANUAL PAYMENT ──
+
+let manualPaymentSubmitting = false;
+
+function getEligibleManualBillings(homeownerId) {
+  if (!homeownerId) return [];
+  const payments = db.get('payments');
+  return db.get('billings').filter(billing => {
+    if (!getAssignedHomeownerIds(billing).includes(homeownerId) || billing.status === 'inactive') return false;
+    return !payments.some(payment =>
+      payment.homeownerId === homeownerId &&
+      payment.billingId === billing.id &&
+      ['pending', 'approved'].includes(payment.status)
+    );
+  });
+}
+
+function manualBillingOptionLabel(billing) {
+  const type = billing.billing_type || (billing.monthly_dues_month ? 'Monthly Association Dues' : 'Other Billing');
+  const period = billing.monthly_dues_month ? formatBillingMonth(billing.monthly_dues_month) : billing.title;
+  const amount = Number(billing.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${type} — ${period} — ₱${amount} — Due ${billing.dueDate || '—'}`;
+}
+
+function openCreateManualPaymentModal() {
+  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only authorized managers can create payments.'); return; }
+  manualPaymentSubmitting = false;
+  const homeowners = db.get('users')
+    .filter(user => user.role === 'homeowner' && !['inactive', 'deactivated'].includes(user.status))
+    .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+
+  openModal('Create Payment', `
+    <div class="payment-flow-modal">
+      <p style="margin:0 0 16px;color:var(--text-2);font-size:0.88rem">Record an in-person payment against an existing billing. The payment is immediately marked as paid.</p>
+      <div class="form-group">
+        <label for="manual_payment_homeowner">Resident / Homeowner *</label>
+        <select id="manual_payment_homeowner" onchange="updateManualPaymentBillings()">
+          <option value="">-- Select resident --</option>
+          ${homeowners.map(user => `<option value="${escapeHtml(user.id)}">${escapeHtml(user.name)}${user.block || user.lot ? ` (${escapeHtml([user.block, user.lot].filter(Boolean).join(' '))})` : ''}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-group">
+        <label for="manual_payment_billing">Billing *</label>
+        <select id="manual_payment_billing" disabled onchange="updateManualPaymentSummary()">
+          <option value="">Select a resident first</option>
+        </select>
+        <div id="manual_payment_billing_info" style="font-size:0.78rem;color:var(--text-3);margin-top:6px">Only unpaid billings assigned to the selected resident are available.</div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="manual_payment_amount">Payment Amount</label>
+          <input id="manual_payment_amount" type="text" readonly placeholder="Select a billing"/>
+          <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px">Uses the exact billing amount; partial payments are not supported.</div>
+        </div>
+        <div class="form-group">
+          <label for="manual_payment_method">Payment Method *</label>
+          <select id="manual_payment_method" onchange="updateManualPaymentSummary()">
+            <option value="Cash">Cash</option>
+            <option value="GCash">GCash</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+      </div>
+      <div class="grid-2">
+        <div class="form-group">
+          <label for="manual_payment_date">Payment Date *</label>
+          <input id="manual_payment_date" type="date" value="${getLocalDateValue()}" onchange="updateManualPaymentSummary()"/>
+        </div>
+        <div class="form-group">
+          <label for="manual_payment_reference">Reference / Receipt Number</label>
+          <input id="manual_payment_reference" type="text" maxlength="191" placeholder="Optional for cash" onchange="updateManualPaymentSummary()"/>
+        </div>
+      </div>
+      <div class="form-group" style="margin-bottom:16px">
+        <label for="manual_payment_notes">Notes</label>
+        <textarea id="manual_payment_notes" placeholder="e.g., Paid personally at HOA office." onchange="updateManualPaymentSummary()"></textarea>
+      </div>
+      <div id="manual_payment_summary" style="border:1px solid var(--border);background:var(--surface-2);border-radius:var(--radius);padding:14px;font-size:0.86rem;color:var(--text-2)">
+        Select a resident and billing to review this payment before creating it.
+      </div>
+    </div>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Create Payment', cls: 'btn-primary', action: executeCreateManualPayment },
+  ]);
+}
+
+function updateManualPaymentBillings() {
+  const homeownerId = document.getElementById('manual_payment_homeowner')?.value;
+  const select = document.getElementById('manual_payment_billing');
+  if (!select) return;
+  const billings = getEligibleManualBillings(homeownerId);
+  select.disabled = !homeownerId || !billings.length;
+  select.innerHTML = !homeownerId
+    ? '<option value="">Select a resident first</option>'
+    : (!billings.length
+      ? '<option value="">No eligible unpaid billings</option>'
+      : `<option value="">-- Select billing --</option>${billings.map(billing => `<option value="${escapeHtml(billing.id)}">${escapeHtml(manualBillingOptionLabel(billing))}</option>`).join('')}`);
+  updateManualPaymentSummary();
+}
+
+function updateManualPaymentSummary() {
+  const homeownerId = document.getElementById('manual_payment_homeowner')?.value;
+  const billingId = document.getElementById('manual_payment_billing')?.value;
+  const amountInput = document.getElementById('manual_payment_amount');
+  const info = document.getElementById('manual_payment_billing_info');
+  const summary = document.getElementById('manual_payment_summary');
+  const homeowner = db.getOne('users', homeownerId);
+  const billing = db.getOne('billings', billingId);
+  if (!homeowner || !billing) {
+    if (amountInput) amountInput.value = '';
+    if (summary) summary.textContent = 'Select a resident and billing to review this payment before creating it.';
+    return;
+  }
+  const amount = Number(billing.amount || 0);
+  const paymentDate = document.getElementById('manual_payment_date')?.value || '—';
+  const method = document.getElementById('manual_payment_method')?.value || '—';
+  const type = billing.billing_type || (billing.monthly_dues_month ? 'Monthly Association Dues' : 'Other Billing');
+  const period = billing.monthly_dues_month ? formatBillingMonth(billing.monthly_dues_month) : billing.title;
+  if (amountInput) amountInput.value = `₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (info) info.innerHTML = `<strong>${escapeHtml(type)}</strong> · ${escapeHtml(period)} · Due ${escapeHtml(billing.dueDate || '—')} · Current status: <strong>${billing.dueDate && billing.dueDate < getLocalDateValue() ? 'Overdue' : 'Unpaid'}</strong>`;
+  if (summary) summary.innerHTML = `<strong>Review payment</strong><br>Resident: ${escapeHtml(homeowner.name)}<br>Billing: ${escapeHtml(period)} - ${escapeHtml(type)}<br>Amount: <strong>₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><br>Payment Method: ${escapeHtml(method)}<br>Payment Date: ${escapeHtml(paymentDate)}`;
+}
+
+async function executeCreateManualPayment() {
+  if (manualPaymentSubmitting) return;
+  const homeownerId = document.getElementById('manual_payment_homeowner')?.value || '';
+  const billingId = document.getElementById('manual_payment_billing')?.value || '';
+  const billing = db.getOne('billings', billingId);
+  if (!homeownerId) { showToast('error', 'Resident Required', 'Select the resident who made this payment.'); return; }
+  if (!billing) { showToast('error', 'Billing Required', 'Select an existing eligible billing.'); return; }
+
+  manualPaymentSubmitting = true;
+  showLoading();
+  try {
+    await api.createManualPayment({
+      homeownerId,
+      billingId,
+      amount: Number(billing.amount),
+      payment_method: document.getElementById('manual_payment_method')?.value,
+      payment_date: document.getElementById('manual_payment_date')?.value,
+      refNum: document.getElementById('manual_payment_reference')?.value?.trim(),
+      remarks: document.getElementById('manual_payment_notes')?.value?.trim(),
+    });
+    await api.loadAll();
+    await syncHomeownerBalances();
+    hideLoading();
+    closeModal();
+    showToast('success', 'Payment Created', 'The manual payment was recorded and the billing is now paid for this resident.');
+    renderPayments();
+  } catch (error) {
+    hideLoading();
+    manualPaymentSubmitting = false;
+    showToast('error', 'Create Payment Failed', error.message || 'Could not create the manual payment.');
+  }
+}
+
 // ── ADMIN PAYMENT REVIEW MODAL ──
 
 function viewPaymentDetail(id) {
@@ -856,6 +1018,8 @@ function viewPaymentDetail(id) {
   if (!p) { showToast('error', 'Error', 'Payment record not found.'); return; }
   const ho = db.getOne('users', p.homeownerId);
   const bill = db.getOne('billings', p.billingId);
+  const recordedBy = db.getOne('users', p.recorded_by);
+  const isManual = p.payment_source === 'manual_admin';
   const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const blockLot = [ho?.block, ho?.lot].filter(Boolean).join(' ') || 'Not specified';
   const statusBadge = p.status === 'pending'
@@ -878,7 +1042,7 @@ function viewPaymentDetail(id) {
     });
   }
 
-  openModal('Review Payment Submission', `
+  openModal(isManual ? 'Review Manual Payment' : 'Review Payment Submission', `
     <div class="payment-flow-modal">
       <div class="grid-2 mb-16">
         <div class="report-summary-item">
@@ -900,11 +1064,12 @@ function viewPaymentDetail(id) {
           <tr><td style="padding:5px 0;color:var(--text-3)">Billing Title:</td><td><strong>${escapeHtml(bill ? bill.title : (p.monthly_dues_month ? `Monthly Dues - ${formatBillingMonth(p.monthly_dues_month)}` : 'N/A'))}</strong></td></tr>
           ${p.monthly_dues_month ? `<tr><td style="padding:5px 0;color:var(--text-3)">Monthly Dues Month:</td><td><strong>${escapeHtml(formatBillingMonth(p.monthly_dues_month))}</strong>${!p.billingId ? ' <span class="badge badge-teal" style="font-size:0.75rem;padding:2px 6px">Advance Payment</span>' : ''}</td></tr>` : ''}
           <tr><td style="padding:5px 0;color:var(--text-3)">Due Date:</td><td>${escapeHtml(bill?.dueDate || '—')}</td></tr>
-          <tr><td style="padding:5px 0;color:var(--text-3)">Payment Method:</td><td><span class="badge badge-gcash">${escapeHtml(p.payment_method || 'GCash')}</span></td></tr>
-          <tr><td style="padding:5px 0;color:var(--text-3)">GCash Reference #:</td><td><code style="font-weight:800;font-size:0.95rem;color:var(--gcash-blue)">${escapeHtml(p.refNum)}</code></td></tr>
+          <tr><td style="padding:5px 0;color:var(--text-3)">Payment Method:</td><td><span class="badge ${p.payment_method === 'Cash' ? 'badge-green' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span></td></tr>
+          ${isManual ? `<tr><td style="padding:5px 0;color:var(--text-3)">Recorded By:</td><td>Admin${recordedBy ? ` — ${escapeHtml(recordedBy.name)}` : ''}</td></tr><tr><td style="padding:5px 0;color:var(--text-3)">Payment Source:</td><td><span class="badge badge-teal">Manual / Admin Recorded</span></td></tr>` : ''}
+          <tr><td style="padding:5px 0;color:var(--text-3)">${isManual ? 'Reference / Receipt #:' : 'GCash Reference #:'}</td><td><code style="font-weight:800;font-size:0.95rem;color:var(--gcash-blue)">${escapeHtml(p.refNum || '—')}</code></td></tr>
           <tr><td style="padding:5px 0;color:var(--text-3)">Payment Date:</td><td>${escapeHtml(p.payment_date || p.submittedAt || '—')}</td></tr>
           <tr><td style="padding:5px 0;color:var(--text-3)">Date Submitted:</td><td>${escapeHtml(p.submittedAt || '—')}</td></tr>
-          ${p.remarks && p.status !== 'rejected' ? `<tr><td style="padding:5px 0;color:var(--text-3)">Resident Note:</td><td>${escapeHtml(p.remarks)}</td></tr>` : ''}
+          ${p.remarks && p.status !== 'rejected' ? `<tr><td style="padding:5px 0;color:var(--text-3)">${isManual ? 'Notes:' : 'Resident Note:'}</td><td>${escapeHtml(p.remarks)}</td></tr>` : ''}
         </table>
       </div>
 
@@ -915,7 +1080,7 @@ function viewPaymentDetail(id) {
         </div>
       ` : ''}
 
-      <div>
+      ${!isManual ? `<div>
         <label style="font-size:0.82rem;font-weight:700;color:var(--text);margin-bottom:6px;display:block">Uploaded GCash Receipt / Screenshot</label>
         ${p.receipt ? `
           <div class="review-receipt-container">
@@ -932,7 +1097,7 @@ function viewPaymentDetail(id) {
             No receipt image attached to this payment record.
           </div>
         `}
-      </div>
+      </div>` : ''}
     </div>
   `, buttons);
 }
@@ -2214,6 +2379,9 @@ if (typeof window !== 'undefined') {
   window.handlePayNowYearChange = handlePayNowYearChange;
   window.copyGcashNumber = copyGcashNumber;
   window.openSubmitPaymentForm = openSubmitPaymentForm;
+  window.openCreateManualPaymentModal = openCreateManualPaymentModal;
+  window.updateManualPaymentBillings = updateManualPaymentBillings;
+  window.updateManualPaymentSummary = updateManualPaymentSummary;
   window.setupReceiptDragDrop = setupReceiptDragDrop;
   window.handleReceiptFileSelect = handleReceiptFileSelect;
   window.clearSelectedReceiptFile = clearSelectedReceiptFile;
