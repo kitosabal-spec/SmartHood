@@ -1023,10 +1023,10 @@ function renderPayments() {
   </div>
   <div class="section-card">
     <div class="section-card-header">
-      <div class="filters-row">
+      <div class="filters-row" style="align-items:center;">
         <div class="search-box">
           <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
-          <input id="paySearch" type="text" placeholder="Search by resident name or reference number..."/>
+          <input id="paySearch" type="text" placeholder="Search by resident name or reference number..." oninput="filterPayments()"/>
         </div>
         <select class="filter-select" id="payFilter" onchange="filterPayments()">
           <option value="">All Statuses</option>
@@ -1034,6 +1034,26 @@ function renderPayments() {
           <option value="approved">Approved</option>
           <option value="rejected">Rejected</option>
         </select>
+        <select class="filter-select" id="payDateFilter" onchange="onPaymentDateFilterChange()">
+          <option value="all">All Dates</option>
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+          <option value="year">This Year</option>
+          <option value="date">Choose Date</option>
+          <option value="range">Date Range</option>
+        </select>
+        <div id="payDateWrap" class="date-input-group" style="display:none;">
+          <input type="date" class="filter-select" id="payDate" onchange="filterPayments()" title="Select specific date"/>
+        </div>
+        <div id="payRangeWrap" class="date-input-group" style="display:none;">
+          <input type="date" class="filter-select" id="payStartDate" onchange="filterPayments()" title="Start date" placeholder="Start Date"/>
+          <span class="date-range-sep">to</span>
+          <input type="date" class="filter-select" id="payEndDate" onchange="filterPayments()" title="End date" placeholder="End Date"/>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="payResetBtn" onclick="resetPaymentFilters()" title="Reset all filters">
+          Reset
+        </button>
       </div>
     </div>
     <div class="section-card-body no-pad">
@@ -1116,26 +1136,162 @@ function renderPaymentTable(filtered = null) {
     }).join('');
 }
 
+function getPaymentRecordDates(payment) {
+  const dates = [];
+  if (payment?.payment_date) {
+    const d = parseBillingFilterDate(payment.payment_date);
+    if (d) dates.push(d);
+  }
+  if (payment?.submittedAt) {
+    const d = parseBillingFilterDate(payment.submittedAt);
+    if (d) dates.push(d);
+  }
+  if (!dates.length) {
+    if (payment?.createdAt || payment?.created_at) {
+      const d = parseBillingFilterDate(payment.createdAt || payment.created_at);
+      if (d) dates.push(d);
+    }
+    if (payment?.reviewedAt) {
+      const d = parseBillingFilterDate(payment.reviewedAt);
+      if (d) dates.push(d);
+    }
+  }
+  return dates;
+}
+if (typeof window !== 'undefined') window.getPaymentRecordDates = getPaymentRecordDates;
+
+function onPaymentDateFilterChange() {
+  const mode = document.getElementById('payDateFilter')?.value || 'all';
+  const dateWrap = document.getElementById('payDateWrap');
+  const rangeWrap = document.getElementById('payRangeWrap');
+  const dateInput = document.getElementById('payDate');
+  const startInput = document.getElementById('payStartDate');
+  const endInput = document.getElementById('payEndDate');
+
+  if (dateWrap) dateWrap.style.display = (mode === 'date') ? 'inline-flex' : 'none';
+  if (rangeWrap) rangeWrap.style.display = (mode === 'range') ? 'inline-flex' : 'none';
+
+  if (mode === 'date' && dateInput && !dateInput.value) {
+    dateInput.value = getLocalDateValue();
+  }
+  if (mode === 'range') {
+    if (startInput && !startInput.value) {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      startInput.value = getLocalDateValue(d);
+    }
+    if (endInput && !endInput.value) {
+      endInput.value = getLocalDateValue();
+    }
+  }
+
+  filterPayments();
+}
+if (typeof window !== 'undefined') window.onPaymentDateFilterChange = onPaymentDateFilterChange;
+
+function resetPaymentFilters() {
+  const searchInput = document.getElementById('paySearch');
+  const statusFilter = document.getElementById('payFilter');
+  const dateFilter = document.getElementById('payDateFilter');
+  const dateInput = document.getElementById('payDate');
+  const startInput = document.getElementById('payStartDate');
+  const endInput = document.getElementById('payEndDate');
+  const dateWrap = document.getElementById('payDateWrap');
+  const rangeWrap = document.getElementById('payRangeWrap');
+
+  if (searchInput) searchInput.value = '';
+  if (statusFilter) statusFilter.value = '';
+  if (dateFilter) dateFilter.value = 'all';
+  if (dateInput) dateInput.value = '';
+  if (startInput) startInput.value = '';
+  if (endInput) endInput.value = '';
+  if (dateWrap) dateWrap.style.display = 'none';
+  if (rangeWrap) rangeWrap.style.display = 'none';
+
+  filterPayments();
+}
+if (typeof window !== 'undefined') window.resetPaymentFilters = resetPaymentFilters;
+
 function filterPayments() {
   const q = (document.getElementById('paySearch')?.value || '').toLowerCase().trim();
   const status = document.getElementById('payFilter')?.value || '';
-  let payments = db.get('payments');
+  const datePreset = (document.getElementById('payDateFilter')?.value || 'all').toLowerCase();
+  const dateInput = document.getElementById('payDate');
+  const startInput = document.getElementById('payStartDate');
+  const endInput = document.getElementById('payEndDate');
+
+  const now = new Date();
+  let rangeStart = null;
+  let rangeEnd = null;
+
+  if (datePreset === 'today') {
+    rangeStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    rangeEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  } else if (datePreset === 'week') {
+    const day = now.getDay() || 7; // Monday is the start of the week
+    rangeStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1, 0, 0, 0, 0);
+    rangeEnd = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate() + 6, 23, 59, 59, 999);
+  } else if (datePreset === 'month') {
+    rangeStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    rangeEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  } else if (datePreset === 'year') {
+    rangeStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    rangeEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+  } else if (datePreset === 'date') {
+    const d = parseBillingFilterDate(dateInput?.value);
+    if (d) {
+      rangeStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+      rangeEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+    }
+  } else if (datePreset === 'range') {
+    const s = parseBillingFilterDate(startInput?.value);
+    const e = parseBillingFilterDate(endInput?.value);
+    if (s) rangeStart = new Date(s.getFullYear(), s.getMonth(), s.getDate(), 0, 0, 0, 0);
+    if (e) rangeEnd = new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999);
+    if (rangeStart && rangeEnd && rangeStart > rangeEnd) {
+      const tmp = rangeStart;
+      rangeStart = rangeEnd;
+      rangeEnd = tmp;
+    }
+  }
+
+  let payments = db.get('payments') || [];
   if (status) payments = payments.filter(p => p.status === status);
   if (q) {
-    const users = db.get('users');
-    const billings = db.get('billings');
+    const users = db.get('users') || [];
+    const billings = db.get('billings') || [];
     payments = payments.filter(p => {
       const ho = users.find(u => u.id === p.homeownerId);
       const bill = billings.find(b => b.id === p.billingId);
+      const blockLot = [ho?.block, ho?.lot].filter(Boolean).join(' ');
+      const amountStr = String(p.amount || '');
       return (
         (ho && (ho.name || '').toLowerCase().includes(q)) ||
+        (blockLot && blockLot.toLowerCase().includes(q)) ||
         (p.refNum && p.refNum.toLowerCase().includes(q)) ||
-        (bill && (bill.title || '').toLowerCase().includes(q))
+        (bill && (bill.title || '').toLowerCase().includes(q)) ||
+        (p.monthly_dues_month && p.monthly_dues_month.toLowerCase().includes(q)) ||
+        (p.payment_method && p.payment_method.toLowerCase().includes(q)) ||
+        amountStr.includes(q)
       );
     });
   }
+
+  if (datePreset !== 'all' && (rangeStart || rangeEnd)) {
+    payments = payments.filter(p => {
+      const pDates = getPaymentRecordDates(p);
+      if (!pDates.length) return false;
+      return pDates.some(d => {
+        if (rangeStart && d < rangeStart) return false;
+        if (rangeEnd && d > rangeEnd) return false;
+        return true;
+      });
+    });
+  }
+
   renderPaymentTable(payments);
 }
+if (typeof window !== 'undefined') window.filterPayments = filterPayments;
 
 // ── ADMIN MANUAL PAYMENT ──
 
