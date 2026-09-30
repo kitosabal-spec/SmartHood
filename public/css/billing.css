@@ -315,16 +315,26 @@
 .manual-payment-btn-toggle {
   background: none;
   border: none;
-  color: var(--text-3);
+  color: #475569;
   cursor: pointer;
-  padding: 4px 6px;
-  font-size: 0.75rem;
+  padding: 4px 0;
+  width: 14px;
+  height: 22px;
   line-height: 1;
   border-radius: 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  transition: transform 0.15s ease, color 0.15s ease;
+  transition: color 0.15s ease;
+}
+
+.manual-payment-btn-toggle svg {
+  display: block;
+  flex-shrink: 0;
+}
+
+[data-theme="dark"] .manual-payment-btn-toggle {
+  color: #94a3b8;
 }
 
 .manual-payment-btn-toggle:hover {

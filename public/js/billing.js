@@ -905,7 +905,7 @@ function openCreateManualPaymentModal() {
             />
             <div class="manual-payment-search-controls">
               <button type="button" id="manual_payment_clear_btn" class="manual-payment-btn-clear" style="display:none;" title="Clear resident selection">&#10005;</button>
-              <button type="button" id="manual_payment_dropdown_toggle" class="manual-payment-btn-toggle" title="Show all residents">&#9662;</button>
+              <button type="button" id="manual_payment_dropdown_toggle" class="manual-payment-btn-toggle" title="Show all residents" aria-label="Show all residents"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
             </div>
           </div>
           <div id="manual_payment_resident_dropdown" class="manual-payment-resident-dropdown" style="display:none;"></div>
