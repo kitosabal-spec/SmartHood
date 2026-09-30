@@ -258,6 +258,23 @@ input[type="date"].filter-select {
   border: 1px solid rgba(0, 125, 254, 0.28);
 }
 
+/* Cash Badge */
+.badge-cash {
+  background: var(--green-100);
+  color: var(--green-600);
+  border: 1px solid rgba(22, 163, 74, 0.32);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+[data-theme="dark"] .badge-cash {
+  background: rgba(34, 197, 94, 0.14);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
 /* Pay Now & Payment Modals */
 .payment-flow-modal {
   display: flex;

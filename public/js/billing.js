@@ -1101,8 +1101,7 @@ function renderPaymentTable(filtered = null) {
       const isAdvance = Boolean(!p.billingId && p.monthly_dues_month);
       const blockLot = [ho?.block, ho?.lot].filter(Boolean).join(' ') || '—';
       const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const isManual = p.payment_source === 'manual_admin';
-      const methodBadge = `<span class="badge ${p.payment_method === 'Cash' ? 'badge-green' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span>${isManual ? ' <span class="badge badge-teal" style="font-size:0.68rem;padding:1px 6px">Manual</span>' : ''}`;
+      const methodBadge = `<span class="badge ${p.payment_method === 'Cash' ? 'badge-cash' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span>`;
       const statusBadge = p.status === 'pending'
         ? '<span class="badge badge-yellow">Pending</span>'
         : (p.status === 'approved' ? '<span class="badge badge-green">Approved</span>' : '<span class="badge badge-red">Rejected</span>');
@@ -1757,7 +1756,7 @@ function viewPaymentDetail(id) {
           <tr><td style="padding:5px 0;color:var(--text-3)">Billing Title:</td><td><strong>${escapeHtml(bill ? bill.title : (p.monthly_dues_month ? `Monthly Dues - ${formatBillingMonth(p.monthly_dues_month)}` : 'N/A'))}</strong></td></tr>
           ${p.monthly_dues_month ? `<tr><td style="padding:5px 0;color:var(--text-3)">Monthly Dues Month:</td><td><strong>${escapeHtml(formatBillingMonth(p.monthly_dues_month))}</strong>${!p.billingId ? ' <span class="badge badge-teal" style="font-size:0.75rem;padding:2px 6px">Advance Payment</span>' : ''}</td></tr>` : ''}
           <tr><td style="padding:5px 0;color:var(--text-3)">Due Date:</td><td>${escapeHtml(bill?.dueDate || '—')}</td></tr>
-          <tr><td style="padding:5px 0;color:var(--text-3)">Payment Method:</td><td><span class="badge ${p.payment_method === 'Cash' ? 'badge-green' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span></td></tr>
+          <tr><td style="padding:5px 0;color:var(--text-3)">Payment Method:</td><td><span class="badge ${p.payment_method === 'Cash' ? 'badge-cash' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span></td></tr>
           ${isManual ? `<tr><td style="padding:5px 0;color:var(--text-3)">Recorded By:</td><td>Admin${recordedBy ? ` — ${escapeHtml(recordedBy.name)}` : ''}</td></tr><tr><td style="padding:5px 0;color:var(--text-3)">Payment Source:</td><td><span class="badge badge-teal">Manual / Admin Recorded</span></td></tr>` : ''}
           <tr><td style="padding:5px 0;color:var(--text-3)">${isManual ? 'Reference / Receipt #:' : 'GCash Reference #:'}</td><td><code style="font-weight:800;font-size:0.95rem;color:var(--gcash-blue)">${escapeHtml(p.refNum || '—')}</code></td></tr>
           <tr><td style="padding:5px 0;color:var(--text-3)">Payment Date:</td><td>${escapeHtml(p.payment_date || p.submittedAt || '—')}</td></tr>
@@ -2674,7 +2673,7 @@ function renderHOHistory() {
                     ${isAdvance ? ' <span class="badge badge-teal" style="font-size:0.68rem;padding:1px 6px">Advance</span>' : ''}
                   </td>
                   <td class="amount-paid">${formattedAmount}</td>
-                  <td><span class="badge badge-gcash">${escapeHtml(p.payment_method || 'GCash')}</span></td>
+                  <td><span class="badge ${p.payment_method === 'Cash' ? 'badge-cash' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span></td>
                   <td><code style="font-size:0.84rem;font-weight:700;color:var(--text)">${escapeHtml(p.refNum)}</code></td>
                   <td>${escapeHtml(p.payment_date || p.submittedAt || '—')}</td>
                   <td>${statusBadge}</td>
