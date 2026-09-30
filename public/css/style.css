@@ -2795,6 +2795,38 @@ input[type="date"].filter-select {
   }
 }
 
+/* Complaint Management Responsive Grid */
+.complaints-stats-grid,
+.complaint-stats-grid,
+.stat-grid.complaints-stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(5, minmax(0, 1fr)) !important;
+  grid-auto-rows: 1fr;
+  margin-bottom: 20px;
+}
+.complaints-stats-grid .stat-card,
+.complaint-stats-grid .stat-card,
+.stat-grid.complaints-stats-grid .stat-card {
+  height: 100%;
+  box-sizing: border-box;
+}
+@media (max-width: 1024px) {
+  .complaints-stats-grid,
+  .complaint-stats-grid,
+  .stat-grid.complaints-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 14px;
+  }
+}
+@media (max-width: 640px) {
+  .complaints-stats-grid,
+  .complaint-stats-grid,
+  .stat-grid.complaints-stats-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+}
+
 .accounts-filters-row {
   width: 100%;
   display: flex;

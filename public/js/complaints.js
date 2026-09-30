@@ -20,7 +20,7 @@ function renderAdminComplaints() {
     </div>
   </div>
 
-  <div class="stat-grid" style="margin-bottom:20px">
+  <div class="stat-grid complaints-stats-grid" style="margin-bottom:20px">
     <div class="stat-card" style="--card-accent:#dc2626;--card-accent-bg:#fee2e2">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-flag"/></svg></div>
       <div class="stat-value">${reviewed}</div>
@@ -289,7 +289,7 @@ function renderHOComplaints() {
     </div>
   </div>
 
-  <div class="stat-grid" style="margin-bottom:22px">
+  <div class="stat-grid complaints-stats-grid" style="margin-bottom:22px">
     <div class="stat-card" style="--card-accent:#dc2626;--card-accent-bg:#fee2e2">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-flag"/></svg></div>
       <div class="stat-value">${reviewed}</div>
