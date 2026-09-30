@@ -28,7 +28,6 @@ let db;
 const FILE_ACCESS_SECRET = process.env.FILE_ACCESS_SECRET || crypto.randomBytes(32).toString('hex');
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const SESSION_COOKIE_NAME = 'smarthood_session';
-const ALLOW_LEGACY_USER_HEADER = process.env.NODE_ENV !== 'production';
 if (!process.env.FILE_ACCESS_SECRET) console.warn('FILE_ACCESS_SECRET is not set; private file links will expire after a server restart.');
 if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not set; sessions will expire after a server restart.');
 
@@ -169,7 +168,6 @@ const tableConfig = {
 const adminUser = {
   id: 'u001',
   username: 'admin',
-  password: 'admin123',
   role: 'admin',
   name: 'Amy Antipolo',
   email: 'admin@sanalfonsohomes.com',
@@ -183,27 +181,39 @@ const adminUser = {
   status: 'active',
 };
 
+function initialAdminUser() {
+  const password = String(process.env.INITIAL_ADMIN_PASSWORD || '');
+  if (password.length < 12) {
+    throw new Error('INITIAL_ADMIN_PASSWORD must be set to a password of at least 12 characters before initializing or resetting the database.');
+  }
+  return { ...adminUser, password };
+}
 
 
 function loadHomeownerSeed() {
   const seedPath = path.join(__dirname, 'data', 'homeowners.seed.json');
   try {
     const raw = fs.readFileSync(seedPath, 'utf8').replace(/^\uFEFF/, '');
-    return JSON.parse(raw);
+    // Seed records are directory data, not credentials. Accounts start disabled
+    // and must be provisioned with a password by an administrator.
+    return JSON.parse(raw).map(({ password, ...homeowner }) => ({
+      ...homeowner,
+      status: 'inactive',
+    }));
   } catch (error) {
     console.warn(`Could not load homeowner seed from ${seedPath}. Falling back to demo homeowners.`);
     return [
-      { id: 'u002', username: 'juandelacruz', password: 'home123', role: 'homeowner', name: 'Juan Dela Cruz', email: 'juan@email.com', block: 'Block 3', lot: 'Lot 7', lotArea: 0, contact: '09171234567', balance: 3500, profile_photo: null },
-      { id: 'u003', username: 'annamaria', password: 'home123', role: 'homeowner', name: 'Anna Maria Reyes', email: 'anna@email.com', block: 'Block 1', lot: 'Lot 2', lotArea: 0, contact: '09281234567', balance: 0, profile_photo: null },
-      { id: 'u004', username: 'carlosmagno', password: 'home123', role: 'homeowner', name: 'Carlos Magno', email: 'carlos@email.com', block: 'Block 2', lot: 'Lot 5', lotArea: 0, contact: '09351234567', balance: 7000, profile_photo: null },
-      { id: 'u005', username: 'ritaflores', password: 'home123', role: 'homeowner', name: 'Rita Flores', email: 'rita@email.com', block: 'Block 4', lot: 'Lot 1', lotArea: 0, contact: '09461234567', balance: 1500, profile_photo: null },
-      { id: 'u006', username: 'pedroparcero', password: 'home123', role: 'homeowner', name: 'Pedro Parcero', email: 'pedro@email.com', block: 'Block 1', lot: 'Lot 8', lotArea: 0, contact: '09571234567', balance: 0, profile_photo: null },
+      { id: 'u002', username: 'juandelacruz', role: 'homeowner', name: 'Juan Dela Cruz', email: 'juan@email.com', block: 'Block 3', lot: 'Lot 7', lotArea: 0, contact: '09171234567', balance: 3500, profile_photo: null, status: 'inactive' },
+      { id: 'u003', username: 'annamaria', role: 'homeowner', name: 'Anna Maria Reyes', email: 'anna@email.com', block: 'Block 1', lot: 'Lot 2', lotArea: 0, contact: '09281234567', balance: 0, profile_photo: null, status: 'inactive' },
+      { id: 'u004', username: 'carlosmagno', role: 'homeowner', name: 'Carlos Magno', email: 'carlos@email.com', block: 'Block 2', lot: 'Lot 5', lotArea: 0, contact: '09351234567', balance: 7000, profile_photo: null, status: 'inactive' },
+      { id: 'u005', username: 'ritaflores', role: 'homeowner', name: 'Rita Flores', email: 'rita@email.com', block: 'Block 4', lot: 'Lot 1', lotArea: 0, contact: '09461234567', balance: 1500, profile_photo: null, status: 'inactive' },
+      { id: 'u006', username: 'pedroparcero', role: 'homeowner', name: 'Pedro Parcero', email: 'pedro@email.com', block: 'Block 1', lot: 'Lot 8', lotArea: 0, contact: '09571234567', balance: 0, profile_photo: null, status: 'inactive' },
     ];
   }
 }
 
 const seed = {
-  users: [adminUser, ...loadHomeownerSeed()],
+  users: [],
   billings: [],
   payments: [],
   announcements: [],
@@ -623,9 +633,18 @@ async function loadAllData(requester = null) {
   }
   // Filter table data for non-admins based on permissions
   if (!requester || requester.role !== 'admin') {
+    const canViewResidentDirectory = requester && [
+      'billing', 'payments', 'complaints', 'vehicles', 'amenities', 'lostfound',
+    ].some(permission => userHasPermission(requester, permission));
+    if (!canViewResidentDirectory) {
+      data.users = requester ? (data.users || []).filter(user => user.id === requester.id) : [];
+    }
     if (!requester || !userHasPermission(requester, 'auditlog')) {
       data.auditLog = [];
     }
+    data.notifications = requester
+      ? (data.notifications || []).filter(notification => canUserSeeNotification(notification, requester))
+      : [];
     if (requester && (userHasPermission(requester, 'resident') || requester.role === 'homeowner') && !userHasPermission(requester, 'billing')) {
       data.billings = (data.billings || []).filter(b => getAssignedHomeownerIds(b).includes(requester.id));
     } else if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'billing') && requester.role !== 'homeowner')) {
@@ -957,9 +976,17 @@ async function createTables() {
 async function seedIfEmpty() {
   const row = await get('SELECT COUNT(*) AS count FROM users');
   if (Number(row.count) === 0) {
-    for (const [table, records] of Object.entries(seed)) {
+    const initialSeed = { ...seed, users: [initialAdminUser(), ...loadHomeownerSeed()] };
+    for (const [table, records] of Object.entries(initialSeed)) {
       for (const record of records) {
-        await saveRecord(table, record);
+        const seedRecord = { ...record };
+        if (table === 'users' && !isBcryptHash(seedRecord.password)) {
+          // Directory-only homeowners do not have a reusable default password.
+          // The random value is hashed before it is ever stored.
+          const plaintext = seedRecord.password || crypto.randomBytes(32).toString('base64url');
+          seedRecord.password = await bcrypt.hash(plaintext, 10);
+        }
+        await saveRecord(table, seedRecord);
       }
     }
     await run("UPDATE payments SET payment_source = 'resident_submission' WHERE payment_source IS NULL OR payment_source = ''");
@@ -983,10 +1010,8 @@ async function seedIfEmpty() {
 async function ensureAdminUser() {
   const existing = await get('SELECT id, permissions, status FROM users WHERE username = ?', [adminUser.username]);
   if (!existing) {
-    const adminRecord = { ...adminUser };
-    if (!isBcryptHash(adminRecord.password)) {
-      adminRecord.password = await bcrypt.hash(adminRecord.password, 10);
-    }
+    const adminRecord = initialAdminUser();
+    adminRecord.password = await bcrypt.hash(adminRecord.password, 10);
     await saveRecord('users', adminRecord);
   } else {
     if (!existing.permissions || !existing.status) {
@@ -1005,14 +1030,31 @@ async function ensureAdminUser() {
   ).catch(() => {});
 }
 
+async function migrateLegacyPasswords() {
+  const users = await all('SELECT id, password FROM users WHERE password IS NOT NULL AND password != ""');
+  for (const user of users) {
+    if (!isBcryptHash(user.password)) {
+      await run('UPDATE users SET password = ? WHERE id = ?', [await bcrypt.hash(user.password, 10), user.id]);
+    }
+  }
+}
+
 async function resetDatabase() {
+  // Validate before deleting anything so a missing deployment secret cannot
+  // leave the system without an administrator account.
+  const resetSeed = { ...seed, users: [initialAdminUser(), ...loadHomeownerSeed()] };
   for (const table of Object.keys(tableConfig)) {
     await run(`DELETE FROM ${tableName(table)}`);
   }
 
-  for (const [table, records] of Object.entries(seed)) {
+  for (const [table, records] of Object.entries(resetSeed)) {
     for (const record of records) {
-      await saveRecord(table, record);
+      const resetRecord = { ...record };
+      if (table === 'users' && !isBcryptHash(resetRecord.password)) {
+        const plaintext = resetRecord.password || crypto.randomBytes(32).toString('base64url');
+        resetRecord.password = await bcrypt.hash(plaintext, 10);
+      }
+      await saveRecord(table, resetRecord);
     }
   }
 }
@@ -1140,12 +1182,7 @@ function sessionUserId(req) {
 }
 
 function getRequestUserId(req) {
-  const authenticatedUserId = sessionUserId(req);
-  if (authenticatedUserId) return authenticatedUserId;
-  // Existing local development UI sends this header. Production requires the
-  // signed HttpOnly session cookie issued by /api/login.
-  if (ALLOW_LEGACY_USER_HEADER) return req.get('x-user-id') || req.body?.userId || req.query.userId || null;
-  return null;
+  return sessionUserId(req);
 }
 
 const ALLOWED_ANNOUNCEMENT_IMAGE_EXTS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -1339,7 +1376,12 @@ const TABLE_PERMISSIONS = {
 };
 
 async function checkTableAccess(req, res, table, action = 'read') {
-  if (table === 'notifications' || table === 'announcement_comments') return true;
+  // These are internal tables. Their dedicated routes below enforce ownership
+  // and audience checks; never expose them through the generic CRUD API.
+  if (table === 'notifications' || table === 'announcement_comments') {
+    res.status(405).json({ error: 'Use the dedicated API route for this resource.' });
+    return null;
+  }
 
   const requester = await getRequester(req);
   if (!requester) {
@@ -2480,7 +2522,8 @@ app.get('/api/data', asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
   res.setHeader('Pragma', 'no-cache');
   res.setHeader('Expires', '0');
-  const requester = await getRequester(req);
+  const requester = await requireAuth(req, res);
+  if (!requester) return;
   res.json(await loadAllData(requester));
 }));
 
@@ -3623,6 +3666,63 @@ app.post(['/api/lostfound/:id/reject', '/api/lost-found/:id/reject'], asyncHandl
   });
 }));
 
+function canUserSeeNotification(notification, user) {
+  const dismissedBy = Array.isArray(notification.dismissedBy) ? notification.dismissedBy : [];
+  if (dismissedBy.includes(user.id)) return false;
+  const audience = notification.audience || 'all';
+  const targetIds = Array.isArray(notification.targetIds) ? notification.targetIds : [];
+  if (audience === 'all') return true;
+  if (audience === 'roles') return targetIds.includes(user.role);
+  if (audience === 'users') return targetIds.includes(user.id);
+  return false;
+}
+
+app.get('/api/notifications', asyncHandler(async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const notifications = await getTableData('notifications');
+  res.json(notifications.filter(notification => canUserSeeNotification(notification, user)));
+}));
+
+app.patch('/api/notifications/:id/dismiss', asyncHandler(async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const notification = await get('SELECT * FROM notifications WHERE id = ?', [req.params.id]);
+  if (!notification) return res.status(404).json({ error: 'Notification not found.' });
+  const record = deserializeRow('notifications', notification);
+  if (!canUserSeeNotification(record, user)) return res.status(403).json({ error: 'You cannot dismiss this notification.' });
+  record.dismissedBy = [...new Set([...(record.dismissedBy || []), user.id])];
+  await saveRecord('notifications', record);
+  res.json({ ok: true, id: record.id });
+}));
+
+app.post('/api/notifications/dismiss-all', asyncHandler(async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const notifications = await getTableData('notifications');
+  await Promise.all(notifications
+    .filter(notification => canUserSeeNotification(notification, user))
+    .map((notification) => saveRecord('notifications', {
+      id: notification.id,
+      dismissedBy: [...new Set([...(notification.dismissedBy || []), user.id])],
+    })));
+  res.json({ ok: true });
+}));
+
+app.get('/api/public-data', asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  const [announcements, lostFound, board] = await Promise.all([
+    getTableData('announcements'),
+    getTableData('lostFound'),
+    getTableData('board_of_directors'),
+  ]);
+  res.json({
+    announcements,
+    lostFound: lostFound.filter(item => ['Approved', 'Posted', 'Claimed'].includes(item.status)),
+    board_of_directors: board,
+  });
+}));
+
 
 app.get('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
@@ -4414,6 +4514,7 @@ process.on('unhandledRejection', (reason, promise) => {
 ensureDatabase()
   .then(createTables)
   .then(seedIfEmpty)
+  .then(migrateLegacyPasswords)
   .then(ensureAdminUser)
   .then(() => {
     app.listen(PORT, () => {

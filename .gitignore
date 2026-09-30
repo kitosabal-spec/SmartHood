@@ -19,3 +19,4 @@ private_uploads/**/*
 logs/
 .env
 .server.pid
+data/homeowner_credentials.csv

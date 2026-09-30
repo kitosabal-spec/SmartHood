@@ -86,6 +86,12 @@ Use `npm.cmd` on your computer because PowerShell may block `npm.ps1`.
 
 ## 5. Start the System
 
+For a new or reset database, first set a strong initial administrator password:
+
+```powershell
+$env:INITIAL_ADMIN_PASSWORD = "use-a-unique-password-with-12-or-more-characters"
+```
+
 Run:
 
 ```bash
@@ -111,21 +117,12 @@ http://localhost:3000
 
 Do not open `index.html` directly anymore. The page must be opened through the Node.js server so it can talk to MySQL.
 
-## 7. Login Accounts
+## 7. First Login
 
-Admin:
-
-```text
-username: admin
-password: admin123
-```
-
-Homeowner:
-
-```text
-username: juandelacruz
-password: home123
-```
+The initial administrator username is `admin`; its password is the value of
+`INITIAL_ADMIN_PASSWORD`. Homeowner directory records created by a new/reset
+database are inactive and have no default password. An administrator must set
+a unique password and activate each account before it can sign in.
 
 ## 8. Test if the Database is Working
 
@@ -141,11 +138,8 @@ You should see something like:
 {"ok":true,"database":"san_alfonso_homes","host":"localhost","port":3306,"users":723}
 ```
 
-You can also test login:
-
-```bash
-curl -X POST http://localhost:3000/api/login -H "Content-Type: application/json" -d "{\"username\":\"admin\",\"password\":\"admin123\"}"
-```
+`GET /api/data` requires a signed session cookie; public pages use the limited
+`GET /api/public-data` endpoint instead.
 
 ## 9. How Your Forms Save to MySQL
 

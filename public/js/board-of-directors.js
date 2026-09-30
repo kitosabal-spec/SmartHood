@@ -703,14 +703,8 @@ async function saveBoardMember(isEdit, memberId = null) {
   const method = isEdit ? 'PUT' : 'POST';
 
   try {
-    const headers = {};
-    if (currentUser && currentUser.id) {
-      headers['X-User-Id'] = currentUser.id;
-    }
-
     const res = await fetch(url, {
       method,
-      headers,
       body: formData,
     });
 

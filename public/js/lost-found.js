@@ -358,13 +358,8 @@ async function submitLostFoundReport() {
       for (const file of pendingLostFoundMediaFiles) {
         formData.append('media', file);
       }
-      const headers = {};
-      if (typeof currentUser !== 'undefined' && currentUser && currentUser.id) {
-        headers['X-User-Id'] = currentUser.id;
-      }
       const uploadRes = await fetch('/api/lostfound/upload', {
         method: 'POST',
-        headers,
         body: formData,
       });
       if (!uploadRes.ok) {
@@ -1395,4 +1390,3 @@ function confirmDeleteLostFound(id) {
     } },
   ]);
 }
-

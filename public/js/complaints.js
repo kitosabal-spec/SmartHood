@@ -781,13 +781,8 @@ async function submitHOComplaint(category, description, otherText = '', mediaFil
       for (const f of filesToUpload) {
         formData.append('media', f);
       }
-      const headers = {};
-      if (typeof currentUser !== 'undefined' && currentUser && currentUser.id) {
-        headers['X-User-Id'] = currentUser.id;
-      }
       const uploadRes = await fetch('/api/complaints/upload', {
         method: 'POST',
-        headers,
         body: formData,
       });
       if (!uploadRes.ok) {

@@ -2,7 +2,6 @@
     {
         "id":  "u002",
         "username":  "sanluisjoy",
-        "password":  "sah0002",
         "role":  "homeowner",
         "name":  "SAN LUIS, JOY",
         "email":  "sanluisjoy@sanalfonsohomes.local",
@@ -15,7 +14,6 @@
     {
         "id":  "u003",
         "username":  "sanluiseditha",
-        "password":  "sah0003",
         "role":  "homeowner",
         "name":  "SAN LUIS, EDITHA",
         "email":  "sanluiseditha@sanalfonsohomes.local",
@@ -28,7 +26,6 @@
     {
         "id":  "u004",
         "username":  "dumalasaspsseanpauloshyl",
-        "password":  "sah0004",
         "role":  "homeowner",
         "name":  "DUMALASA,SPS. SEAN PAULO \u0026 SHYLA JOY",
         "email":  "dumalasaspsseanpauloshyl@sanalfonsohomes.local",
@@ -41,7 +38,6 @@
     {
         "id":  "u005",
         "username":  "famisaranjeanette",
-        "password":  "sah0005",
         "role":  "homeowner",
         "name":  "FAMISARAN, JEANETTE",
         "email":  "famisaranjeanette@sanalfonsohomes.local",
@@ -54,7 +50,6 @@
     {
         "id":  "u006",
         "username":  "basamodesto",
-        "password":  "sah0006",
         "role":  "homeowner",
         "name":  "BASA, MODESTO",
         "email":  "basamodesto@sanalfonsohomes.local",
@@ -67,7 +62,6 @@
     {
         "id":  "u007",
         "username":  "estradasilvestre",
-        "password":  "sah0007",
         "role":  "homeowner",
         "name":  "ESTRADA, SILVESTRE",
         "email":  "estradasilvestre@sanalfonsohomes.local",
@@ -80,7 +74,6 @@
     {
         "id":  "u008",
         "username":  "abonitaraffy",
-        "password":  "sah0008",
         "role":  "homeowner",
         "name":  "ABONITA, RAFFY",
         "email":  "abonitaraffy@sanalfonsohomes.local",
@@ -93,7 +86,6 @@
     {
         "id":  "u009",
         "username":  "bondadamabelle",
-        "password":  "sah0009",
         "role":  "homeowner",
         "name":  "BONDAD, AMABELLE",
         "email":  "bondadamabelle@sanalfonsohomes.local",
@@ -106,7 +98,6 @@
     {
         "id":  "u010",
         "username":  "dungcabernadette",
-        "password":  "sah0010",
         "role":  "homeowner",
         "name":  "DUNGCA, BERNADETTE",
         "email":  "dungcabernadette@sanalfonsohomes.local",
@@ -119,7 +110,6 @@
     {
         "id":  "u011",
         "username":  "dungcabernadette2",
-        "password":  "sah0011",
         "role":  "homeowner",
         "name":  "DUNGCA, BERNADETTE",
         "email":  "dungcabernadette2@sanalfonsohomes.local",
@@ -132,7 +122,6 @@
     {
         "id":  "u012",
         "username":  "vallesmel",
-        "password":  "sah0012",
         "role":  "homeowner",
         "name":  "VALLES, MEL",
         "email":  "vallesmel@sanalfonsohomes.local",
@@ -145,7 +134,6 @@
     {
         "id":  "u013",
         "username":  "vallesjacinto",
-        "password":  "sah0013",
         "role":  "homeowner",
         "name":  "VALLES, JACINTO",
         "email":  "vallesjacinto@sanalfonsohomes.local",
@@ -158,7 +146,6 @@
     {
         "id":  "u014",
         "username":  "jeresanomacario",
-        "password":  "sah0014",
         "role":  "homeowner",
         "name":  "JERESANO, MACARIO",
         "email":  "jeresanomacario@sanalfonsohomes.local",
@@ -171,7 +158,6 @@
     {
         "id":  "u015",
         "username":  "jeresanomacario2",
-        "password":  "sah0015",
         "role":  "homeowner",
         "name":  "JERESANO, MACARIO",
         "email":  "jeresanomacario2@sanalfonsohomes.local",
@@ -184,7 +170,6 @@
     {
         "id":  "u016",
         "username":  "enriquezanne",
-        "password":  "sah0016",
         "role":  "homeowner",
         "name":  "ENRIQUEZ, ANNE",
         "email":  "enriquezanne@sanalfonsohomes.local",
@@ -197,7 +182,6 @@
     {
         "id":  "u017",
         "username":  "juliageovanni",
-        "password":  "sah0017",
         "role":  "homeowner",
         "name":  "JULIA, GEOVANNI",
         "email":  "juliageovanni@sanalfonsohomes.local",
@@ -210,7 +194,6 @@
     {
         "id":  "u018",
         "username":  "sanluisjoy2",
-        "password":  "sah0018",
         "role":  "homeowner",
         "name":  "SAN LUIS, JOY",
         "email":  "sanluisjoy2@sanalfonsohomes.local",
@@ -223,7 +206,6 @@
     {
         "id":  "u019",
         "username":  "ramonbuenaflor",
-        "password":  "sah0019",
         "role":  "homeowner",
         "name":  "RAMON, BUENAFLOR",
         "email":  "ramonbuenaflor@sanalfonsohomes.local",
@@ -236,7 +218,6 @@
     {
         "id":  "u020",
         "username":  "perezshane",
-        "password":  "sah0020",
         "role":  "homeowner",
         "name":  "PEREZ, SHANE",
         "email":  "perezshane@sanalfonsohomes.local",
@@ -249,7 +230,6 @@
     {
         "id":  "u021",
         "username":  "amadosulysses",
-        "password":  "sah0021",
         "role":  "homeowner",
         "name":  "AMADOS, ULYSSES",
         "email":  "amadosulysses@sanalfonsohomes.local",
@@ -262,7 +242,6 @@
     {
         "id":  "u022",
         "username":  "baliaoluissilverioalbino",
-        "password":  "sah0022",
         "role":  "homeowner",
         "name":  "BALIAO, LUIS SILVERIO/ALBINO, LANI",
         "email":  "baliaoluissilverioalbino@sanalfonsohomes.local",
@@ -275,7 +254,6 @@
     {
         "id":  "u023",
         "username":  "fortunodanny",
-        "password":  "sah0023",
         "role":  "homeowner",
         "name":  "FORTUNO, DANNY",
         "email":  "fortunodanny@sanalfonsohomes.local",
@@ -288,7 +266,6 @@
     {
         "id":  "u024",
         "username":  "delinorachel",
-        "password":  "sah0024",
         "role":  "homeowner",
         "name":  "DELINO, RACHEL",
         "email":  "delinorachel@sanalfonsohomes.local",
@@ -301,7 +278,6 @@
     {
         "id":  "u025",
         "username":  "testacristito",
-        "password":  "sah0025",
         "role":  "homeowner",
         "name":  "TESTA, CRISTITO",
         "email":  "testacristito@sanalfonsohomes.local",
@@ -314,7 +290,6 @@
     {
         "id":  "u026",
         "username":  "ducaysantiago",
-        "password":  "sah0026",
         "role":  "homeowner",
         "name":  "DUCAY, SANTIAGO",
         "email":  "ducaysantiago@sanalfonsohomes.local",
@@ -327,7 +302,6 @@
     {
         "id":  "u027",
         "username":  "celajejeromeroel",
-        "password":  "sah0027",
         "role":  "homeowner",
         "name":  "CELAJE, JEROME ROEL",
         "email":  "celajejeromeroel@sanalfonsohomes.local",
@@ -340,7 +314,6 @@
     {
         "id":  "u028",
         "username":  "olosjuan",
-        "password":  "sah0028",
         "role":  "homeowner",
         "name":  "OLOS, JUAN",
         "email":  "olosjuan@sanalfonsohomes.local",
@@ -353,7 +326,6 @@
     {
         "id":  "u029",
         "username":  "verarluz",
-        "password":  "sah0029",
         "role":  "homeowner",
         "name":  "VERAR, LUZ",
         "email":  "verarluz@sanalfonsohomes.local",
@@ -366,7 +338,6 @@
     {
         "id":  "u030",
         "username":  "sanciancoroseanne",
-        "password":  "sah0030",
         "role":  "homeowner",
         "name":  "SANCIANCO ROSE ANNE",
         "email":  "sanciancoroseanne@sanalfonsohomes.local",
@@ -379,7 +350,6 @@
     {
         "id":  "u031",
         "username":  "vistaborismoitsiony",
-        "password":  "sah0031",
         "role":  "homeowner",
         "name":  "VISTA, BORIS / MOIT, SIONY",
         "email":  "vistaborismoitsiony@sanalfonsohomes.local",
@@ -392,7 +362,6 @@
     {
         "id":  "u032",
         "username":  "alimagnomario",
-        "password":  "sah0032",
         "role":  "homeowner",
         "name":  "ALIMAGNO, MARIO",
         "email":  "alimagnomario@sanalfonsohomes.local",
@@ -405,7 +374,6 @@
     {
         "id":  "u033",
         "username":  "vistayuri",
-        "password":  "sah0033",
         "role":  "homeowner",
         "name":  "VISTA, YURI",
         "email":  "vistayuri@sanalfonsohomes.local",
@@ -418,7 +386,6 @@
     {
         "id":  "u034",
         "username":  "dejesusjudy",
-        "password":  "sah0034",
         "role":  "homeowner",
         "name":  "DE JESUS, JUDY",
         "email":  "dejesusjudy@sanalfonsohomes.local",
@@ -431,7 +398,6 @@
     {
         "id":  "u035",
         "username":  "cardonajohnjamesgertrude",
-        "password":  "sah0035",
         "role":  "homeowner",
         "name":  "CARDONA JOHN JAMES/GERTRUDE",
         "email":  "cardonajohnjamesgertrude@sanalfonsohomes.local",
@@ -444,7 +410,6 @@
     {
         "id":  "u036",
         "username":  "cajadelejani",
-        "password":  "sah0036",
         "role":  "homeowner",
         "name":  "CAJADE, LEJANI",
         "email":  "cajadelejani@sanalfonsohomes.local",
@@ -457,7 +422,6 @@
     {
         "id":  "u037",
         "username":  "beldadgabriel",
-        "password":  "sah0037",
         "role":  "homeowner",
         "name":  "BELDAD, GABRIEL",
         "email":  "beldadgabriel@sanalfonsohomes.local",
@@ -470,7 +434,6 @@
     {
         "id":  "u038",
         "username":  "kimmarosario",
-        "password":  "sah0038",
         "role":  "homeowner",
         "name":  "KIM, MA.ROSARIO",
         "email":  "kimmarosario@sanalfonsohomes.local",
@@ -483,7 +446,6 @@
     {
         "id":  "u039",
         "username":  "ruizogilmorereoterashone",
-        "password":  "sah0039",
         "role":  "homeowner",
         "name":  "RUIZO, GILMORE/REOTERAS HONEY GRACE\u0026 ABEL",
         "email":  "ruizogilmorereoterashone@sanalfonsohomes.local",
@@ -496,7 +458,6 @@
     {
         "id":  "u040",
         "username":  "martijaramon",
-        "password":  "sah0040",
         "role":  "homeowner",
         "name":  "MARTIJA, RAMON",
         "email":  "martijaramon@sanalfonsohomes.local",
@@ -509,7 +470,6 @@
     {
         "id":  "u041",
         "username":  "syangelita",
-        "password":  "sah0041",
         "role":  "homeowner",
         "name":  "SY, ANGELITA",
         "email":  "syangelita@sanalfonsohomes.local",
@@ -522,7 +482,6 @@
     {
         "id":  "u042",
         "username":  "reyesmagemma",
-        "password":  "sah0042",
         "role":  "homeowner",
         "name":  "REYES, MA. GEMMA",
         "email":  "reyesmagemma@sanalfonsohomes.local",
@@ -535,7 +494,6 @@
     {
         "id":  "u043",
         "username":  "razonmarlon",
-        "password":  "sah0043",
         "role":  "homeowner",
         "name":  "RAZON, MARLON",
         "email":  "razonmarlon@sanalfonsohomes.local",
@@ -548,7 +506,6 @@
     {
         "id":  "u044",
         "username":  "botorjohannai",
-        "password":  "sah0044",
         "role":  "homeowner",
         "name":  "BOTOR JOHANNA I.",
         "email":  "botorjohannai@sanalfonsohomes.local",
@@ -561,7 +518,6 @@
     {
         "id":  "u045",
         "username":  "hidalgoedwinfelipea",
-        "password":  "sah0045",
         "role":  "homeowner",
         "name":  "HIDALGO EDWIN FELIPE A.",
         "email":  "hidalgoedwinfelipea@sanalfonsohomes.local",
@@ -574,7 +530,6 @@
     {
         "id":  "u046",
         "username":  "albaoavelino",
-        "password":  "sah0046",
         "role":  "homeowner",
         "name":  "ALBAÑO, AVELINO",
         "email":  "albaoavelino@sanalfonsohomes.local",
@@ -587,7 +542,6 @@
     {
         "id":  "u047",
         "username":  "rilleraelenapujaanecito",
-        "password":  "sah0047",
         "role":  "homeowner",
         "name":  "RILLERA, ELENA/PUJA ANECITO",
         "email":  "rilleraelenapujaanecito@sanalfonsohomes.local",
@@ -600,7 +554,6 @@
     {
         "id":  "u048",
         "username":  "artiaganoel",
-        "password":  "sah0048",
         "role":  "homeowner",
         "name":  "ARTIAGA NOEL",
         "email":  "artiaganoel@sanalfonsohomes.local",
@@ -613,7 +566,6 @@
     {
         "id":  "u049",
         "username":  "elevadomargierose",
-        "password":  "sah0049",
         "role":  "homeowner",
         "name":  "ELEVADO, MARGIEROSE",
         "email":  "elevadomargierose@sanalfonsohomes.local",
@@ -626,7 +578,6 @@
     {
         "id":  "u050",
         "username":  "elevadorobert",
-        "password":  "sah0050",
         "role":  "homeowner",
         "name":  "ELEVADO, ROBERT",
         "email":  "elevadorobert@sanalfonsohomes.local",
@@ -639,7 +590,6 @@
     {
         "id":  "u051",
         "username":  "oliverrosalie",
-        "password":  "sah0051",
         "role":  "homeowner",
         "name":  "OLIVER, ROSALIE",
         "email":  "oliverrosalie@sanalfonsohomes.local",
@@ -652,7 +602,6 @@
     {
         "id":  "u052",
         "username":  "pagibigbonnetbernardjohn",
-        "password":  "sah0052",
         "role":  "homeowner",
         "name":  "PAG-IBIG/ BONNET, BERNARD JOHN JR.",
         "email":  "pagibigbonnetbernardjohn@sanalfonsohomes.local",
@@ -665,7 +614,6 @@
     {
         "id":  "u053",
         "username":  "bersabebejaminjesusa",
-        "password":  "sah0053",
         "role":  "homeowner",
         "name":  "BERSABE, BEJAMIN/JESUSA",
         "email":  "bersabebejaminjesusa@sanalfonsohomes.local",
@@ -678,7 +626,6 @@
     {
         "id":  "u054",
         "username":  "chicamaryjanechristine",
-        "password":  "sah0054",
         "role":  "homeowner",
         "name":  "CHICA, MARY JANE CHRISTINE",
         "email":  "chicamaryjanechristine@sanalfonsohomes.local",
@@ -691,7 +638,6 @@
     {
         "id":  "u055",
         "username":  "celevarezgladys",
-        "password":  "sah0055",
         "role":  "homeowner",
         "name":  "CELEVAREZ GLADYS",
         "email":  "celevarezgladys@sanalfonsohomes.local",
@@ -704,7 +650,6 @@
     {
         "id":  "u056",
         "username":  "dayaomaricelbarramedapea",
-        "password":  "sah0056",
         "role":  "homeowner",
         "name":  "DAYAO, MARICEL/ BARRAMEDA, PEARL",
         "email":  "dayaomaricelbarramedapea@sanalfonsohomes.local",
@@ -717,7 +662,6 @@
     {
         "id":  "u057",
         "username":  "ruizogilmore",
-        "password":  "sah0057",
         "role":  "homeowner",
         "name":  "RUIZO, GILMORE",
         "email":  "ruizogilmore@sanalfonsohomes.local",
@@ -730,7 +674,6 @@
     {
         "id":  "u058",
         "username":  "noblezavinzon",
-        "password":  "sah0058",
         "role":  "homeowner",
         "name":  "NOBLEZA, VINZON",
         "email":  "noblezavinzon@sanalfonsohomes.local",
@@ -743,7 +686,6 @@
     {
         "id":  "u059",
         "username":  "gamboaarmida",
-        "password":  "sah0059",
         "role":  "homeowner",
         "name":  "GAMBOA, ARMIDA",
         "email":  "gamboaarmida@sanalfonsohomes.local",
@@ -756,7 +698,6 @@
     {
         "id":  "u060",
         "username":  "mercadokenji",
-        "password":  "sah0060",
         "role":  "homeowner",
         "name":  "MERCADO, KENJI",
         "email":  "mercadokenji@sanalfonsohomes.local",
@@ -769,7 +710,6 @@
     {
         "id":  "u061",
         "username":  "alonzosusan",
-        "password":  "sah0061",
         "role":  "homeowner",
         "name":  "ALONZO, SUSAN",
         "email":  "alonzosusan@sanalfonsohomes.local",
@@ -782,7 +722,6 @@
     {
         "id":  "u062",
         "username":  "mercadokenji2",
-        "password":  "sah0062",
         "role":  "homeowner",
         "name":  "MERCADO, KENJI",
         "email":  "mercadokenji2@sanalfonsohomes.local",
@@ -795,7 +734,6 @@
     {
         "id":  "u063",
         "username":  "buenaventurafranco",
-        "password":  "sah0063",
         "role":  "homeowner",
         "name":  "BUENAVENTURA, FRANCO",
         "email":  "buenaventurafranco@sanalfonsohomes.local",
@@ -808,7 +746,6 @@
     {
         "id":  "u064",
         "username":  "peyrarogeliophoebebalote",
-        "password":  "sah0064",
         "role":  "homeowner",
         "name":  "PEYRA, ROGELIO/ PHOEBE BALOTE",
         "email":  "peyrarogeliophoebebalote@sanalfonsohomes.local",
@@ -821,7 +758,6 @@
     {
         "id":  "u065",
         "username":  "noblezavinzoncastaedaven",
-        "password":  "sah0065",
         "role":  "homeowner",
         "name":  "NOBLEZA, VINZON/ CASTAÑEDA, VENUS",
         "email":  "noblezavinzoncastaedaven@sanalfonsohomes.local",
@@ -834,7 +770,6 @@
     {
         "id":  "u066",
         "username":  "averillagervacio1v",
-        "password":  "sah0066",
         "role":  "homeowner",
         "name":  "AVERILLA, GERVACIO 1V",
         "email":  "averillagervacio1v@sanalfonsohomes.local",
@@ -847,7 +782,6 @@
     {
         "id":  "u067",
         "username":  "avelisteodorov",
-        "password":  "sah0067",
         "role":  "homeowner",
         "name":  "AVELIS, TEODORO V",
         "email":  "avelisteodorov@sanalfonsohomes.local",
@@ -860,7 +794,6 @@
     {
         "id":  "u068",
         "username":  "gomezmariateresa",
-        "password":  "sah0068",
         "role":  "homeowner",
         "name":  "GOMEZ, MARIA TERESA",
         "email":  "gomezmariateresa@sanalfonsohomes.local",
@@ -873,7 +806,6 @@
     {
         "id":  "u069",
         "username":  "alvarezlarry",
-        "password":  "sah0069",
         "role":  "homeowner",
         "name":  "ALVAREZ, LARRY",
         "email":  "alvarezlarry@sanalfonsohomes.local",
@@ -886,7 +818,6 @@
     {
         "id":  "u070",
         "username":  "sombreroeugenefrances",
-        "password":  "sah0070",
         "role":  "homeowner",
         "name":  "SOMBRERO, EUGENE \u0026 FRANCES",
         "email":  "sombreroeugenefrances@sanalfonsohomes.local",
@@ -899,7 +830,6 @@
     {
         "id":  "u071",
         "username":  "gomezmariateresa2",
-        "password":  "sah0071",
         "role":  "homeowner",
         "name":  "GOMEZ, MARIA TERESA",
         "email":  "gomezmariateresa2@sanalfonsohomes.local",
@@ -912,7 +842,6 @@
     {
         "id":  "u072",
         "username":  "reolavicente",
-        "password":  "sah0072",
         "role":  "homeowner",
         "name":  "REOLA, VICENTE",
         "email":  "reolavicente@sanalfonsohomes.local",
@@ -925,7 +854,6 @@
     {
         "id":  "u073",
         "username":  "boudreaultmarciana",
-        "password":  "sah0073",
         "role":  "homeowner",
         "name":  "BOUDREAULT, MARCIANA",
         "email":  "boudreaultmarciana@sanalfonsohomes.local",
@@ -938,7 +866,6 @@
     {
         "id":  "u074",
         "username":  "bermundohelenita",
-        "password":  "sah0074",
         "role":  "homeowner",
         "name":  "BERMUNDO, HELENITA",
         "email":  "bermundohelenita@sanalfonsohomes.local",
@@ -951,7 +878,6 @@
     {
         "id":  "u075",
         "username":  "joseluisjamieroseferrer",
-        "password":  "sah0075",
         "role":  "homeowner",
         "name":  "JOSE LUIS/JAMIE ROSE FERRER",
         "email":  "joseluisjamieroseferrer@sanalfonsohomes.local",
@@ -964,7 +890,6 @@
     {
         "id":  "u076",
         "username":  "olaonancy",
-        "password":  "sah0076",
         "role":  "homeowner",
         "name":  "OLAÑO NANCY",
         "email":  "olaonancy@sanalfonsohomes.local",
@@ -977,7 +902,6 @@
     {
         "id":  "u077",
         "username":  "olaonancy2",
-        "password":  "sah0077",
         "role":  "homeowner",
         "name":  "OLAÑO NANCY",
         "email":  "olaonancy2@sanalfonsohomes.local",
@@ -990,7 +914,6 @@
     {
         "id":  "u078",
         "username":  "ilaomanueljrcbpi",
-        "password":  "sah0078",
         "role":  "homeowner",
         "name":  "ILAO, MANUEL  JR. C. / BPI",
         "email":  "ilaomanueljrcbpi@sanalfonsohomes.local",
@@ -1003,7 +926,6 @@
     {
         "id":  "u079",
         "username":  "devinadaisy",
-        "password":  "sah0079",
         "role":  "homeowner",
         "name":  "DEVINA, DAISY",
         "email":  "devinadaisy@sanalfonsohomes.local",
@@ -1016,7 +938,6 @@
     {
         "id":  "u080",
         "username":  "bongyadmonroe",
-        "password":  "sah0080",
         "role":  "homeowner",
         "name":  "BONGYAD, MONROE",
         "email":  "bongyadmonroe@sanalfonsohomes.local",
@@ -1029,7 +950,6 @@
     {
         "id":  "u081",
         "username":  "ocampoarlene",
-        "password":  "sah0081",
         "role":  "homeowner",
         "name":  "OCAMPO, ARLENE",
         "email":  "ocampoarlene@sanalfonsohomes.local",
@@ -1042,7 +962,6 @@
     {
         "id":  "u082",
         "username":  "beldadgabriel2",
-        "password":  "sah0082",
         "role":  "homeowner",
         "name":  "BELDAD, GABRIEL",
         "email":  "beldadgabriel2@sanalfonsohomes.local",
@@ -1055,7 +974,6 @@
     {
         "id":  "u083",
         "username":  "gonzalesemily",
-        "password":  "sah0083",
         "role":  "homeowner",
         "name":  "GONZALES, EMILY",
         "email":  "gonzalesemily@sanalfonsohomes.local",
@@ -1068,7 +986,6 @@
     {
         "id":  "u084",
         "username":  "camoaslodovico",
-        "password":  "sah0084",
         "role":  "homeowner",
         "name":  "CAMOÑAS, LODOVICO",
         "email":  "camoaslodovico@sanalfonsohomes.local",
@@ -1081,7 +998,6 @@
     {
         "id":  "u085",
         "username":  "moraldemariajane",
-        "password":  "sah0085",
         "role":  "homeowner",
         "name":  "MORALDE MARIA JANE",
         "email":  "moraldemariajane@sanalfonsohomes.local",
@@ -1094,7 +1010,6 @@
     {
         "id":  "u086",
         "username":  "israelrommuel",
-        "password":  "sah0086",
         "role":  "homeowner",
         "name":  "ISRAEL, ROMMUEL",
         "email":  "israelrommuel@sanalfonsohomes.local",
@@ -1107,7 +1022,6 @@
     {
         "id":  "u087",
         "username":  "fabroneil",
-        "password":  "sah0087",
         "role":  "homeowner",
         "name":  "FABRO, NEIL",
         "email":  "fabroneil@sanalfonsohomes.local",
@@ -1120,7 +1034,6 @@
     {
         "id":  "u088",
         "username":  "villarandacedricmaricris",
-        "password":  "sah0088",
         "role":  "homeowner",
         "name":  "VILLARANDA CEDRIC/MARICRIS",
         "email":  "villarandacedricmaricris@sanalfonsohomes.local",
@@ -1133,7 +1046,6 @@
     {
         "id":  "u089",
         "username":  "fullantearmin",
-        "password":  "sah0089",
         "role":  "homeowner",
         "name":  "FULLANTE, ARMIN",
         "email":  "fullantearmin@sanalfonsohomes.local",
@@ -1146,7 +1058,6 @@
     {
         "id":  "u090",
         "username":  "pinpineugenio",
-        "password":  "sah0090",
         "role":  "homeowner",
         "name":  "PINPIN, EUGENIO",
         "email":  "pinpineugenio@sanalfonsohomes.local",
@@ -1159,7 +1070,6 @@
     {
         "id":  "u091",
         "username":  "pinpineugeniolotonly",
-        "password":  "sah0091",
         "role":  "homeowner",
         "name":  "PINPIN, EUGENIO/ lot only",
         "email":  "pinpineugeniolotonly@sanalfonsohomes.local",
@@ -1172,7 +1082,6 @@
     {
         "id":  "u092",
         "username":  "aracostajuliet",
-        "password":  "sah0092",
         "role":  "homeowner",
         "name":  "ARACOSTA, JULIET",
         "email":  "aracostajuliet@sanalfonsohomes.local",
@@ -1185,7 +1094,6 @@
     {
         "id":  "u093",
         "username":  "saldomely",
-        "password":  "sah0093",
         "role":  "homeowner",
         "name":  "SALDO, MELY",
         "email":  "saldomely@sanalfonsohomes.local",
@@ -1198,7 +1106,6 @@
     {
         "id":  "u094",
         "username":  "delarosasherwin",
-        "password":  "sah0094",
         "role":  "homeowner",
         "name":  "DELA ROSA, SHERWIN",
         "email":  "delarosasherwin@sanalfonsohomes.local",
@@ -1211,7 +1118,6 @@
     {
         "id":  "u095",
         "username":  "garciamarnie",
-        "password":  "sah0095",
         "role":  "homeowner",
         "name":  "GARCIA, MARNIE",
         "email":  "garciamarnie@sanalfonsohomes.local",
@@ -1224,7 +1130,6 @@
     {
         "id":  "u096",
         "username":  "panongefren",
-        "password":  "sah0096",
         "role":  "homeowner",
         "name":  "PANONG, EFREN",
         "email":  "panongefren@sanalfonsohomes.local",
@@ -1237,7 +1142,6 @@
     {
         "id":  "u097",
         "username":  "aniceleste",
-        "password":  "sah0097",
         "role":  "homeowner",
         "name":  "ANI, CELESTE",
         "email":  "aniceleste@sanalfonsohomes.local",
@@ -1250,7 +1154,6 @@
     {
         "id":  "u098",
         "username":  "panongefren2",
-        "password":  "sah0098",
         "role":  "homeowner",
         "name":  "PANONG, EFREN",
         "email":  "panongefren2@sanalfonsohomes.local",
@@ -1263,7 +1166,6 @@
     {
         "id":  "u099",
         "username":  "ganolaamelia",
-        "password":  "sah0099",
         "role":  "homeowner",
         "name":  "GANOLA, AMELIA",
         "email":  "ganolaamelia@sanalfonsohomes.local",
@@ -1276,7 +1178,6 @@
     {
         "id":  "u100",
         "username":  "brionesedison",
-        "password":  "sah0100",
         "role":  "homeowner",
         "name":  "BRIONES EDISON",
         "email":  "brionesedison@sanalfonsohomes.local",
@@ -1289,7 +1190,6 @@
     {
         "id":  "u101",
         "username":  "gumiranfedericojr",
-        "password":  "sah0101",
         "role":  "homeowner",
         "name":  "GUMIRAN, FEDERICO JR.",
         "email":  "gumiranfedericojr@sanalfonsohomes.local",
@@ -1302,7 +1202,6 @@
     {
         "id":  "u102",
         "username":  "bermundohelenita2",
-        "password":  "sah0102",
         "role":  "homeowner",
         "name":  "BERMUNDO, HELENITA",
         "email":  "bermundohelenita2@sanalfonsohomes.local",
@@ -1315,7 +1214,6 @@
     {
         "id":  "u103",
         "username":  "patagfloraagustinelena",
-        "password":  "sah0103",
         "role":  "homeowner",
         "name":  "PATAG, FLORA/ AGUSTIN, Elena",
         "email":  "patagfloraagustinelena@sanalfonsohomes.local",
@@ -1328,7 +1226,6 @@
     {
         "id":  "u104",
         "username":  "acabadojutilda",
-        "password":  "sah0104",
         "role":  "homeowner",
         "name":  "ACABADO, JUTILDA",
         "email":  "acabadojutilda@sanalfonsohomes.local",
@@ -1341,7 +1238,6 @@
     {
         "id":  "u105",
         "username":  "triabebeth",
-        "password":  "sah0105",
         "role":  "homeowner",
         "name":  "TRIA, BEBETH",
         "email":  "triabebeth@sanalfonsohomes.local",
@@ -1354,7 +1250,6 @@
     {
         "id":  "u106",
         "username":  "acabadojutilda2",
-        "password":  "sah0106",
         "role":  "homeowner",
         "name":  "ACABADO, JUTILDA",
         "email":  "acabadojutilda2@sanalfonsohomes.local",
@@ -1367,7 +1262,6 @@
     {
         "id":  "u107",
         "username":  "baylonjomar",
-        "password":  "sah0107",
         "role":  "homeowner",
         "name":  "BAYLON, JOMAR",
         "email":  "baylonjomar@sanalfonsohomes.local",
@@ -1380,7 +1274,6 @@
     {
         "id":  "u108",
         "username":  "bersabesherwinceakimwend",
-        "password":  "sah0108",
         "role":  "homeowner",
         "name":  "BERSABE, SHERWIN/CEA KIM WENDELL",
         "email":  "bersabesherwinceakimwend@sanalfonsohomes.local",
@@ -1393,7 +1286,6 @@
     {
         "id":  "u109",
         "username":  "apuligilcarpogabriel",
-        "password":  "sah0109",
         "role":  "homeowner",
         "name":  "APULI, GIL /CARPO GABRIEL",
         "email":  "apuligilcarpogabriel@sanalfonsohomes.local",
@@ -1406,7 +1298,6 @@
     {
         "id":  "u110",
         "username":  "ybaneslorena",
-        "password":  "sah0110",
         "role":  "homeowner",
         "name":  "YBANES, LORENA",
         "email":  "ybaneslorena@sanalfonsohomes.local",
@@ -1419,7 +1310,6 @@
     {
         "id":  "u111",
         "username":  "bronmateresa",
-        "password":  "sah0111",
         "role":  "homeowner",
         "name":  "BRON, MA. TERESA",
         "email":  "bronmateresa@sanalfonsohomes.local",
@@ -1432,7 +1322,6 @@
     {
         "id":  "u112",
         "username":  "brionesedison2",
-        "password":  "sah0112",
         "role":  "homeowner",
         "name":  "BRIONES.EDISON",
         "email":  "brionesedison2@sanalfonsohomes.local",
@@ -1445,7 +1334,6 @@
     {
         "id":  "u113",
         "username":  "barrientosjennifer",
-        "password":  "sah0113",
         "role":  "homeowner",
         "name":  "BARRIENTOS, JENNIFER",
         "email":  "barrientosjennifer@sanalfonsohomes.local",
@@ -1458,7 +1346,6 @@
     {
         "id":  "u114",
         "username":  "audeanestor",
-        "password":  "sah0114",
         "role":  "homeowner",
         "name":  "AUDEA, NESTOR",
         "email":  "audeanestor@sanalfonsohomes.local",
@@ -1471,7 +1358,6 @@
     {
         "id":  "u115",
         "username":  "barrientosjennifer2",
-        "password":  "sah0115",
         "role":  "homeowner",
         "name":  "BARRIENTOS, JENNIFER",
         "email":  "barrientosjennifer2@sanalfonsohomes.local",
@@ -1484,7 +1370,6 @@
     {
         "id":  "u116",
         "username":  "asistenrolando",
-        "password":  "sah0116",
         "role":  "homeowner",
         "name":  "ASISTEN, ROLANDO",
         "email":  "asistenrolando@sanalfonsohomes.local",
@@ -1497,7 +1382,6 @@
     {
         "id":  "u117",
         "username":  "ramosspsalethalbert",
-        "password":  "sah0117",
         "role":  "homeowner",
         "name":  "RAMOS, SPS. ALETH \u0026 ALBERT",
         "email":  "ramosspsalethalbert@sanalfonsohomes.local",
@@ -1510,7 +1394,6 @@
     {
         "id":  "u118",
         "username":  "singsonjonafel",
-        "password":  "sah0118",
         "role":  "homeowner",
         "name":  "SINGSON, JONAFEL",
         "email":  "singsonjonafel@sanalfonsohomes.local",
@@ -1523,7 +1406,6 @@
     {
         "id":  "u119",
         "username":  "azadajerome",
-        "password":  "sah0119",
         "role":  "homeowner",
         "name":  "AZADA, JEROME",
         "email":  "azadajerome@sanalfonsohomes.local",
@@ -1536,7 +1418,6 @@
     {
         "id":  "u120",
         "username":  "bisenioandrewbpi",
-        "password":  "sah0120",
         "role":  "homeowner",
         "name":  "BISENIO, ANDREW /BPI",
         "email":  "bisenioandrewbpi@sanalfonsohomes.local",
@@ -1549,7 +1430,6 @@
     {
         "id":  "u121",
         "username":  "retubiorandyn",
-        "password":  "sah0121",
         "role":  "homeowner",
         "name":  "RETUBIO RANDY N.",
         "email":  "retubiorandyn@sanalfonsohomes.local",
@@ -1562,7 +1442,6 @@
     {
         "id":  "u122",
         "username":  "zabaldicamarvinhamo",
-        "password":  "sah0122",
         "role":  "homeowner",
         "name":  "ZABALDICA MARVIN HAM O.",
         "email":  "zabaldicamarvinhamo@sanalfonsohomes.local",
@@ -1575,7 +1454,6 @@
     {
         "id":  "u123",
         "username":  "latosanestor",
-        "password":  "sah0123",
         "role":  "homeowner",
         "name":  "LATOSA, NESTOR",
         "email":  "latosanestor@sanalfonsohomes.local",
@@ -1588,7 +1466,6 @@
     {
         "id":  "u124",
         "username":  "camberowena",
-        "password":  "sah0124",
         "role":  "homeowner",
         "name":  "CAMBE, ROWENA",
         "email":  "camberowena@sanalfonsohomes.local",
@@ -1601,7 +1478,6 @@
     {
         "id":  "u125",
         "username":  "agtarapalvinfranco",
-        "password":  "sah0125",
         "role":  "homeowner",
         "name":  "AGTARAP ALVIN FRANCO",
         "email":  "agtarapalvinfranco@sanalfonsohomes.local",
@@ -1614,7 +1490,6 @@
     {
         "id":  "u126",
         "username":  "brandescharlo",
-        "password":  "sah0126",
         "role":  "homeowner",
         "name":  "BRANDES CHARLO",
         "email":  "brandescharlo@sanalfonsohomes.local",
@@ -1627,7 +1502,6 @@
     {
         "id":  "u127",
         "username":  "alfonsalvesimbahonmatthe",
-        "password":  "sah0127",
         "role":  "homeowner",
         "name":  "ALFON, SALVE/SIMBAHON, MATTHEW",
         "email":  "alfonsalvesimbahonmatthe@sanalfonsohomes.local",
@@ -1640,7 +1514,6 @@
     {
         "id":  "u128",
         "username":  "badongronnierodolfo",
-        "password":  "sah0128",
         "role":  "homeowner",
         "name":  "BADONG, RONNIE RODOLFO",
         "email":  "badongronnierodolfo@sanalfonsohomes.local",
@@ -1653,7 +1526,6 @@
     {
         "id":  "u129",
         "username":  "berberabealexanderm",
-        "password":  "sah0129",
         "role":  "homeowner",
         "name":  "BERBERABE ALEXANDER M.",
         "email":  "berberabealexanderm@sanalfonsohomes.local",
@@ -1666,7 +1538,6 @@
     {
         "id":  "u130",
         "username":  "lujareseddie",
-        "password":  "sah0130",
         "role":  "homeowner",
         "name":  "LUJARES, EDDIE",
         "email":  "lujareseddie@sanalfonsohomes.local",
@@ -1679,7 +1550,6 @@
     {
         "id":  "u131",
         "username":  "rebuladojoseph",
-        "password":  "sah0131",
         "role":  "homeowner",
         "name":  "REBULADO, JOSEPH",
         "email":  "rebuladojoseph@sanalfonsohomes.local",
@@ -1692,7 +1562,6 @@
     {
         "id":  "u132",
         "username":  "lujareseddie2",
-        "password":  "sah0132",
         "role":  "homeowner",
         "name":  "LUJARES, EDDIE",
         "email":  "lujareseddie2@sanalfonsohomes.local",
@@ -1705,7 +1574,6 @@
     {
         "id":  "u133",
         "username":  "rebuladojoseph2",
-        "password":  "sah0133",
         "role":  "homeowner",
         "name":  "REBULADO, JOSEPH",
         "email":  "rebuladojoseph2@sanalfonsohomes.local",
@@ -1718,7 +1586,6 @@
     {
         "id":  "u134",
         "username":  "goyenaeva",
-        "password":  "sah0134",
         "role":  "homeowner",
         "name":  "GOYENA, EVA",
         "email":  "goyenaeva@sanalfonsohomes.local",
@@ -1731,7 +1598,6 @@
     {
         "id":  "u135",
         "username":  "eniceoantonioromano",
-        "password":  "sah0135",
         "role":  "homeowner",
         "name":  "ENICEO, ANTONIO ROMANO",
         "email":  "eniceoantonioromano@sanalfonsohomes.local",
@@ -1744,7 +1610,6 @@
     {
         "id":  "u136",
         "username":  "sandigandionisio",
-        "password":  "sah0136",
         "role":  "homeowner",
         "name":  "SANDIGAN, DIONISIO",
         "email":  "sandigandionisio@sanalfonsohomes.local",
@@ -1757,7 +1622,6 @@
     {
         "id":  "u137",
         "username":  "eniceoantonioromano2",
-        "password":  "sah0137",
         "role":  "homeowner",
         "name":  "ENICEO, ANTONIO ROMANO",
         "email":  "eniceoantonioromano2@sanalfonsohomes.local",
@@ -1770,7 +1634,6 @@
     {
         "id":  "u138",
         "username":  "acabadohelensandiganmeni",
-        "password":  "sah0138",
         "role":  "homeowner",
         "name":  "ACABADO, HELEN/ SANDIGAN, MENITA",
         "email":  "acabadohelensandiganmeni@sanalfonsohomes.local",
@@ -1783,7 +1646,6 @@
     {
         "id":  "u139",
         "username":  "eniceoantonioromano3",
-        "password":  "sah0139",
         "role":  "homeowner",
         "name":  "ENICEO, ANTONIO ROMANO",
         "email":  "eniceoantonioromano3@sanalfonsohomes.local",
@@ -1796,7 +1658,6 @@
     {
         "id":  "u140",
         "username":  "pecillermariafevenus",
-        "password":  "sah0140",
         "role":  "homeowner",
         "name":  "PECILLER, MARIA FE VENUS",
         "email":  "pecillermariafevenus@sanalfonsohomes.local",
@@ -1809,7 +1670,6 @@
     {
         "id":  "u141",
         "username":  "moraldemajanep",
-        "password":  "sah0141",
         "role":  "homeowner",
         "name":  "MORALDE MA. JANE P.",
         "email":  "moraldemajanep@sanalfonsohomes.local",
@@ -1822,7 +1682,6 @@
     {
         "id":  "u142",
         "username":  "nonatoramon",
-        "password":  "sah0142",
         "role":  "homeowner",
         "name":  "NONATO, RAMON",
         "email":  "nonatoramon@sanalfonsohomes.local",
@@ -1835,7 +1694,6 @@
     {
         "id":  "u143",
         "username":  "moazenchialireza",
-        "password":  "sah0143",
         "role":  "homeowner",
         "name":  "MOAZENCHI, ALI REZA",
         "email":  "moazenchialireza@sanalfonsohomes.local",
@@ -1848,7 +1706,6 @@
     {
         "id":  "u144",
         "username":  "lovanessaa",
-        "password":  "sah0144",
         "role":  "homeowner",
         "name":  "LO, VANESSA A.",
         "email":  "lovanessaa@sanalfonsohomes.local",
@@ -1861,7 +1718,6 @@
     {
         "id":  "u145",
         "username":  "abalayansteve",
-        "password":  "sah0145",
         "role":  "homeowner",
         "name":  "ABALAYAN, STEVE",
         "email":  "abalayansteve@sanalfonsohomes.local",
@@ -1874,7 +1730,6 @@
     {
         "id":  "u146",
         "username":  "sabordomorse",
-        "password":  "sah0146",
         "role":  "homeowner",
         "name":  "SABORDO MORSE",
         "email":  "sabordomorse@sanalfonsohomes.local",
@@ -1887,7 +1742,6 @@
     {
         "id":  "u147",
         "username":  "abalayansteve2",
-        "password":  "sah0147",
         "role":  "homeowner",
         "name":  "ABALAYAN, STEVE",
         "email":  "abalayansteve2@sanalfonsohomes.local",
@@ -1900,7 +1754,6 @@
     {
         "id":  "u148",
         "username":  "lacrajoneem",
-        "password":  "sah0148",
         "role":  "homeowner",
         "name":  "LACRA, JONEEM",
         "email":  "lacrajoneem@sanalfonsohomes.local",
@@ -1913,7 +1766,6 @@
     {
         "id":  "u149",
         "username":  "sorianomacristina",
-        "password":  "sah0149",
         "role":  "homeowner",
         "name":  "SORIANO, MA. CRISTINA",
         "email":  "sorianomacristina@sanalfonsohomes.local",
@@ -1926,7 +1778,6 @@
     {
         "id":  "u150",
         "username":  "abalayanjosephpepito",
-        "password":  "sah0150",
         "role":  "homeowner",
         "name":  "ABALAYAN, JOSEPH PEPITO",
         "email":  "abalayanjosephpepito@sanalfonsohomes.local",
@@ -1939,7 +1790,6 @@
     {
         "id":  "u151",
         "username":  "sabarezamacielo",
-        "password":  "sah0151",
         "role":  "homeowner",
         "name":  "SABAREZA, MA. CIELO",
         "email":  "sabarezamacielo@sanalfonsohomes.local",
@@ -1952,7 +1802,6 @@
     {
         "id":  "u152",
         "username":  "bronnorma",
-        "password":  "sah0152",
         "role":  "homeowner",
         "name":  "BRON, NORMA",
         "email":  "bronnorma@sanalfonsohomes.local",
@@ -1965,7 +1814,6 @@
     {
         "id":  "u153",
         "username":  "delmontegeorge",
-        "password":  "sah0153",
         "role":  "homeowner",
         "name":  "DEL MONTE, GEORGE",
         "email":  "delmontegeorge@sanalfonsohomes.local",
@@ -1978,7 +1826,6 @@
     {
         "id":  "u154",
         "username":  "redutahazel",
-        "password":  "sah0154",
         "role":  "homeowner",
         "name":  "REDUTA HAZEL",
         "email":  "redutahazel@sanalfonsohomes.local",
@@ -1991,7 +1838,6 @@
     {
         "id":  "u155",
         "username":  "canutomyrna",
-        "password":  "sah0155",
         "role":  "homeowner",
         "name":  "CANUTO, MYRNA",
         "email":  "canutomyrna@sanalfonsohomes.local",
@@ -2004,7 +1850,6 @@
     {
         "id":  "u156",
         "username":  "elgarminene",
-        "password":  "sah0156",
         "role":  "homeowner",
         "name":  "ELGAR, MINENE",
         "email":  "elgarminene@sanalfonsohomes.local",
@@ -2017,7 +1862,6 @@
     {
         "id":  "u157",
         "username":  "elgarminene2",
-        "password":  "sah0157",
         "role":  "homeowner",
         "name":  "ELGAR, MINENE",
         "email":  "elgarminene2@sanalfonsohomes.local",
@@ -2030,7 +1874,6 @@
     {
         "id":  "u158",
         "username":  "enriquezjoelrevillalumbe",
-        "password":  "sah0158",
         "role":  "homeowner",
         "name":  "ENRIQUEZ, JOEL / revilla lumbera",
         "email":  "enriquezjoelrevillalumbe@sanalfonsohomes.local",
@@ -2043,7 +1886,6 @@
     {
         "id":  "u159",
         "username":  "barramedabrillante",
-        "password":  "sah0159",
         "role":  "homeowner",
         "name":  "BARRAMEDA, BRILLANTE",
         "email":  "barramedabrillante@sanalfonsohomes.local",
@@ -2056,7 +1898,6 @@
     {
         "id":  "u160",
         "username":  "rellosojenita",
-        "password":  "sah0160",
         "role":  "homeowner",
         "name":  "RELLOSO, JENITA",
         "email":  "rellosojenita@sanalfonsohomes.local",
@@ -2069,7 +1910,6 @@
     {
         "id":  "u161",
         "username":  "rellosojenita2",
-        "password":  "sah0161",
         "role":  "homeowner",
         "name":  "RELLOSO, JENITA",
         "email":  "rellosojenita2@sanalfonsohomes.local",
@@ -2082,7 +1922,6 @@
     {
         "id":  "u162",
         "username":  "agorsheoban",
-        "password":  "sah0162",
         "role":  "homeowner",
         "name":  "AGOR, SHEOBAN",
         "email":  "agorsheoban@sanalfonsohomes.local",
@@ -2095,7 +1934,6 @@
     {
         "id":  "u163",
         "username":  "tiumanuel",
-        "password":  "sah0163",
         "role":  "homeowner",
         "name":  "TIU, MANUEL",
         "email":  "tiumanuel@sanalfonsohomes.local",
@@ -2108,7 +1946,6 @@
     {
         "id":  "u164",
         "username":  "lucenamaamylen",
-        "password":  "sah0164",
         "role":  "homeowner",
         "name":  "LUCENA, MA. AMYLEN",
         "email":  "lucenamaamylen@sanalfonsohomes.local",
@@ -2121,7 +1958,6 @@
     {
         "id":  "u165",
         "username":  "lucenamaamylen2",
-        "password":  "sah0165",
         "role":  "homeowner",
         "name":  "LUCENA, MA. AMYLEN",
         "email":  "lucenamaamylen2@sanalfonsohomes.local",
@@ -2134,7 +1970,6 @@
     {
         "id":  "u166",
         "username":  "lucenamaamylen3",
-        "password":  "sah0166",
         "role":  "homeowner",
         "name":  "LUCENA, MA. AMYLEN",
         "email":  "lucenamaamylen3@sanalfonsohomes.local",
@@ -2147,7 +1982,6 @@
     {
         "id":  "u167",
         "username":  "lucenamaamylen4",
-        "password":  "sah0167",
         "role":  "homeowner",
         "name":  "LUCENA, MA. AMYLEN",
         "email":  "lucenamaamylen4@sanalfonsohomes.local",
@@ -2160,7 +1994,6 @@
     {
         "id":  "u168",
         "username":  "bautistamiafiely",
-        "password":  "sah0168",
         "role":  "homeowner",
         "name":  "BAUTISTA, MIAFIELY",
         "email":  "bautistamiafiely@sanalfonsohomes.local",
@@ -2173,7 +2006,6 @@
     {
         "id":  "u169",
         "username":  "cariagamaribelq",
-        "password":  "sah0169",
         "role":  "homeowner",
         "name":  "CARIAGA MARIBEL Q.",
         "email":  "cariagamaribelq@sanalfonsohomes.local",
@@ -2186,7 +2018,6 @@
     {
         "id":  "u170",
         "username":  "solismyra",
-        "password":  "sah0170",
         "role":  "homeowner",
         "name":  "SOLIS, MYRA",
         "email":  "solismyra@sanalfonsohomes.local",
@@ -2199,7 +2030,6 @@
     {
         "id":  "u171",
         "username":  "alipantejennifer",
-        "password":  "sah0171",
         "role":  "homeowner",
         "name":  "ALIPANTE, JENNIFER",
         "email":  "alipantejennifer@sanalfonsohomes.local",
@@ -2212,7 +2042,6 @@
     {
         "id":  "u172",
         "username":  "celimenjoan",
-        "password":  "sah0172",
         "role":  "homeowner",
         "name":  "CELIMEN, JOAN",
         "email":  "celimenjoan@sanalfonsohomes.local",
@@ -2225,7 +2054,6 @@
     {
         "id":  "u173",
         "username":  "taburnaljonathan",
-        "password":  "sah0173",
         "role":  "homeowner",
         "name":  "TABURNAL, JONATHAN",
         "email":  "taburnaljonathan@sanalfonsohomes.local",
@@ -2238,7 +2066,6 @@
     {
         "id":  "u174",
         "username":  "delarosajudith",
-        "password":  "sah0174",
         "role":  "homeowner",
         "name":  "DELA ROSA, JUDITH",
         "email":  "delarosajudith@sanalfonsohomes.local",
@@ -2251,7 +2078,6 @@
     {
         "id":  "u175",
         "username":  "villanuevarodelito",
-        "password":  "sah0175",
         "role":  "homeowner",
         "name":  "VILLANUEVA, RODELITO",
         "email":  "villanuevarodelito@sanalfonsohomes.local",
@@ -2264,7 +2090,6 @@
     {
         "id":  "u176",
         "username":  "oloyasally",
-        "password":  "sah0176",
         "role":  "homeowner",
         "name":  "OLOYA, SALLY",
         "email":  "oloyasally@sanalfonsohomes.local",
@@ -2277,7 +2102,6 @@
     {
         "id":  "u177",
         "username":  "cantrenatalieczarina",
-        "password":  "sah0177",
         "role":  "homeowner",
         "name":  "CANTRE, NATALIE CZARINA",
         "email":  "cantrenatalieczarina@sanalfonsohomes.local",
@@ -2290,7 +2114,6 @@
     {
         "id":  "u178",
         "username":  "tapiaalvin",
-        "password":  "sah0178",
         "role":  "homeowner",
         "name":  "TAPIA, ALVIN",
         "email":  "tapiaalvin@sanalfonsohomes.local",
@@ -2303,7 +2126,6 @@
     {
         "id":  "u179",
         "username":  "tapiafe",
-        "password":  "sah0179",
         "role":  "homeowner",
         "name":  "TAPIA, FE",
         "email":  "tapiafe@sanalfonsohomes.local",
@@ -2316,7 +2138,6 @@
     {
         "id":  "u180",
         "username":  "fernandorosemen",
-        "password":  "sah0180",
         "role":  "homeowner",
         "name":  "FERNANDO, ROSEMEN",
         "email":  "fernandorosemen@sanalfonsohomes.local",
@@ -2329,7 +2150,6 @@
     {
         "id":  "u181",
         "username":  "gonzalessalve",
-        "password":  "sah0181",
         "role":  "homeowner",
         "name":  "GONZALES, SALVE",
         "email":  "gonzalessalve@sanalfonsohomes.local",
@@ -2342,7 +2162,6 @@
     {
         "id":  "u182",
         "username":  "dwyerrosario",
-        "password":  "sah0182",
         "role":  "homeowner",
         "name":  "DWYER, ROSARIO",
         "email":  "dwyerrosario@sanalfonsohomes.local",
@@ -2355,7 +2174,6 @@
     {
         "id":  "u183",
         "username":  "amparadogloriajra",
-        "password":  "sah0183",
         "role":  "homeowner",
         "name":  "AMPARADO, GLORIA JRA.",
         "email":  "amparadogloriajra@sanalfonsohomes.local",
@@ -2368,7 +2186,6 @@
     {
         "id":  "u184",
         "username":  "lustadojohnaldwin",
-        "password":  "sah0184",
         "role":  "homeowner",
         "name":  "LUSTADO, JOHN ALDWIN",
         "email":  "lustadojohnaldwin@sanalfonsohomes.local",
@@ -2381,7 +2198,6 @@
     {
         "id":  "u185",
         "username":  "valenzuelamaisabel",
-        "password":  "sah0185",
         "role":  "homeowner",
         "name":  "VALENZUELA, MA. ISABEL",
         "email":  "valenzuelamaisabel@sanalfonsohomes.local",
@@ -2394,7 +2210,6 @@
     {
         "id":  "u186",
         "username":  "salesglenda",
-        "password":  "sah0186",
         "role":  "homeowner",
         "name":  "SALES, GLENDA",
         "email":  "salesglenda@sanalfonsohomes.local",
@@ -2407,7 +2222,6 @@
     {
         "id":  "u187",
         "username":  "punzalanrafael",
-        "password":  "sah0187",
         "role":  "homeowner",
         "name":  "PUNZALAN, RAFAEL",
         "email":  "punzalanrafael@sanalfonsohomes.local",
@@ -2420,7 +2234,6 @@
     {
         "id":  "u188",
         "username":  "villegasvivian",
-        "password":  "sah0188",
         "role":  "homeowner",
         "name":  "VILLEGAS, VIVIAN",
         "email":  "villegasvivian@sanalfonsohomes.local",
@@ -2433,7 +2246,6 @@
     {
         "id":  "u189",
         "username":  "moranoaugusto",
-        "password":  "sah0189",
         "role":  "homeowner",
         "name":  "MORANO, AUGUSTO",
         "email":  "moranoaugusto@sanalfonsohomes.local",
@@ -2446,7 +2258,6 @@
     {
         "id":  "u190",
         "username":  "macaraigmercy",
-        "password":  "sah0190",
         "role":  "homeowner",
         "name":  "MACARAIG, MERCY",
         "email":  "macaraigmercy@sanalfonsohomes.local",
@@ -2459,7 +2270,6 @@
     {
         "id":  "u191",
         "username":  "orongloriemayb",
-        "password":  "sah0191",
         "role":  "homeowner",
         "name":  "ORONG, LORIE MAY B.",
         "email":  "orongloriemayb@sanalfonsohomes.local",
@@ -2472,7 +2282,6 @@
     {
         "id":  "u192",
         "username":  "lagdaanjay",
-        "password":  "sah0192",
         "role":  "homeowner",
         "name":  "LAGDAAN, JAY",
         "email":  "lagdaanjay@sanalfonsohomes.local",
@@ -2485,7 +2294,6 @@
     {
         "id":  "u193",
         "username":  "ombaonoe",
-        "password":  "sah0193",
         "role":  "homeowner",
         "name":  "OMBAO, NOE",
         "email":  "ombaonoe@sanalfonsohomes.local",
@@ -2498,7 +2306,6 @@
     {
         "id":  "u194",
         "username":  "gonzalesjeanette",
-        "password":  "sah0194",
         "role":  "homeowner",
         "name":  "GONZALES, JEANETTE",
         "email":  "gonzalesjeanette@sanalfonsohomes.local",
@@ -2511,7 +2318,6 @@
     {
         "id":  "u195",
         "username":  "sarenenita",
-        "password":  "sah0195",
         "role":  "homeowner",
         "name":  "SARE, NENITA",
         "email":  "sarenenita@sanalfonsohomes.local",
@@ -2524,7 +2330,6 @@
     {
         "id":  "u196",
         "username":  "casipitdonnie",
-        "password":  "sah0196",
         "role":  "homeowner",
         "name":  "CASIPIT, DONNIE",
         "email":  "casipitdonnie@sanalfonsohomes.local",
@@ -2537,7 +2342,6 @@
     {
         "id":  "u197",
         "username":  "antonionoel",
-        "password":  "sah0197",
         "role":  "homeowner",
         "name":  "ANTONIO, NOEL",
         "email":  "antonionoel@sanalfonsohomes.local",
@@ -2550,7 +2354,6 @@
     {
         "id":  "u198",
         "username":  "murillomaricris",
-        "password":  "sah0198",
         "role":  "homeowner",
         "name":  "MURILLO, MARICRIS",
         "email":  "murillomaricris@sanalfonsohomes.local",
@@ -2563,7 +2366,6 @@
     {
         "id":  "u199",
         "username":  "antonionoel2",
-        "password":  "sah0199",
         "role":  "homeowner",
         "name":  "ANTONIO, NOEL",
         "email":  "antonionoel2@sanalfonsohomes.local",
@@ -2576,7 +2378,6 @@
     {
         "id":  "u200",
         "username":  "ungromeo",
-        "password":  "sah0200",
         "role":  "homeowner",
         "name":  "UNG, ROMEO",
         "email":  "ungromeo@sanalfonsohomes.local",
@@ -2589,7 +2390,6 @@
     {
         "id":  "u201",
         "username":  "lopezjhowil",
-        "password":  "sah0201",
         "role":  "homeowner",
         "name":  "LOPEZ JHOWIL",
         "email":  "lopezjhowil@sanalfonsohomes.local",
@@ -2602,7 +2402,6 @@
     {
         "id":  "u202",
         "username":  "postigovicenteiii",
-        "password":  "sah0202",
         "role":  "homeowner",
         "name":  "POSTIGO, VICENTE III",
         "email":  "postigovicenteiii@sanalfonsohomes.local",
@@ -2615,7 +2414,6 @@
     {
         "id":  "u203",
         "username":  "paghubasanmarivic",
-        "password":  "sah0203",
         "role":  "homeowner",
         "name":  "PAGHUBASAN, MARIVIC",
         "email":  "paghubasanmarivic@sanalfonsohomes.local",
@@ -2628,7 +2426,6 @@
     {
         "id":  "u204",
         "username":  "perezcleo",
-        "password":  "sah0204",
         "role":  "homeowner",
         "name":  "PEREZ CLEO",
         "email":  "perezcleo@sanalfonsohomes.local",
@@ -2641,7 +2438,6 @@
     {
         "id":  "u205",
         "username":  "montealegreestrella",
-        "password":  "sah0205",
         "role":  "homeowner",
         "name":  "MONTEALEGRE, ESTRELLA",
         "email":  "montealegreestrella@sanalfonsohomes.local",
@@ -2654,7 +2450,6 @@
     {
         "id":  "u206",
         "username":  "merillesonofreleilan",
-        "password":  "sah0206",
         "role":  "homeowner",
         "name":  "MERILLES, ONOFRE LEILAN",
         "email":  "merillesonofreleilan@sanalfonsohomes.local",
@@ -2667,7 +2462,6 @@
     {
         "id":  "u207",
         "username":  "reyesjoangeli",
-        "password":  "sah0207",
         "role":  "homeowner",
         "name":  "REYES, JO ANGELI",
         "email":  "reyesjoangeli@sanalfonsohomes.local",
@@ -2680,7 +2474,6 @@
     {
         "id":  "u208",
         "username":  "villarandatheamariferche",
-        "password":  "sah0208",
         "role":  "homeowner",
         "name":  "VILLARANDA THEA MARIFER/CHESTER",
         "email":  "villarandatheamariferche@sanalfonsohomes.local",
@@ -2693,7 +2486,6 @@
     {
         "id":  "u209",
         "username":  "gonzalesjudith",
-        "password":  "sah0209",
         "role":  "homeowner",
         "name":  "GONZALES, JUDITH",
         "email":  "gonzalesjudith@sanalfonsohomes.local",
@@ -2706,7 +2498,6 @@
     {
         "id":  "u210",
         "username":  "olivanmanuel",
-        "password":  "sah0210",
         "role":  "homeowner",
         "name":  "OLIVAN, MANUEL",
         "email":  "olivanmanuel@sanalfonsohomes.local",
@@ -2719,7 +2510,6 @@
     {
         "id":  "u211",
         "username":  "albertoshila",
-        "password":  "sah0211",
         "role":  "homeowner",
         "name":  "ALBERTO, SHILA",
         "email":  "albertoshila@sanalfonsohomes.local",
@@ -2732,7 +2522,6 @@
     {
         "id":  "u212",
         "username":  "austriajosephine",
-        "password":  "sah0212",
         "role":  "homeowner",
         "name":  "AUSTRIA, JOSEPHINE",
         "email":  "austriajosephine@sanalfonsohomes.local",
@@ -2745,7 +2534,6 @@
     {
         "id":  "u213",
         "username":  "tanbelinda",
-        "password":  "sah0213",
         "role":  "homeowner",
         "name":  "TAN, BELINDA",
         "email":  "tanbelinda@sanalfonsohomes.local",
@@ -2758,7 +2546,6 @@
     {
         "id":  "u214",
         "username":  "delaondello",
-        "password":  "sah0214",
         "role":  "homeowner",
         "name":  "DELAON, DELLO",
         "email":  "delaondello@sanalfonsohomes.local",
@@ -2771,7 +2558,6 @@
     {
         "id":  "u215",
         "username":  "glumalidglennvinizaida",
-        "password":  "sah0215",
         "role":  "homeowner",
         "name":  "GLUMALID GLENN/VINIZAIDA",
         "email":  "glumalidglennvinizaida@sanalfonsohomes.local",
@@ -2784,7 +2570,6 @@
     {
         "id":  "u216",
         "username":  "glumalidglenn",
-        "password":  "sah0216",
         "role":  "homeowner",
         "name":  "GLUMALID, GLENN",
         "email":  "glumalidglenn@sanalfonsohomes.local",
@@ -2797,7 +2582,6 @@
     {
         "id":  "u217",
         "username":  "vinoyajames",
-        "password":  "sah0217",
         "role":  "homeowner",
         "name":  "VINOYA JAMES",
         "email":  "vinoyajames@sanalfonsohomes.local",
@@ -2810,7 +2594,6 @@
     {
         "id":  "u218",
         "username":  "delaonclaudette",
-        "password":  "sah0218",
         "role":  "homeowner",
         "name":  "DELAON, CLAUDETTE",
         "email":  "delaonclaudette@sanalfonsohomes.local",
@@ -2823,7 +2606,6 @@
     {
         "id":  "u219",
         "username":  "olivanjudemc",
-        "password":  "sah0219",
         "role":  "homeowner",
         "name":  "OLIVAN, JUDEM C.",
         "email":  "olivanjudemc@sanalfonsohomes.local",
@@ -2836,7 +2618,6 @@
     {
         "id":  "u220",
         "username":  "valenzuelaroger",
-        "password":  "sah0220",
         "role":  "homeowner",
         "name":  "VALENZUELA, ROGER",
         "email":  "valenzuelaroger@sanalfonsohomes.local",
@@ -2849,7 +2630,6 @@
     {
         "id":  "u221",
         "username":  "stollmacheeryreduta",
-        "password":  "sah0221",
         "role":  "homeowner",
         "name":  "STOLL,  MA. CHEERY REDUTA",
         "email":  "stollmacheeryreduta@sanalfonsohomes.local",
@@ -2862,7 +2642,6 @@
     {
         "id":  "u222",
         "username":  "abagatrodel",
-        "password":  "sah0222",
         "role":  "homeowner",
         "name":  "ABAGAT, RODEL",
         "email":  "abagatrodel@sanalfonsohomes.local",
@@ -2875,7 +2654,6 @@
     {
         "id":  "u223",
         "username":  "barandonbonifaciojr",
-        "password":  "sah0223",
         "role":  "homeowner",
         "name":  "BARANDON, BONIFACIO JR.",
         "email":  "barandonbonifaciojr@sanalfonsohomes.local",
@@ -2888,7 +2666,6 @@
     {
         "id":  "u224",
         "username":  "barandonbonifaciojr2",
-        "password":  "sah0224",
         "role":  "homeowner",
         "name":  "BARANDON, BONIFACIO JR.",
         "email":  "barandonbonifaciojr2@sanalfonsohomes.local",
@@ -2901,7 +2678,6 @@
     {
         "id":  "u225",
         "username":  "singhangelomoisesrufo",
-        "password":  "sah0225",
         "role":  "homeowner",
         "name":  "SINGH, ANGELO/MOISES RUFO",
         "email":  "singhangelomoisesrufo@sanalfonsohomes.local",
@@ -2914,7 +2690,6 @@
     {
         "id":  "u226",
         "username":  "orobetty",
-        "password":  "sah0226",
         "role":  "homeowner",
         "name":  "ORO, BETTY",
         "email":  "orobetty@sanalfonsohomes.local",
@@ -2927,7 +2702,6 @@
     {
         "id":  "u227",
         "username":  "avilamarjory",
-        "password":  "sah0227",
         "role":  "homeowner",
         "name":  "AVILA, MARJORY",
         "email":  "avilamarjory@sanalfonsohomes.local",
@@ -2940,7 +2714,6 @@
     {
         "id":  "u228",
         "username":  "razonmarlon2",
-        "password":  "sah0228",
         "role":  "homeowner",
         "name":  "RAZON, MARLON",
         "email":  "razonmarlon2@sanalfonsohomes.local",
@@ -2953,7 +2726,6 @@
     {
         "id":  "u229",
         "username":  "estonidomaohlalia",
-        "password":  "sah0229",
         "role":  "homeowner",
         "name":  "ESTONIDO, MA. OHLALIA",
         "email":  "estonidomaohlalia@sanalfonsohomes.local",
@@ -2966,7 +2738,6 @@
     {
         "id":  "u230",
         "username":  "demateramaryjane",
-        "password":  "sah0230",
         "role":  "homeowner",
         "name":  "DEMATERA, MARY JANE",
         "email":  "demateramaryjane@sanalfonsohomes.local",
@@ -2979,7 +2750,6 @@
     {
         "id":  "u231",
         "username":  "reaporraquel",
-        "password":  "sah0231",
         "role":  "homeowner",
         "name":  "REAPOR, RAQUEL",
         "email":  "reaporraquel@sanalfonsohomes.local",
@@ -2992,7 +2762,6 @@
     {
         "id":  "u232",
         "username":  "faurillogreggydeo",
-        "password":  "sah0232",
         "role":  "homeowner",
         "name":  "FAURILLO, GREGGY DEO",
         "email":  "faurillogreggydeo@sanalfonsohomes.local",
@@ -3005,7 +2774,6 @@
     {
         "id":  "u233",
         "username":  "delarosapablo",
-        "password":  "sah0233",
         "role":  "homeowner",
         "name":  "DELA ROSA, PABLO",
         "email":  "delarosapablo@sanalfonsohomes.local",
@@ -3018,7 +2786,6 @@
     {
         "id":  "u234",
         "username":  "nicolaselena",
-        "password":  "sah0234",
         "role":  "homeowner",
         "name":  "NICOLAS, ELENA",
         "email":  "nicolaselena@sanalfonsohomes.local",
@@ -3031,7 +2798,6 @@
     {
         "id":  "u235",
         "username":  "edoriamavictoria",
-        "password":  "sah0235",
         "role":  "homeowner",
         "name":  "EDORIA, MA. VICTORIA",
         "email":  "edoriamavictoria@sanalfonsohomes.local",
@@ -3044,7 +2810,6 @@
     {
         "id":  "u236",
         "username":  "nuevojovelyn",
-        "password":  "sah0236",
         "role":  "homeowner",
         "name":  "NUEVO, JOVELYN",
         "email":  "nuevojovelyn@sanalfonsohomes.local",
@@ -3057,7 +2822,6 @@
     {
         "id":  "u237",
         "username":  "llegadoelma",
-        "password":  "sah0237",
         "role":  "homeowner",
         "name":  "LLEGADO, ELMA",
         "email":  "llegadoelma@sanalfonsohomes.local",
@@ -3070,7 +2834,6 @@
     {
         "id":  "u238",
         "username":  "adolfomamawilynnconcepci",
-        "password":  "sah0238",
         "role":  "homeowner",
         "name":  "ADOLFO, MA. MAWILYNN CONCEPCION",
         "email":  "adolfomamawilynnconcepci@sanalfonsohomes.local",
@@ -3083,7 +2846,6 @@
     {
         "id":  "u239",
         "username":  "llegadoelma2",
-        "password":  "sah0239",
         "role":  "homeowner",
         "name":  "LLEGADO, ELMA",
         "email":  "llegadoelma2@sanalfonsohomes.local",
@@ -3096,7 +2858,6 @@
     {
         "id":  "u240",
         "username":  "fermiaroberto",
-        "password":  "sah0240",
         "role":  "homeowner",
         "name":  "FERMIA, ROBERTO",
         "email":  "fermiaroberto@sanalfonsohomes.local",
@@ -3109,7 +2870,6 @@
     {
         "id":  "u241",
         "username":  "librandadansyl",
-        "password":  "sah0241",
         "role":  "homeowner",
         "name":  "LIBRANDA, DANSYL",
         "email":  "librandadansyl@sanalfonsohomes.local",
@@ -3122,7 +2882,6 @@
     {
         "id":  "u242",
         "username":  "ditchascarrygrant",
-        "password":  "sah0242",
         "role":  "homeowner",
         "name":  "DITCHAS, CARRY GRANT",
         "email":  "ditchascarrygrant@sanalfonsohomes.local",
@@ -3135,7 +2894,6 @@
     {
         "id":  "u243",
         "username":  "osabalamelita",
-        "password":  "sah0243",
         "role":  "homeowner",
         "name":  "OSABAL, AMELITA",
         "email":  "osabalamelita@sanalfonsohomes.local",
@@ -3148,7 +2906,6 @@
     {
         "id":  "u244",
         "username":  "arejolaarjayl",
-        "password":  "sah0244",
         "role":  "homeowner",
         "name":  "AREJOLA, ARJAY L.",
         "email":  "arejolaarjayl@sanalfonsohomes.local",
@@ -3161,7 +2918,6 @@
     {
         "id":  "u245",
         "username":  "urbanocarmelita",
-        "password":  "sah0245",
         "role":  "homeowner",
         "name":  "URBANO, CARMELITA",
         "email":  "urbanocarmelita@sanalfonsohomes.local",
@@ -3174,7 +2930,6 @@
     {
         "id":  "u246",
         "username":  "nicolasoragrace",
-        "password":  "sah0246",
         "role":  "homeowner",
         "name":  "NICOLASORA, GRACE",
         "email":  "nicolasoragrace@sanalfonsohomes.local",
@@ -3187,7 +2942,6 @@
     {
         "id":  "u247",
         "username":  "magayaneslevonniomiguel",
-        "password":  "sah0247",
         "role":  "homeowner",
         "name":  "MAGAYANES, LEVON NIÑO MIGUEL",
         "email":  "magayaneslevonniomiguel@sanalfonsohomes.local",
@@ -3200,7 +2954,6 @@
     {
         "id":  "u248",
         "username":  "beldadroldan",
-        "password":  "sah0248",
         "role":  "homeowner",
         "name":  "BELDAD, ROLDAN",
         "email":  "beldadroldan@sanalfonsohomes.local",
@@ -3213,7 +2966,6 @@
     {
         "id":  "u249",
         "username":  "ecomcyril",
-        "password":  "sah0249",
         "role":  "homeowner",
         "name":  "ECOM, CYRIL",
         "email":  "ecomcyril@sanalfonsohomes.local",
@@ -3226,7 +2978,6 @@
     {
         "id":  "u250",
         "username":  "delrosariodesiree",
-        "password":  "sah0250",
         "role":  "homeowner",
         "name":  "DEL ROSARIO, DESIREE",
         "email":  "delrosariodesiree@sanalfonsohomes.local",
@@ -3239,7 +2990,6 @@
     {
         "id":  "u251",
         "username":  "ritoeugene",
-        "password":  "sah0251",
         "role":  "homeowner",
         "name":  "RITO, EUGENE",
         "email":  "ritoeugene@sanalfonsohomes.local",
@@ -3252,7 +3002,6 @@
     {
         "id":  "u252",
         "username":  "siscarkristine",
-        "password":  "sah0252",
         "role":  "homeowner",
         "name":  "SISCAR, KRISTINE",
         "email":  "siscarkristine@sanalfonsohomes.local",
@@ -3265,7 +3014,6 @@
     {
         "id":  "u253",
         "username":  "modinolailanib",
-        "password":  "sah0253",
         "role":  "homeowner",
         "name":  "MODINO LAILANI B.",
         "email":  "modinolailanib@sanalfonsohomes.local",
@@ -3278,7 +3026,6 @@
     {
         "id":  "u254",
         "username":  "tancuecomichaeldelosreye",
-        "password":  "sah0254",
         "role":  "homeowner",
         "name":  "TANCUECO, MICHAEL DELOS REYES",
         "email":  "tancuecomichaeldelosreye@sanalfonsohomes.local",
@@ -3291,7 +3038,6 @@
     {
         "id":  "u255",
         "username":  "lozadadavesarahjade",
-        "password":  "sah0255",
         "role":  "homeowner",
         "name":  "LOZADA DAVE/SARAH JADE",
         "email":  "lozadadavesarahjade@sanalfonsohomes.local",
@@ -3304,7 +3050,6 @@
     {
         "id":  "u256",
         "username":  "camamichelle",
-        "password":  "sah0256",
         "role":  "homeowner",
         "name":  "CAMA, MICHELLE",
         "email":  "camamichelle@sanalfonsohomes.local",
@@ -3317,7 +3062,6 @@
     {
         "id":  "u257",
         "username":  "librandaamelita",
-        "password":  "sah0257",
         "role":  "homeowner",
         "name":  "LIBRANDA AMELITA",
         "email":  "librandaamelita@sanalfonsohomes.local",
@@ -3330,7 +3074,6 @@
     {
         "id":  "u258",
         "username":  "garlanjulio",
-        "password":  "sah0258",
         "role":  "homeowner",
         "name":  "GARLAN, JULIO",
         "email":  "garlanjulio@sanalfonsohomes.local",
@@ -3343,7 +3086,6 @@
     {
         "id":  "u259",
         "username":  "ruizomarlonruisoarlenelo",
-        "password":  "sah0259",
         "role":  "homeowner",
         "name":  "RUIZO, MARLON/RUISO, ARLENE LOURDES",
         "email":  "ruizomarlonruisoarlenelo@sanalfonsohomes.local",
@@ -3356,7 +3098,6 @@
     {
         "id":  "u260",
         "username":  "garlanrupertodantedelacr",
-        "password":  "sah0260",
         "role":  "homeowner",
         "name":  "GARLAN, RUPERTO/Dante Dela Cruz Varin",
         "email":  "garlanrupertodantedelacr@sanalfonsohomes.local",
@@ -3369,7 +3110,6 @@
     {
         "id":  "u261",
         "username":  "orquitamelaniee",
-        "password":  "sah0261",
         "role":  "homeowner",
         "name":  "ORQUITA, MELANIE E.",
         "email":  "orquitamelaniee@sanalfonsohomes.local",
@@ -3382,7 +3122,6 @@
     {
         "id":  "u262",
         "username":  "garlanmarygracedantedela",
-        "password":  "sah0262",
         "role":  "homeowner",
         "name":  "GARLAN, MARY GRACE/Dante Dela Cruz Varin",
         "email":  "garlanmarygracedantedela@sanalfonsohomes.local",
@@ -3395,7 +3134,6 @@
     {
         "id":  "u263",
         "username":  "baldobethelisha",
-        "password":  "sah0263",
         "role":  "homeowner",
         "name":  "BALDO, BETH ELISHA",
         "email":  "baldobethelisha@sanalfonsohomes.local",
@@ -3408,7 +3146,6 @@
     {
         "id":  "u264",
         "username":  "darilaynio",
-        "password":  "sah0264",
         "role":  "homeowner",
         "name":  "DARILAY, NIÑO",
         "email":  "darilaynio@sanalfonsohomes.local",
@@ -3421,7 +3158,6 @@
     {
         "id":  "u265",
         "username":  "salvojessela",
-        "password":  "sah0265",
         "role":  "homeowner",
         "name":  "SALVO, JESSELA",
         "email":  "salvojessela@sanalfonsohomes.local",
@@ -3434,7 +3170,6 @@
     {
         "id":  "u266",
         "username":  "casiliolivermolinamaryje",
-        "password":  "sah0266",
         "role":  "homeowner",
         "name":  "CASILI, OLIVER/MOLINA,MARY JEANA",
         "email":  "casiliolivermolinamaryje@sanalfonsohomes.local",
@@ -3447,7 +3182,6 @@
     {
         "id":  "u267",
         "username":  "delenakatherine",
-        "password":  "sah0267",
         "role":  "homeowner",
         "name":  "DELENA, KATHERINE",
         "email":  "delenakatherine@sanalfonsohomes.local",
@@ -3460,7 +3194,6 @@
     {
         "id":  "u268",
         "username":  "plazapetraplazacriseldat",
-        "password":  "sah0268",
         "role":  "homeowner",
         "name":  "PLAZA, PETRA/Plaza Criselda T.",
         "email":  "plazapetraplazacriseldat@sanalfonsohomes.local",
@@ -3473,7 +3206,6 @@
     {
         "id":  "u269",
         "username":  "valencianomelanie",
-        "password":  "sah0269",
         "role":  "homeowner",
         "name":  "VALENCIANO, MELANIE",
         "email":  "valencianomelanie@sanalfonsohomes.local",
@@ -3486,7 +3218,6 @@
     {
         "id":  "u270",
         "username":  "pedrasamarieann",
-        "password":  "sah0270",
         "role":  "homeowner",
         "name":  "PEDRASA, MARIE ANN",
         "email":  "pedrasamarieann@sanalfonsohomes.local",
@@ -3499,7 +3230,6 @@
     {
         "id":  "u271",
         "username":  "monzonesmarciana",
-        "password":  "sah0271",
         "role":  "homeowner",
         "name":  "MONZONES, MARCIANA",
         "email":  "monzonesmarciana@sanalfonsohomes.local",
@@ -3512,7 +3242,6 @@
     {
         "id":  "u272",
         "username":  "beduralmarina",
-        "password":  "sah0272",
         "role":  "homeowner",
         "name":  "BEDURAL, MARINA",
         "email":  "beduralmarina@sanalfonsohomes.local",
@@ -3525,7 +3254,6 @@
     {
         "id":  "u273",
         "username":  "tombocluzviminda",
-        "password":  "sah0273",
         "role":  "homeowner",
         "name":  "TOMBOC, LUZVIMINDA",
         "email":  "tombocluzviminda@sanalfonsohomes.local",
@@ -3538,7 +3266,6 @@
     {
         "id":  "u274",
         "username":  "caronanfe",
-        "password":  "sah0274",
         "role":  "homeowner",
         "name":  "CARONAN, FE",
         "email":  "caronanfe@sanalfonsohomes.local",
@@ -3551,7 +3278,6 @@
     {
         "id":  "u275",
         "username":  "villamoracrystel",
-        "password":  "sah0275",
         "role":  "homeowner",
         "name":  "VILLAMORA, CRYSTEL",
         "email":  "villamoracrystel@sanalfonsohomes.local",
@@ -3564,7 +3290,6 @@
     {
         "id":  "u276",
         "username":  "langitanwarnersanandresm",
-        "password":  "sah0276",
         "role":  "homeowner",
         "name":  "LANGITAN, WARNER/San Andres Marites",
         "email":  "langitanwarnersanandresm@sanalfonsohomes.local",
@@ -3577,7 +3302,6 @@
     {
         "id":  "u277",
         "username":  "joveresrommel",
-        "password":  "sah0277",
         "role":  "homeowner",
         "name":  "JOVERES, ROMMEL",
         "email":  "joveresrommel@sanalfonsohomes.local",
@@ -3590,7 +3314,6 @@
     {
         "id":  "u278",
         "username":  "lopezerding",
-        "password":  "sah0278",
         "role":  "homeowner",
         "name":  "LOPEZ, ERDING",
         "email":  "lopezerding@sanalfonsohomes.local",
@@ -3603,7 +3326,6 @@
     {
         "id":  "u279",
         "username":  "gonzalesnoel",
-        "password":  "sah0279",
         "role":  "homeowner",
         "name":  "GONZALES NOEL",
         "email":  "gonzalesnoel@sanalfonsohomes.local",
@@ -3616,7 +3338,6 @@
     {
         "id":  "u280",
         "username":  "relatomarcasaisantoniojr",
-        "password":  "sah0280",
         "role":  "homeowner",
         "name":  "RELATO, MAR/CASAIS ANTONIO JR",
         "email":  "relatomarcasaisantoniojr@sanalfonsohomes.local",
@@ -3629,7 +3350,6 @@
     {
         "id":  "u281",
         "username":  "ariasamelin",
-        "password":  "sah0281",
         "role":  "homeowner",
         "name":  "ARIAS, AMELIN",
         "email":  "ariasamelin@sanalfonsohomes.local",
@@ -3642,7 +3362,6 @@
     {
         "id":  "u282",
         "username":  "aldezaemmanuel",
-        "password":  "sah0282",
         "role":  "homeowner",
         "name":  "ALDEZA, EMMANUEL",
         "email":  "aldezaemmanuel@sanalfonsohomes.local",
@@ -3655,7 +3374,6 @@
     {
         "id":  "u283",
         "username":  "adevamanuel",
-        "password":  "sah0283",
         "role":  "homeowner",
         "name":  "ADEVA, MANUEL",
         "email":  "adevamanuel@sanalfonsohomes.local",
@@ -3668,7 +3386,6 @@
     {
         "id":  "u284",
         "username":  "aldezarowena",
-        "password":  "sah0284",
         "role":  "homeowner",
         "name":  "ALDEZA, ROWENA",
         "email":  "aldezarowena@sanalfonsohomes.local",
@@ -3681,7 +3398,6 @@
     {
         "id":  "u285",
         "username":  "giorgiemilyfroilancabral",
-        "password":  "sah0285",
         "role":  "homeowner",
         "name":  "GIORGI, EMILY /FROILAN CABRAL",
         "email":  "giorgiemilyfroilancabral@sanalfonsohomes.local",
@@ -3694,7 +3410,6 @@
     {
         "id":  "u286",
         "username":  "platacerilo",
-        "password":  "sah0286",
         "role":  "homeowner",
         "name":  "PLATA, CERILO",
         "email":  "platacerilo@sanalfonsohomes.local",
@@ -3707,7 +3422,6 @@
     {
         "id":  "u287",
         "username":  "giorgiemily",
-        "password":  "sah0287",
         "role":  "homeowner",
         "name":  "GIORGI,EMILY",
         "email":  "giorgiemily@sanalfonsohomes.local",
@@ -3720,7 +3434,6 @@
     {
         "id":  "u288",
         "username":  "bocatomarvie",
-        "password":  "sah0288",
         "role":  "homeowner",
         "name":  "BOCATO, MARVIE",
         "email":  "bocatomarvie@sanalfonsohomes.local",
@@ -3733,7 +3446,6 @@
     {
         "id":  "u289",
         "username":  "giorgiemilymoralcaroljoy",
-        "password":  "sah0289",
         "role":  "homeowner",
         "name":  "GIORGI, EMILY / MORAL CAROL JOY",
         "email":  "giorgiemilymoralcaroljoy@sanalfonsohomes.local",
@@ -3746,7 +3458,6 @@
     {
         "id":  "u290",
         "username":  "ordasgenevieve",
-        "password":  "sah0290",
         "role":  "homeowner",
         "name":  "ORDAS, GENEVIEVE",
         "email":  "ordasgenevieve@sanalfonsohomes.local",
@@ -3759,7 +3470,6 @@
     {
         "id":  "u291",
         "username":  "giorgiemily2",
-        "password":  "sah0291",
         "role":  "homeowner",
         "name":  "GIORGI, EMILY",
         "email":  "giorgiemily2@sanalfonsohomes.local",
@@ -3772,7 +3482,6 @@
     {
         "id":  "u292",
         "username":  "naamacristina",
-        "password":  "sah0292",
         "role":  "homeowner",
         "name":  "NAA, MA. CRISTINA",
         "email":  "naamacristina@sanalfonsohomes.local",
@@ -3785,7 +3494,6 @@
     {
         "id":  "u293",
         "username":  "giorgiemily3",
-        "password":  "sah0293",
         "role":  "homeowner",
         "name":  "GIORGI, EMILY",
         "email":  "giorgiemily3@sanalfonsohomes.local",
@@ -3798,7 +3506,6 @@
     {
         "id":  "u294",
         "username":  "pidaangelo",
-        "password":  "sah0294",
         "role":  "homeowner",
         "name":  "PIDA, ANGELO",
         "email":  "pidaangelo@sanalfonsohomes.local",
@@ -3811,7 +3518,6 @@
     {
         "id":  "u295",
         "username":  "gutierrezryan",
-        "password":  "sah0295",
         "role":  "homeowner",
         "name":  "GUTIERREZ, RYAN",
         "email":  "gutierrezryan@sanalfonsohomes.local",
@@ -3824,7 +3530,6 @@
     {
         "id":  "u296",
         "username":  "margatejiyetalagtagwilli",
-        "password":  "sah0296",
         "role":  "homeowner",
         "name":  "MARGATE, JIYE / TALAGTAG, WILLIAM",
         "email":  "margatejiyetalagtagwilli@sanalfonsohomes.local",
@@ -3837,7 +3542,6 @@
     {
         "id":  "u297",
         "username":  "acabadochristina",
-        "password":  "sah0297",
         "role":  "homeowner",
         "name":  "ACABADO CHRISTINA",
         "email":  "acabadochristina@sanalfonsohomes.local",
@@ -3850,7 +3554,6 @@
     {
         "id":  "u298",
         "username":  "resultamarkanthony",
-        "password":  "sah0298",
         "role":  "homeowner",
         "name":  "RESULTA, MARK ANTHONY",
         "email":  "resultamarkanthony@sanalfonsohomes.local",
@@ -3863,7 +3566,6 @@
     {
         "id":  "u299",
         "username":  "boquironannilyn",
-        "password":  "sah0299",
         "role":  "homeowner",
         "name":  "BOQUIRON, ANNILYN",
         "email":  "boquironannilyn@sanalfonsohomes.local",
@@ -3876,7 +3578,6 @@
     {
         "id":  "u300",
         "username":  "fernandezramil",
-        "password":  "sah0300",
         "role":  "homeowner",
         "name":  "FERNANDEZ, RAMIL",
         "email":  "fernandezramil@sanalfonsohomes.local",
@@ -3889,7 +3590,6 @@
     {
         "id":  "u301",
         "username":  "ibarrientosraymundo",
-        "password":  "sah0301",
         "role":  "homeowner",
         "name":  "IBARRIENTOS, RAYMUNDO",
         "email":  "ibarrientosraymundo@sanalfonsohomes.local",
@@ -3902,7 +3602,6 @@
     {
         "id":  "u302",
         "username":  "ibarrientoslilibeth",
-        "password":  "sah0302",
         "role":  "homeowner",
         "name":  "IBARRIENTOS, LILIBETH",
         "email":  "ibarrientoslilibeth@sanalfonsohomes.local",
@@ -3915,7 +3614,6 @@
     {
         "id":  "u303",
         "username":  "llorinmaemma",
-        "password":  "sah0303",
         "role":  "homeowner",
         "name":  "LLORIN, MA. EMMA",
         "email":  "llorinmaemma@sanalfonsohomes.local",
@@ -3928,7 +3626,6 @@
     {
         "id":  "u304",
         "username":  "ibascoandresjr",
-        "password":  "sah0304",
         "role":  "homeowner",
         "name":  "IBASCO, ANDRES JR.",
         "email":  "ibascoandresjr@sanalfonsohomes.local",
@@ -3941,7 +3638,6 @@
     {
         "id":  "u305",
         "username":  "llorinmaemma2",
-        "password":  "sah0305",
         "role":  "homeowner",
         "name":  "LLORIN, MA. EMMA",
         "email":  "llorinmaemma2@sanalfonsohomes.local",
@@ -3954,7 +3650,6 @@
     {
         "id":  "u306",
         "username":  "rubioedwin",
-        "password":  "sah0306",
         "role":  "homeowner",
         "name":  "RUBIO, EDWIN",
         "email":  "rubioedwin@sanalfonsohomes.local",
@@ -3967,7 +3662,6 @@
     {
         "id":  "u307",
         "username":  "sambajonmarietaaurea",
-        "password":  "sah0307",
         "role":  "homeowner",
         "name":  "SAMBAJON, MARIETA-AUREA",
         "email":  "sambajonmarietaaurea@sanalfonsohomes.local",
@@ -3980,7 +3674,6 @@
     {
         "id":  "u308",
         "username":  "ondissandy",
-        "password":  "sah0308",
         "role":  "homeowner",
         "name":  "ONDIS, SANDY",
         "email":  "ondissandy@sanalfonsohomes.local",
@@ -3993,7 +3686,6 @@
     {
         "id":  "u309",
         "username":  "sambajonmarietaaurea2",
-        "password":  "sah0309",
         "role":  "homeowner",
         "name":  "SAMBAJON, MARIETA-AUREA",
         "email":  "sambajonmarietaaurea2@sanalfonsohomes.local",
@@ -4006,7 +3698,6 @@
     {
         "id":  "u310",
         "username":  "samboroy",
-        "password":  "sah0310",
         "role":  "homeowner",
         "name":  "SAMBO, ROY",
         "email":  "samboroy@sanalfonsohomes.local",
@@ -4019,7 +3710,6 @@
     {
         "id":  "u311",
         "username":  "kelleyhonney",
-        "password":  "sah0311",
         "role":  "homeowner",
         "name":  "KELLEY, HONNEY",
         "email":  "kelleyhonney@sanalfonsohomes.local",
@@ -4032,7 +3722,6 @@
     {
         "id":  "u312",
         "username":  "saarezmaricelbolaosmarya",
-        "password":  "sah0312",
         "role":  "homeowner",
         "name":  "SAÑAREZ, MARICEL/Bolaños MAry Ann",
         "email":  "saarezmaricelbolaosmarya@sanalfonsohomes.local",
@@ -4045,7 +3734,6 @@
     {
         "id":  "u313",
         "username":  "inocenciojocelynlorzanoc",
-        "password":  "sah0313",
         "role":  "homeowner",
         "name":  "INOCENCIO, JOCELYN /LORZANO Cecilia",
         "email":  "inocenciojocelynlorzanoc@sanalfonsohomes.local",
@@ -4058,7 +3746,6 @@
     {
         "id":  "u314",
         "username":  "inocenciojocelyn",
-        "password":  "sah0314",
         "role":  "homeowner",
         "name":  "INOCENCIO, JOCELYN",
         "email":  "inocenciojocelyn@sanalfonsohomes.local",
@@ -4071,7 +3758,6 @@
     {
         "id":  "u315",
         "username":  "pardetnia",
-        "password":  "sah0315",
         "role":  "homeowner",
         "name":  "PARDE T. NIÑA",
         "email":  "pardetnia@sanalfonsohomes.local",
@@ -4084,7 +3770,6 @@
     {
         "id":  "u316",
         "username":  "pardeeric",
-        "password":  "sah0316",
         "role":  "homeowner",
         "name":  "PARDE, ERIC",
         "email":  "pardeeric@sanalfonsohomes.local",
@@ -4097,7 +3782,6 @@
     {
         "id":  "u317",
         "username":  "andaljhoana",
-        "password":  "sah0317",
         "role":  "homeowner",
         "name":  "ANDAL, JHOANA",
         "email":  "andaljhoana@sanalfonsohomes.local",
@@ -4110,7 +3794,6 @@
     {
         "id":  "u318",
         "username":  "alegreemelito",
-        "password":  "sah0318",
         "role":  "homeowner",
         "name":  "ALEGRE, EMELITO",
         "email":  "alegreemelito@sanalfonsohomes.local",
@@ -4123,7 +3806,6 @@
     {
         "id":  "u319",
         "username":  "amparadoalvin",
-        "password":  "sah0319",
         "role":  "homeowner",
         "name":  "AMPARADO, ALVIN",
         "email":  "amparadoalvin@sanalfonsohomes.local",
@@ -4136,7 +3818,6 @@
     {
         "id":  "u320",
         "username":  "alegreemelito2",
-        "password":  "sah0320",
         "role":  "homeowner",
         "name":  "ALEGRE, EMELITO",
         "email":  "alegreemelito2@sanalfonsohomes.local",
@@ -4149,7 +3830,6 @@
     {
         "id":  "u321",
         "username":  "amparadoalvin2",
-        "password":  "sah0321",
         "role":  "homeowner",
         "name":  "AMPARADO, ALVIN",
         "email":  "amparadoalvin2@sanalfonsohomes.local",
@@ -4162,7 +3842,6 @@
     {
         "id":  "u322",
         "username":  "ortegamavilma",
-        "password":  "sah0322",
         "role":  "homeowner",
         "name":  "ORTEGA, MA. VILMA",
         "email":  "ortegamavilma@sanalfonsohomes.local",
@@ -4175,7 +3854,6 @@
     {
         "id":  "u323",
         "username":  "iyanaisidrojr",
-        "password":  "sah0323",
         "role":  "homeowner",
         "name":  "IYANA, ISIDRO JR.",
         "email":  "iyanaisidrojr@sanalfonsohomes.local",
@@ -4188,7 +3866,6 @@
     {
         "id":  "u324",
         "username":  "quiapoamy",
-        "password":  "sah0324",
         "role":  "homeowner",
         "name":  "QUIAPO, AMY",
         "email":  "quiapoamy@sanalfonsohomes.local",
@@ -4201,7 +3878,6 @@
     {
         "id":  "u325",
         "username":  "iyanaisidrojrtomaselio",
-        "password":  "sah0325",
         "role":  "homeowner",
         "name":  "IYANA, ISIDRO JR. / TOMAS ELIO",
         "email":  "iyanaisidrojrtomaselio@sanalfonsohomes.local",
@@ -4214,7 +3890,6 @@
     {
         "id":  "u326",
         "username":  "contrerasjoselyn",
-        "password":  "sah0326",
         "role":  "homeowner",
         "name":  "CONTRERAS, JOSELYN",
         "email":  "contrerasjoselyn@sanalfonsohomes.local",
@@ -4227,7 +3902,6 @@
     {
         "id":  "u327",
         "username":  "asencealexnoel",
-        "password":  "sah0327",
         "role":  "homeowner",
         "name":  "ASENCE, ALEX NOEL",
         "email":  "asencealexnoel@sanalfonsohomes.local",
@@ -4240,7 +3914,6 @@
     {
         "id":  "u328",
         "username":  "biguejacyrelking",
-        "password":  "sah0328",
         "role":  "homeowner",
         "name":  "BIGUEJA, CYREL KING",
         "email":  "biguejacyrelking@sanalfonsohomes.local",
@@ -4253,7 +3926,6 @@
     {
         "id":  "u329",
         "username":  "contrerasbella",
-        "password":  "sah0329",
         "role":  "homeowner",
         "name":  "CONTRERAS, BELLA",
         "email":  "contrerasbella@sanalfonsohomes.local",
@@ -4266,7 +3938,6 @@
     {
         "id":  "u330",
         "username":  "alcomendasvicente",
-        "password":  "sah0330",
         "role":  "homeowner",
         "name":  "ALCOMENDAS, VICENTE",
         "email":  "alcomendasvicente@sanalfonsohomes.local",
@@ -4279,7 +3950,6 @@
     {
         "id":  "u331",
         "username":  "jarmejorgejett",
-        "password":  "sah0331",
         "role":  "homeowner",
         "name":  "JARME, JORGE JETT",
         "email":  "jarmejorgejett@sanalfonsohomes.local",
@@ -4292,7 +3962,6 @@
     {
         "id":  "u332",
         "username":  "climacosalucy",
-        "password":  "sah0332",
         "role":  "homeowner",
         "name":  "CLIMACOSA, LUCY",
         "email":  "climacosalucy@sanalfonsohomes.local",
@@ -4305,7 +3974,6 @@
     {
         "id":  "u333",
         "username":  "multomelchor",
-        "password":  "sah0333",
         "role":  "homeowner",
         "name":  "MULTO, MELCHOR",
         "email":  "multomelchor@sanalfonsohomes.local",
@@ -4318,7 +3986,6 @@
     {
         "id":  "u334",
         "username":  "bombitaleo",
-        "password":  "sah0334",
         "role":  "homeowner",
         "name":  "BOMBITA, LEO",
         "email":  "bombitaleo@sanalfonsohomes.local",
@@ -4331,7 +3998,6 @@
     {
         "id":  "u335",
         "username":  "corunodivina",
-        "password":  "sah0335",
         "role":  "homeowner",
         "name":  "CORUNO, DIVINA",
         "email":  "corunodivina@sanalfonsohomes.local",
@@ -4344,7 +4010,6 @@
     {
         "id":  "u336",
         "username":  "relloradexter",
-        "password":  "sah0336",
         "role":  "homeowner",
         "name":  "RELLORA, DEXTER",
         "email":  "relloradexter@sanalfonsohomes.local",
@@ -4357,7 +4022,6 @@
     {
         "id":  "u337",
         "username":  "hontiverosaida",
-        "password":  "sah0337",
         "role":  "homeowner",
         "name":  "HONTIVEROS, AIDA",
         "email":  "hontiverosaida@sanalfonsohomes.local",
@@ -4370,7 +4034,6 @@
     {
         "id":  "u338",
         "username":  "operioarlene",
-        "password":  "sah0338",
         "role":  "homeowner",
         "name":  "OPERIO, ARLENE",
         "email":  "operioarlene@sanalfonsohomes.local",
@@ -4383,7 +4046,6 @@
     {
         "id":  "u339",
         "username":  "peajenniferb",
-        "password":  "sah0339",
         "role":  "homeowner",
         "name":  "PEÑA JENNIFER B.",
         "email":  "peajenniferb@sanalfonsohomes.local",
@@ -4396,7 +4058,6 @@
     {
         "id":  "u340",
         "username":  "ensanoariel",
-        "password":  "sah0340",
         "role":  "homeowner",
         "name":  "ENSANO, ARIEL",
         "email":  "ensanoariel@sanalfonsohomes.local",
@@ -4409,7 +4070,6 @@
     {
         "id":  "u341",
         "username":  "gonzaleslalaine",
-        "password":  "sah0341",
         "role":  "homeowner",
         "name":  "GONZALES, LALAINE",
         "email":  "gonzaleslalaine@sanalfonsohomes.local",
@@ -4422,7 +4082,6 @@
     {
         "id":  "u342",
         "username":  "hifejulie",
-        "password":  "sah0342",
         "role":  "homeowner",
         "name":  "HIFE, JULIE",
         "email":  "hifejulie@sanalfonsohomes.local",
@@ -4435,7 +4094,6 @@
     {
         "id":  "u343",
         "username":  "lanadalalaine",
-        "password":  "sah0343",
         "role":  "homeowner",
         "name":  "LANADA, LALAINE",
         "email":  "lanadalalaine@sanalfonsohomes.local",
@@ -4448,7 +4106,6 @@
     {
         "id":  "u344",
         "username":  "panomelchor",
-        "password":  "sah0344",
         "role":  "homeowner",
         "name":  "PANO, MELCHOR",
         "email":  "panomelchor@sanalfonsohomes.local",
@@ -4461,7 +4118,6 @@
     {
         "id":  "u345",
         "username":  "dacerjerry",
-        "password":  "sah0345",
         "role":  "homeowner",
         "name":  "DACER, JERRY",
         "email":  "dacerjerry@sanalfonsohomes.local",
@@ -4474,7 +4130,6 @@
     {
         "id":  "u346",
         "username":  "lopezgenevievepacerkaren",
-        "password":  "sah0346",
         "role":  "homeowner",
         "name":  "LOPEZ, GENEVIEVE/Pacer Karen",
         "email":  "lopezgenevievepacerkaren@sanalfonsohomes.local",
@@ -4487,7 +4142,6 @@
     {
         "id":  "u347",
         "username":  "mencherojosephine",
-        "password":  "sah0347",
         "role":  "homeowner",
         "name":  "MENCHERO, JOSEPHINE",
         "email":  "mencherojosephine@sanalfonsohomes.local",
@@ -4500,7 +4154,6 @@
     {
         "id":  "u348",
         "username":  "reforsadoantonio",
-        "password":  "sah0348",
         "role":  "homeowner",
         "name":  "REFORSADO, ANTONIO",
         "email":  "reforsadoantonio@sanalfonsohomes.local",
@@ -4513,7 +4166,6 @@
     {
         "id":  "u349",
         "username":  "romanoroslyneustolia",
-        "password":  "sah0349",
         "role":  "homeowner",
         "name":  "ROMANO, ROSLYN EUSTOLIA",
         "email":  "romanoroslyneustolia@sanalfonsohomes.local",
@@ -4526,7 +4178,6 @@
     {
         "id":  "u350",
         "username":  "azurbonifacio",
-        "password":  "sah0350",
         "role":  "homeowner",
         "name":  "AZUR, BONIFACIO",
         "email":  "azurbonifacio@sanalfonsohomes.local",
@@ -4539,7 +4190,6 @@
     {
         "id":  "u351",
         "username":  "malenizakathlene",
-        "password":  "sah0351",
         "role":  "homeowner",
         "name":  "MALENIZA KATHLENE",
         "email":  "malenizakathlene@sanalfonsohomes.local",
@@ -4552,7 +4202,6 @@
     {
         "id":  "u352",
         "username":  "villaflorjeanne",
-        "password":  "sah0352",
         "role":  "homeowner",
         "name":  "VILLAFLOR, JEANNE",
         "email":  "villaflorjeanne@sanalfonsohomes.local",
@@ -4565,7 +4214,6 @@
     {
         "id":  "u353",
         "username":  "brizuelageraldo",
-        "password":  "sah0353",
         "role":  "homeowner",
         "name":  "BRIZUELA, GERALDO",
         "email":  "brizuelageraldo@sanalfonsohomes.local",
@@ -4578,7 +4226,6 @@
     {
         "id":  "u354",
         "username":  "bregalacesar",
-        "password":  "sah0354",
         "role":  "homeowner",
         "name":  "BREGALA, CESAR",
         "email":  "bregalacesar@sanalfonsohomes.local",
@@ -4591,7 +4238,6 @@
     {
         "id":  "u355",
         "username":  "rodriguezmadanita",
-        "password":  "sah0355",
         "role":  "homeowner",
         "name":  "RODRIGUEZ, MA. DANITA",
         "email":  "rodriguezmadanita@sanalfonsohomes.local",
@@ -4604,7 +4250,6 @@
     {
         "id":  "u356",
         "username":  "surmarlon",
-        "password":  "sah0356",
         "role":  "homeowner",
         "name":  "SUR, MARLON",
         "email":  "surmarlon@sanalfonsohomes.local",
@@ -4617,7 +4262,6 @@
     {
         "id":  "u357",
         "username":  "padosharon",
-        "password":  "sah0357",
         "role":  "homeowner",
         "name":  "PADO, SHARON",
         "email":  "padosharon@sanalfonsohomes.local",
@@ -4630,7 +4274,6 @@
     {
         "id":  "u358",
         "username":  "margatejoy",
-        "password":  "sah0358",
         "role":  "homeowner",
         "name":  "MARGATE, JOY",
         "email":  "margatejoy@sanalfonsohomes.local",
@@ -4643,7 +4286,6 @@
     {
         "id":  "u359",
         "username":  "badongjaime",
-        "password":  "sah0359",
         "role":  "homeowner",
         "name":  "BADONG, JAIME",
         "email":  "badongjaime@sanalfonsohomes.local",
@@ -4656,7 +4298,6 @@
     {
         "id":  "u360",
         "username":  "ramizareszyril",
-        "password":  "sah0360",
         "role":  "homeowner",
         "name":  "RAMIZARES, ZYRIL",
         "email":  "ramizareszyril@sanalfonsohomes.local",
@@ -4669,7 +4310,6 @@
     {
         "id":  "u361",
         "username":  "sapaliciomacarmen",
-        "password":  "sah0361",
         "role":  "homeowner",
         "name":  "SAPALICIO, MA. CARMEN",
         "email":  "sapaliciomacarmen@sanalfonsohomes.local",
@@ -4682,7 +4322,6 @@
     {
         "id":  "u362",
         "username":  "aldaydelia",
-        "password":  "sah0362",
         "role":  "homeowner",
         "name":  "ALDAY, DELIA",
         "email":  "aldaydelia@sanalfonsohomes.local",
@@ -4695,7 +4334,6 @@
     {
         "id":  "u363",
         "username":  "castrogemma",
-        "password":  "sah0363",
         "role":  "homeowner",
         "name":  "CASTRO, GEMMA",
         "email":  "castrogemma@sanalfonsohomes.local",
@@ -4708,7 +4346,6 @@
     {
         "id":  "u364",
         "username":  "maravillabernarditarowen",
-        "password":  "sah0364",
         "role":  "homeowner",
         "name":  "MARAVILLA, BERNARDITA ROWENA",
         "email":  "maravillabernarditarowen@sanalfonsohomes.local",
@@ -4721,7 +4358,6 @@
     {
         "id":  "u365",
         "username":  "generosoheidibpimanila",
-        "password":  "sah0365",
         "role":  "homeowner",
         "name":  "GENEROSO, HEIDI / BPI_MANILA",
         "email":  "generosoheidibpimanila@sanalfonsohomes.local",
@@ -4734,7 +4370,6 @@
     {
         "id":  "u366",
         "username":  "sucgangranolfo",
-        "password":  "sah0366",
         "role":  "homeowner",
         "name":  "SUCGANG, RANOLFO",
         "email":  "sucgangranolfo@sanalfonsohomes.local",
@@ -4747,7 +4382,6 @@
     {
         "id":  "u367",
         "username":  "brionesnina",
-        "password":  "sah0367",
         "role":  "homeowner",
         "name":  "BRIONES, NINA",
         "email":  "brionesnina@sanalfonsohomes.local",
@@ -4760,7 +4394,6 @@
     {
         "id":  "u368",
         "username":  "agomaavictoria",
-        "password":  "sah0368",
         "role":  "homeowner",
         "name":  "AGOMAA, VICTORIA",
         "email":  "agomaavictoria@sanalfonsohomes.local",
@@ -4773,7 +4406,6 @@
     {
         "id":  "u369",
         "username":  "agomaalolita",
-        "password":  "sah0369",
         "role":  "homeowner",
         "name":  "AGOMAA, LOLITA",
         "email":  "agomaalolita@sanalfonsohomes.local",
@@ -4786,7 +4418,6 @@
     {
         "id":  "u370",
         "username":  "agomaatomasa",
-        "password":  "sah0370",
         "role":  "homeowner",
         "name":  "AGOMAA, TOMASA",
         "email":  "agomaatomasa@sanalfonsohomes.local",
@@ -4799,7 +4430,6 @@
     {
         "id":  "u371",
         "username":  "inocentesgrace",
-        "password":  "sah0371",
         "role":  "homeowner",
         "name":  "INOCENTES, GRACE",
         "email":  "inocentesgrace@sanalfonsohomes.local",
@@ -4812,7 +4442,6 @@
     {
         "id":  "u372",
         "username":  "abrerazoe",
-        "password":  "sah0372",
         "role":  "homeowner",
         "name":  "ABRERA, ZOE",
         "email":  "abrerazoe@sanalfonsohomes.local",
@@ -4825,7 +4454,6 @@
     {
         "id":  "u373",
         "username":  "abreramagracia",
-        "password":  "sah0373",
         "role":  "homeowner",
         "name":  "ABRERA, MA. GRACIA",
         "email":  "abreramagracia@sanalfonsohomes.local",
@@ -4838,7 +4466,6 @@
     {
         "id":  "u374",
         "username":  "fuentebellafides",
-        "password":  "sah0374",
         "role":  "homeowner",
         "name":  "FUENTEBELLA, FIDES",
         "email":  "fuentebellafides@sanalfonsohomes.local",
@@ -4851,7 +4478,6 @@
     {
         "id":  "u375",
         "username":  "espiritumarygrace",
-        "password":  "sah0375",
         "role":  "homeowner",
         "name":  "ESPIRITU, MARY GRACE",
         "email":  "espiritumarygrace@sanalfonsohomes.local",
@@ -4864,7 +4490,6 @@
     {
         "id":  "u376",
         "username":  "sotoromeo",
-        "password":  "sah0376",
         "role":  "homeowner",
         "name":  "SOTO, ROMEO",
         "email":  "sotoromeo@sanalfonsohomes.local",
@@ -4877,7 +4502,6 @@
     {
         "id":  "u377",
         "username":  "paulopercival",
-        "password":  "sah0377",
         "role":  "homeowner",
         "name":  "PAULO, PERCIVAL",
         "email":  "paulopercival@sanalfonsohomes.local",
@@ -4890,7 +4514,6 @@
     {
         "id":  "u378",
         "username":  "pabloflorendohermoso",
-        "password":  "sah0378",
         "role":  "homeowner",
         "name":  "PABLO, FLORENDO HERMOSO",
         "email":  "pabloflorendohermoso@sanalfonsohomes.local",
@@ -4903,7 +4526,6 @@
     {
         "id":  "u379",
         "username":  "buquesheilabpi",
-        "password":  "sah0379",
         "role":  "homeowner",
         "name":  "BUQUE, SHEILA/BPI",
         "email":  "buquesheilabpi@sanalfonsohomes.local",
@@ -4916,7 +4538,6 @@
     {
         "id":  "u380",
         "username":  "delgadoarlie",
-        "password":  "sah0380",
         "role":  "homeowner",
         "name":  "DELGADO, ARLIE",
         "email":  "delgadoarlie@sanalfonsohomes.local",
@@ -4929,7 +4550,6 @@
     {
         "id":  "u381",
         "username":  "alguraantonio",
-        "password":  "sah0381",
         "role":  "homeowner",
         "name":  "ALGURA, ANTONIO",
         "email":  "alguraantonio@sanalfonsohomes.local",
@@ -4942,7 +4562,6 @@
     {
         "id":  "u382",
         "username":  "abarientosarlene",
-        "password":  "sah0382",
         "role":  "homeowner",
         "name":  "ABARIENTOS, ARLENE",
         "email":  "abarientosarlene@sanalfonsohomes.local",
@@ -4955,7 +4574,6 @@
     {
         "id":  "u383",
         "username":  "abarientosurbanjesieremc",
-        "password":  "sah0383",
         "role":  "homeowner",
         "name":  "ABARIENTOS/Urban Jesierem/Cabezudo Francia Teresita",
         "email":  "abarientosurbanjesieremc@sanalfonsohomes.local",
@@ -4968,7 +4586,6 @@
     {
         "id":  "u384",
         "username":  "abarientosarlene2",
-        "password":  "sah0384",
         "role":  "homeowner",
         "name":  "ABARIENTOS, ARLENE",
         "email":  "abarientosarlene2@sanalfonsohomes.local",
@@ -4981,7 +4598,6 @@
     {
         "id":  "u385",
         "username":  "ladabanzenaida",
-        "password":  "sah0385",
         "role":  "homeowner",
         "name":  "LADABAN, ZENAIDA",
         "email":  "ladabanzenaida@sanalfonsohomes.local",
@@ -4994,7 +4610,6 @@
     {
         "id":  "u386",
         "username":  "obstaculoedita",
-        "password":  "sah0386",
         "role":  "homeowner",
         "name":  "OBSTACULO, EDITA",
         "email":  "obstaculoedita@sanalfonsohomes.local",
@@ -5007,7 +4622,6 @@
     {
         "id":  "u387",
         "username":  "giananadela",
-        "password":  "sah0387",
         "role":  "homeowner",
         "name":  "GIANAN, ADELA",
         "email":  "giananadela@sanalfonsohomes.local",
@@ -5020,7 +4634,6 @@
     {
         "id":  "u388",
         "username":  "bregalaisagani",
-        "password":  "sah0388",
         "role":  "homeowner",
         "name":  "BREGALA, ISAGANI",
         "email":  "bregalaisagani@sanalfonsohomes.local",
@@ -5033,7 +4646,6 @@
     {
         "id":  "u389",
         "username":  "paladanleonel",
-        "password":  "sah0389",
         "role":  "homeowner",
         "name":  "PALADAN, LEONEL",
         "email":  "paladanleonel@sanalfonsohomes.local",
@@ -5046,7 +4658,6 @@
     {
         "id":  "u390",
         "username":  "lascuamarryann",
-        "password":  "sah0390",
         "role":  "homeowner",
         "name":  "LASCUñA, MARRY ANN",
         "email":  "lascuamarryann@sanalfonsohomes.local",
@@ -5059,7 +4670,6 @@
     {
         "id":  "u391",
         "username":  "sanvicenteoneal",
-        "password":  "sah0391",
         "role":  "homeowner",
         "name":  "SAN VICENTE, O\u0027NEAL",
         "email":  "sanvicenteoneal@sanalfonsohomes.local",
@@ -5072,7 +4682,6 @@
     {
         "id":  "u392",
         "username":  "artiagaannalizaa",
-        "password":  "sah0392",
         "role":  "homeowner",
         "name":  "ARTIAGA ANNA LIZA A.",
         "email":  "artiagaannalizaa@sanalfonsohomes.local",
@@ -5085,7 +4694,6 @@
     {
         "id":  "u393",
         "username":  "vinoyajames2",
-        "password":  "sah0393",
         "role":  "homeowner",
         "name":  "VINOYA, JAMES",
         "email":  "vinoyajames2@sanalfonsohomes.local",
@@ -5098,7 +4706,6 @@
     {
         "id":  "u394",
         "username":  "delacruzmarcial",
-        "password":  "sah0394",
         "role":  "homeowner",
         "name":  "DE LA CRUZ, MARCIAL",
         "email":  "delacruzmarcial@sanalfonsohomes.local",
@@ -5111,7 +4718,6 @@
     {
         "id":  "u395",
         "username":  "felixelsa",
-        "password":  "sah0395",
         "role":  "homeowner",
         "name":  "FELIX, ELSA",
         "email":  "felixelsa@sanalfonsohomes.local",
@@ -5124,7 +4730,6 @@
     {
         "id":  "u396",
         "username":  "devinaarniel",
-        "password":  "sah0396",
         "role":  "homeowner",
         "name":  "DEVINA, ARNIEL",
         "email":  "devinaarniel@sanalfonsohomes.local",
@@ -5137,7 +4742,6 @@
     {
         "id":  "u397",
         "username":  "devinaarniel2",
-        "password":  "sah0397",
         "role":  "homeowner",
         "name":  "DEVINA, ARNIEL",
         "email":  "devinaarniel2@sanalfonsohomes.local",
@@ -5150,7 +4754,6 @@
     {
         "id":  "u398",
         "username":  "salescristet",
-        "password":  "sah0398",
         "role":  "homeowner",
         "name":  "SALES, CRISTET",
         "email":  "salescristet@sanalfonsohomes.local",
@@ -5163,7 +4766,6 @@
     {
         "id":  "u399",
         "username":  "salesfranciscoiii",
-        "password":  "sah0399",
         "role":  "homeowner",
         "name":  "SALES, FRANCISCO III",
         "email":  "salesfranciscoiii@sanalfonsohomes.local",
@@ -5176,7 +4778,6 @@
     {
         "id":  "u400",
         "username":  "cadaycristeta",
-        "password":  "sah0400",
         "role":  "homeowner",
         "name":  "CADAY, CRISTETA",
         "email":  "cadaycristeta@sanalfonsohomes.local",
@@ -5189,7 +4790,6 @@
     {
         "id":  "u401",
         "username":  "andalisrogeliojr",
-        "password":  "sah0401",
         "role":  "homeowner",
         "name":  "ANDALIS, ROGELIO JR.",
         "email":  "andalisrogeliojr@sanalfonsohomes.local",
@@ -5202,7 +4802,6 @@
     {
         "id":  "u402",
         "username":  "borredaisy",
-        "password":  "sah0402",
         "role":  "homeowner",
         "name":  "BORRE, DAISY",
         "email":  "borredaisy@sanalfonsohomes.local",
@@ -5215,7 +4814,6 @@
     {
         "id":  "u403",
         "username":  "bibalevachristine",
-        "password":  "sah0403",
         "role":  "homeowner",
         "name":  "BIBAL, EVA CHRISTINE",
         "email":  "bibalevachristine@sanalfonsohomes.local",
@@ -5228,7 +4826,6 @@
     {
         "id":  "u404",
         "username":  "sialeonardo",
-        "password":  "sah0404",
         "role":  "homeowner",
         "name":  "SIA LEONARDO",
         "email":  "sialeonardo@sanalfonsohomes.local",
@@ -5241,7 +4838,6 @@
     {
         "id":  "u405",
         "username":  "turaemilianotapiafecruzo",
-        "password":  "sah0405",
         "role":  "homeowner",
         "name":  "TURA, EMILIANO/Tapia Fe/Cruz Olive",
         "email":  "turaemilianotapiafecruzo@sanalfonsohomes.local",
@@ -5254,7 +4850,6 @@
     {
         "id":  "u406",
         "username":  "sialeonardo2",
-        "password":  "sah0406",
         "role":  "homeowner",
         "name":  "SIA LEONARDO",
         "email":  "sialeonardo2@sanalfonsohomes.local",
@@ -5267,7 +4862,6 @@
     {
         "id":  "u407",
         "username":  "rustiaraul",
-        "password":  "sah0407",
         "role":  "homeowner",
         "name":  "RUSTIA, RAUL",
         "email":  "rustiaraul@sanalfonsohomes.local",
@@ -5280,7 +4874,6 @@
     {
         "id":  "u408",
         "username":  "montesmartin",
-        "password":  "sah0408",
         "role":  "homeowner",
         "name":  "MONTES, MARTIN",
         "email":  "montesmartin@sanalfonsohomes.local",
@@ -5293,7 +4886,6 @@
     {
         "id":  "u409",
         "username":  "rustiaraul2",
-        "password":  "sah0409",
         "role":  "homeowner",
         "name":  "RUSTIA, RAUL",
         "email":  "rustiaraul2@sanalfonsohomes.local",
@@ -5306,7 +4898,6 @@
     {
         "id":  "u410",
         "username":  "montesmartin2",
-        "password":  "sah0410",
         "role":  "homeowner",
         "name":  "MONTES, MARTIN",
         "email":  "montesmartin2@sanalfonsohomes.local",
@@ -5319,7 +4910,6 @@
     {
         "id":  "u411",
         "username":  "delatorreneililuminasion",
-        "password":  "sah0411",
         "role":  "homeowner",
         "name":  "DELA TORRE , NEIL/Iluminasion",
         "email":  "delatorreneililuminasion@sanalfonsohomes.local",
@@ -5332,7 +4922,6 @@
     {
         "id":  "u412",
         "username":  "fortunolorainlotonlybomb",
-        "password":  "sah0412",
         "role":  "homeowner",
         "name":  "FORTUNO, LORAIN (LOT ONLY)/bombita R.)",
         "email":  "fortunolorainlotonlybomb@sanalfonsohomes.local",
@@ -5345,7 +4934,6 @@
     {
         "id":  "u413",
         "username":  "bombitaroberto",
-        "password":  "sah0413",
         "role":  "homeowner",
         "name":  "BOMBITA, ROBERTO",
         "email":  "bombitaroberto@sanalfonsohomes.local",
@@ -5358,7 +4946,6 @@
     {
         "id":  "u414",
         "username":  "abainzalorna",
-        "password":  "sah0414",
         "role":  "homeowner",
         "name":  "ABAINZA, LORNA",
         "email":  "abainzalorna@sanalfonsohomes.local",
@@ -5371,7 +4958,6 @@
     {
         "id":  "u415",
         "username":  "vinoyajames3",
-        "password":  "sah0415",
         "role":  "homeowner",
         "name":  "VINOYA JAMES",
         "email":  "vinoyajames3@sanalfonsohomes.local",
@@ -5384,7 +4970,6 @@
     {
         "id":  "u416",
         "username":  "abonaljulianobeniaulysis",
-        "password":  "sah0416",
         "role":  "homeowner",
         "name":  "ABONAL, JULIAN /Obenia Ulysis",
         "email":  "abonaljulianobeniaulysis@sanalfonsohomes.local",
@@ -5397,7 +4982,6 @@
     {
         "id":  "u417",
         "username":  "ishizakaida",
-        "password":  "sah0417",
         "role":  "homeowner",
         "name":  "ISHIZAKA, IDA",
         "email":  "ishizakaida@sanalfonsohomes.local",
@@ -5410,7 +4994,6 @@
     {
         "id":  "u418",
         "username":  "vargasedwin",
-        "password":  "sah0418",
         "role":  "homeowner",
         "name":  "VARGAS, EDWIN",
         "email":  "vargasedwin@sanalfonsohomes.local",
@@ -5423,7 +5006,6 @@
     {
         "id":  "u419",
         "username":  "nakamamarisel",
-        "password":  "sah0419",
         "role":  "homeowner",
         "name":  "NAKAMA, MARISEL",
         "email":  "nakamamarisel@sanalfonsohomes.local",
@@ -5436,7 +5018,6 @@
     {
         "id":  "u420",
         "username":  "vargasedwin2",
-        "password":  "sah0420",
         "role":  "homeowner",
         "name":  "VARGAS, EDWIN",
         "email":  "vargasedwin2@sanalfonsohomes.local",
@@ -5449,7 +5030,6 @@
     {
         "id":  "u421",
         "username":  "lumbesceres",
-        "password":  "sah0421",
         "role":  "homeowner",
         "name":  "LUMBES, CERES",
         "email":  "lumbesceres@sanalfonsohomes.local",
@@ -5462,7 +5042,6 @@
     {
         "id":  "u422",
         "username":  "carbonellhaydee",
-        "password":  "sah0422",
         "role":  "homeowner",
         "name":  "CARBONELL, HAYDEE",
         "email":  "carbonellhaydee@sanalfonsohomes.local",
@@ -5475,7 +5054,6 @@
     {
         "id":  "u423",
         "username":  "gaurinochristianjerichor",
-        "password":  "sah0423",
         "role":  "homeowner",
         "name":  "GAURINO, CHRISTIAN JERICHO R.",
         "email":  "gaurinochristianjerichor@sanalfonsohomes.local",
@@ -5488,7 +5066,6 @@
     {
         "id":  "u424",
         "username":  "uycarlo",
-        "password":  "sah0424",
         "role":  "homeowner",
         "name":  "UY CARLO",
         "email":  "uycarlo@sanalfonsohomes.local",
@@ -5501,7 +5078,6 @@
     {
         "id":  "u425",
         "username":  "borondiarolando",
-        "password":  "sah0425",
         "role":  "homeowner",
         "name":  "BORONDIA, ROLANDO",
         "email":  "borondiarolando@sanalfonsohomes.local",
@@ -5514,7 +5090,6 @@
     {
         "id":  "u426",
         "username":  "barcelongloria",
-        "password":  "sah0426",
         "role":  "homeowner",
         "name":  "BARCELON, GLORIA",
         "email":  "barcelongloria@sanalfonsohomes.local",
@@ -5527,7 +5102,6 @@
     {
         "id":  "u427",
         "username":  "obsequioeden",
-        "password":  "sah0427",
         "role":  "homeowner",
         "name":  "OBSEQUIO, EDEN",
         "email":  "obsequioeden@sanalfonsohomes.local",
@@ -5540,7 +5114,6 @@
     {
         "id":  "u428",
         "username":  "butiallourdes",
-        "password":  "sah0428",
         "role":  "homeowner",
         "name":  "BUTIAL, LOURDES",
         "email":  "butiallourdes@sanalfonsohomes.local",
@@ -5553,7 +5126,6 @@
     {
         "id":  "u429",
         "username":  "tenorioedericphilip",
-        "password":  "sah0429",
         "role":  "homeowner",
         "name":  "TENORIO, EDERIC PHILIP",
         "email":  "tenorioedericphilip@sanalfonsohomes.local",
@@ -5566,7 +5138,6 @@
     {
         "id":  "u430",
         "username":  "sarmientofranciscod",
-        "password":  "sah0430",
         "role":  "homeowner",
         "name":  "SARMIENTO FRANCISCO D.",
         "email":  "sarmientofranciscod@sanalfonsohomes.local",
@@ -5579,7 +5150,6 @@
     {
         "id":  "u431",
         "username":  "sandovalfranciscojr",
-        "password":  "sah0431",
         "role":  "homeowner",
         "name":  "SANDOVAL, FRANCISCO JR.",
         "email":  "sandovalfranciscojr@sanalfonsohomes.local",
@@ -5592,7 +5162,6 @@
     {
         "id":  "u432",
         "username":  "ebiosenen",
-        "password":  "sah0432",
         "role":  "homeowner",
         "name":  "EBIO, SENEN",
         "email":  "ebiosenen@sanalfonsohomes.local",
@@ -5605,7 +5174,6 @@
     {
         "id":  "u433",
         "username":  "santiagololitanavarroair",
-        "password":  "sah0433",
         "role":  "homeowner",
         "name":  "SANTIAGO, LOLITA / NAVARRO, AIRA S.",
         "email":  "santiagololitanavarroair@sanalfonsohomes.local",
@@ -5618,7 +5186,6 @@
     {
         "id":  "u434",
         "username":  "bongatramon",
-        "password":  "sah0434",
         "role":  "homeowner",
         "name":  "BONGAT, RAMON",
         "email":  "bongatramon@sanalfonsohomes.local",
@@ -5631,7 +5198,6 @@
     {
         "id":  "u435",
         "username":  "nasolaurorafrancis",
-        "password":  "sah0435",
         "role":  "homeowner",
         "name":  "NASOL, AURORA FRANCIS",
         "email":  "nasolaurorafrancis@sanalfonsohomes.local",
@@ -5644,7 +5210,6 @@
     {
         "id":  "u436",
         "username":  "capistranoferdinand",
-        "password":  "sah0436",
         "role":  "homeowner",
         "name":  "CAPISTRANO, FERDINAND",
         "email":  "capistranoferdinand@sanalfonsohomes.local",
@@ -5657,7 +5222,6 @@
     {
         "id":  "u437",
         "username":  "orquitaalden",
-        "password":  "sah0437",
         "role":  "homeowner",
         "name":  "ORQUITA, ALDEN",
         "email":  "orquitaalden@sanalfonsohomes.local",
@@ -5670,7 +5234,6 @@
     {
         "id":  "u438",
         "username":  "smithmervin",
-        "password":  "sah0438",
         "role":  "homeowner",
         "name":  "SMITH, MERVIN",
         "email":  "smithmervin@sanalfonsohomes.local",
@@ -5683,7 +5246,6 @@
     {
         "id":  "u439",
         "username":  "bolaosmaryanne",
-        "password":  "sah0439",
         "role":  "homeowner",
         "name":  "BOLAÑOS MARY ANNE",
         "email":  "bolaosmaryanne@sanalfonsohomes.local",
@@ -5696,7 +5258,6 @@
     {
         "id":  "u440",
         "username":  "oliverarmiborjalgeraldin",
-        "password":  "sah0440",
         "role":  "homeowner",
         "name":  "OLIVER ARMI/BORJAL GERALDINE",
         "email":  "oliverarmiborjalgeraldin@sanalfonsohomes.local",
@@ -5709,7 +5270,6 @@
     {
         "id":  "u441",
         "username":  "fabaypedrito",
-        "password":  "sah0441",
         "role":  "homeowner",
         "name":  "FABAY, PEDRITO",
         "email":  "fabaypedrito@sanalfonsohomes.local",
@@ -5722,7 +5282,6 @@
     {
         "id":  "u442",
         "username":  "diomelinoeusebio",
-        "password":  "sah0442",
         "role":  "homeowner",
         "name":  "DIOMELINO, EUSEBIO",
         "email":  "diomelinoeusebio@sanalfonsohomes.local",
@@ -5735,7 +5294,6 @@
     {
         "id":  "u443",
         "username":  "fabaypedrito2",
-        "password":  "sah0443",
         "role":  "homeowner",
         "name":  "FABAY, PEDRITO",
         "email":  "fabaypedrito2@sanalfonsohomes.local",
@@ -5748,7 +5306,6 @@
     {
         "id":  "u444",
         "username":  "lomaadangelina",
-        "password":  "sah0444",
         "role":  "homeowner",
         "name":  "LOMAAD, ANGELINA",
         "email":  "lomaadangelina@sanalfonsohomes.local",
@@ -5761,7 +5318,6 @@
     {
         "id":  "u445",
         "username":  "baagapurple",
-        "password":  "sah0445",
         "role":  "homeowner",
         "name":  "BAÑAGA, PURPLE",
         "email":  "baagapurple@sanalfonsohomes.local",
@@ -5774,7 +5330,6 @@
     {
         "id":  "u446",
         "username":  "padoleticia",
-        "password":  "sah0446",
         "role":  "homeowner",
         "name":  "PADO, LETICIA",
         "email":  "padoleticia@sanalfonsohomes.local",
@@ -5787,7 +5342,6 @@
     {
         "id":  "u447",
         "username":  "baagajeeverussel",
-        "password":  "sah0447",
         "role":  "homeowner",
         "name":  "BAÑAGA, JEEVE RUSSEL",
         "email":  "baagajeeverussel@sanalfonsohomes.local",
@@ -5800,7 +5354,6 @@
     {
         "id":  "u448",
         "username":  "tuyarturo",
-        "password":  "sah0448",
         "role":  "homeowner",
         "name":  "TUY, ARTURO",
         "email":  "tuyarturo@sanalfonsohomes.local",
@@ -5813,7 +5366,6 @@
     {
         "id":  "u449",
         "username":  "fornolesheriberto",
-        "password":  "sah0449",
         "role":  "homeowner",
         "name":  "FORNOLES, HERIBERTO",
         "email":  "fornolesheriberto@sanalfonsohomes.local",
@@ -5826,7 +5378,6 @@
     {
         "id":  "u450",
         "username":  "delgallegomacecilia",
-        "password":  "sah0450",
         "role":  "homeowner",
         "name":  "DEL GALLEGO, MA. CECILIA",
         "email":  "delgallegomacecilia@sanalfonsohomes.local",
@@ -5839,7 +5390,6 @@
     {
         "id":  "u451",
         "username":  "coliliivy",
-        "password":  "sah0451",
         "role":  "homeowner",
         "name":  "COLILI, IVY",
         "email":  "coliliivy@sanalfonsohomes.local",
@@ -5852,7 +5402,6 @@
     {
         "id":  "u452",
         "username":  "cuidadanomasheila",
-        "password":  "sah0452",
         "role":  "homeowner",
         "name":  "CUIDADANO, MA. SHEILA",
         "email":  "cuidadanomasheila@sanalfonsohomes.local",
@@ -5865,7 +5414,6 @@
     {
         "id":  "u453",
         "username":  "pandesmarilou",
-        "password":  "sah0453",
         "role":  "homeowner",
         "name":  "PANDES, MARILOU",
         "email":  "pandesmarilou@sanalfonsohomes.local",
@@ -5878,7 +5426,6 @@
     {
         "id":  "u454",
         "username":  "delacruzsamuel",
-        "password":  "sah0454",
         "role":  "homeowner",
         "name":  "DELA CRUZ, SAMUEL",
         "email":  "delacruzsamuel@sanalfonsohomes.local",
@@ -5891,7 +5438,6 @@
     {
         "id":  "u455",
         "username":  "operioarlene2",
-        "password":  "sah0455",
         "role":  "homeowner",
         "name":  "OPERIO, ARLENE",
         "email":  "operioarlene2@sanalfonsohomes.local",
@@ -5904,7 +5450,6 @@
     {
         "id":  "u456",
         "username":  "llorindaniloroque",
-        "password":  "sah0456",
         "role":  "homeowner",
         "name":  "LLORIN, DANILO ROQUE",
         "email":  "llorindaniloroque@sanalfonsohomes.local",
@@ -5917,7 +5462,6 @@
     {
         "id":  "u457",
         "username":  "dacarabriguerakim",
-        "password":  "sah0457",
         "role":  "homeowner",
         "name":  "DACARA-BRIGUERA, KIM",
         "email":  "dacarabriguerakim@sanalfonsohomes.local",
@@ -5930,7 +5474,6 @@
     {
         "id":  "u458",
         "username":  "sanchocelis",
-        "password":  "sah0458",
         "role":  "homeowner",
         "name":  "SANCHO, CELIS",
         "email":  "sanchocelis@sanalfonsohomes.local",
@@ -5943,7 +5486,6 @@
     {
         "id":  "u459",
         "username":  "octaviogordianasalvadora",
-        "password":  "sah0459",
         "role":  "homeowner",
         "name":  "OCTAVIO, GORDIANA/SALVADOR ANITA",
         "email":  "octaviogordianasalvadora@sanalfonsohomes.local",
@@ -5956,7 +5498,6 @@
     {
         "id":  "u460",
         "username":  "lehmanncorazon",
-        "password":  "sah0460",
         "role":  "homeowner",
         "name":  "LEHMANN, CORAZON",
         "email":  "lehmanncorazon@sanalfonsohomes.local",
@@ -5969,7 +5510,6 @@
     {
         "id":  "u461",
         "username":  "bongoltoroseamable",
-        "password":  "sah0461",
         "role":  "homeowner",
         "name":  "BONGOLTO ROSE AMABLE",
         "email":  "bongoltoroseamable@sanalfonsohomes.local",
@@ -5982,7 +5522,6 @@
     {
         "id":  "u462",
         "username":  "rosasdomiciano",
-        "password":  "sah0462",
         "role":  "homeowner",
         "name":  "ROSAS, DOMICIANO",
         "email":  "rosasdomiciano@sanalfonsohomes.local",
@@ -5995,7 +5534,6 @@
     {
         "id":  "u463",
         "username":  "fusanaromychristianpante",
-        "password":  "sah0463",
         "role":  "homeowner",
         "name":  "FUSANA, ROMY CHRISTIAN/PANTE NIÑO JESUS",
         "email":  "fusanaromychristianpante@sanalfonsohomes.local",
@@ -6008,7 +5546,6 @@
     {
         "id":  "u464",
         "username":  "estiponachristianduaner",
-        "password":  "sah0464",
         "role":  "homeowner",
         "name":  "ESTIPONA CHRISTIAN DUANE R.",
         "email":  "estiponachristianduaner@sanalfonsohomes.local",
@@ -6021,7 +5558,6 @@
     {
         "id":  "u465",
         "username":  "leonardo",
-        "password":  "sah0465",
         "role":  "homeowner",
         "name":  "LEO NARDO",
         "email":  "leonardo@sanalfonsohomes.local",
@@ -6034,7 +5570,6 @@
     {
         "id":  "u466",
         "username":  "zapatagilda",
-        "password":  "sah0466",
         "role":  "homeowner",
         "name":  "ZAPATA, GILDA",
         "email":  "zapatagilda@sanalfonsohomes.local",
@@ -6047,7 +5582,6 @@
     {
         "id":  "u467",
         "username":  "deverawinston",
-        "password":  "sah0467",
         "role":  "homeowner",
         "name":  "DE VERA, WINSTON",
         "email":  "deverawinston@sanalfonsohomes.local",
@@ -6060,7 +5594,6 @@
     {
         "id":  "u468",
         "username":  "borjagrace",
-        "password":  "sah0468",
         "role":  "homeowner",
         "name":  "BORJA, GRACE",
         "email":  "borjagrace@sanalfonsohomes.local",
@@ -6073,7 +5606,6 @@
     {
         "id":  "u469",
         "username":  "sayengaeugenialucilab",
-        "password":  "sah0469",
         "role":  "homeowner",
         "name":  "SAYENGA EUGENIA LUCILA B.",
         "email":  "sayengaeugenialucilab@sanalfonsohomes.local",
@@ -6086,7 +5618,6 @@
     {
         "id":  "u470",
         "username":  "posugaceli",
-        "password":  "sah0470",
         "role":  "homeowner",
         "name":  "POSUGAC, ELI",
         "email":  "posugaceli@sanalfonsohomes.local",
@@ -6099,7 +5630,6 @@
     {
         "id":  "u471",
         "username":  "millapresantiago",
-        "password":  "sah0471",
         "role":  "homeowner",
         "name":  "MILLAPRE, SANTIAGO",
         "email":  "millapresantiago@sanalfonsohomes.local",
@@ -6112,7 +5642,6 @@
     {
         "id":  "u472",
         "username":  "sarmientobajamundiadelfa",
-        "password":  "sah0472",
         "role":  "homeowner",
         "name":  "SARMIENTO/BAJAMUNDI ADELFA",
         "email":  "sarmientobajamundiadelfa@sanalfonsohomes.local",
@@ -6125,7 +5654,6 @@
     {
         "id":  "u473",
         "username":  "delacruzjoelrequejorrosa",
-        "password":  "sah0473",
         "role":  "homeowner",
         "name":  "DELA CRUZ, JOEL/REQUEJO R. ROSALIE",
         "email":  "delacruzjoelrequejorrosa@sanalfonsohomes.local",
@@ -6138,7 +5666,6 @@
     {
         "id":  "u474",
         "username":  "bajamundiadelfa",
-        "password":  "sah0474",
         "role":  "homeowner",
         "name":  "BAJAMUNDI, ADELFA",
         "email":  "bajamundiadelfa@sanalfonsohomes.local",
@@ -6151,7 +5678,6 @@
     {
         "id":  "u475",
         "username":  "bautistajenifferb",
-        "password":  "sah0475",
         "role":  "homeowner",
         "name":  "BAUTISTA JENIFFER B.",
         "email":  "bautistajenifferb@sanalfonsohomes.local",
@@ -6164,7 +5690,6 @@
     {
         "id":  "u476",
         "username":  "rentoytomas",
-        "password":  "sah0476",
         "role":  "homeowner",
         "name":  "RENTOY, TOMAS",
         "email":  "rentoytomas@sanalfonsohomes.local",
@@ -6177,7 +5702,6 @@
     {
         "id":  "u477",
         "username":  "tannida",
-        "password":  "sah0477",
         "role":  "homeowner",
         "name":  "TAN, NIDA",
         "email":  "tannida@sanalfonsohomes.local",
@@ -6190,7 +5714,6 @@
     {
         "id":  "u478",
         "username":  "balbuenajaime",
-        "password":  "sah0478",
         "role":  "homeowner",
         "name":  "BALBUENA, JAIME",
         "email":  "balbuenajaime@sanalfonsohomes.local",
@@ -6203,7 +5726,6 @@
     {
         "id":  "u479",
         "username":  "abonalgloria",
-        "password":  "sah0479",
         "role":  "homeowner",
         "name":  "ABONAL, GLORIA",
         "email":  "abonalgloria@sanalfonsohomes.local",
@@ -6216,7 +5738,6 @@
     {
         "id":  "u480",
         "username":  "albiafe",
-        "password":  "sah0480",
         "role":  "homeowner",
         "name":  "ALBIA, FE",
         "email":  "albiafe@sanalfonsohomes.local",
@@ -6229,7 +5750,6 @@
     {
         "id":  "u481",
         "username":  "bombitavirgil",
-        "password":  "sah0481",
         "role":  "homeowner",
         "name":  "BOMBITA, VIRGIL",
         "email":  "bombitavirgil@sanalfonsohomes.local",
@@ -6242,7 +5762,6 @@
     {
         "id":  "u482",
         "username":  "bombitavirgil2",
-        "password":  "sah0482",
         "role":  "homeowner",
         "name":  "BOMBITA, VIRGIL",
         "email":  "bombitavirgil2@sanalfonsohomes.local",
@@ -6255,7 +5774,6 @@
     {
         "id":  "u483",
         "username":  "eddiebdominguiano",
-        "password":  "sah0483",
         "role":  "homeowner",
         "name":  "Eddie B. Dominguiano",
         "email":  "eddiebdominguiano@sanalfonsohomes.local",
@@ -6268,7 +5786,6 @@
     {
         "id":  "u484",
         "username":  "badillajanet",
-        "password":  "sah0484",
         "role":  "homeowner",
         "name":  "BADILLA, JANET",
         "email":  "badillajanet@sanalfonsohomes.local",
@@ -6281,7 +5798,6 @@
     {
         "id":  "u485",
         "username":  "aguilarlevi",
-        "password":  "sah0485",
         "role":  "homeowner",
         "name":  "AGUILAR, LEVI",
         "email":  "aguilarlevi@sanalfonsohomes.local",
@@ -6294,7 +5810,6 @@
     {
         "id":  "u486",
         "username":  "alipantemarites",
-        "password":  "sah0486",
         "role":  "homeowner",
         "name":  "ALIPANTE, MARITES",
         "email":  "alipantemarites@sanalfonsohomes.local",
@@ -6307,7 +5822,6 @@
     {
         "id":  "u487",
         "username":  "rubiobernadith",
-        "password":  "sah0487",
         "role":  "homeowner",
         "name":  "RUBIO, BERNADITH",
         "email":  "rubiobernadith@sanalfonsohomes.local",
@@ -6320,7 +5834,6 @@
     {
         "id":  "u488",
         "username":  "dizondiosdado",
-        "password":  "sah0488",
         "role":  "homeowner",
         "name":  "DIZON, DIOSDADO",
         "email":  "dizondiosdado@sanalfonsohomes.local",
@@ -6333,7 +5846,6 @@
     {
         "id":  "u489",
         "username":  "rubiobernadith2",
-        "password":  "sah0489",
         "role":  "homeowner",
         "name":  "RUBIO, BERNADITH",
         "email":  "rubiobernadith2@sanalfonsohomes.local",
@@ -6346,7 +5858,6 @@
     {
         "id":  "u490",
         "username":  "gomezgildagaile",
-        "password":  "sah0490",
         "role":  "homeowner",
         "name":  "GOMEZ, GILDA GAILE",
         "email":  "gomezgildagaile@sanalfonsohomes.local",
@@ -6359,7 +5870,6 @@
     {
         "id":  "u491",
         "username":  "rubiobernadith3",
-        "password":  "sah0491",
         "role":  "homeowner",
         "name":  "RUBIO, BERNADITH",
         "email":  "rubiobernadith3@sanalfonsohomes.local",
@@ -6372,7 +5882,6 @@
     {
         "id":  "u492",
         "username":  "rubiobernadith4",
-        "password":  "sah0492",
         "role":  "homeowner",
         "name":  "RUBIO, BERNADITH",
         "email":  "rubiobernadith4@sanalfonsohomes.local",
@@ -6385,7 +5894,6 @@
     {
         "id":  "u493",
         "username":  "guiribamarcocasiocharles",
-        "password":  "sah0493",
         "role":  "homeowner",
         "name":  "GUIRIBA, MARCO/ casiño charles",
         "email":  "guiribamarcocasiocharles@sanalfonsohomes.local",
@@ -6398,7 +5906,6 @@
     {
         "id":  "u494",
         "username":  "fernandoeric",
-        "password":  "sah0494",
         "role":  "homeowner",
         "name":  "FERNANDO, ERIC",
         "email":  "fernandoeric@sanalfonsohomes.local",
@@ -6411,7 +5918,6 @@
     {
         "id":  "u495",
         "username":  "lopezconradomanaogjoshua",
-        "password":  "sah0495",
         "role":  "homeowner",
         "name":  "LOPEZ, CONRADO / Manaog Joshua",
         "email":  "lopezconradomanaogjoshua@sanalfonsohomes.local",
@@ -6424,7 +5930,6 @@
     {
         "id":  "u496",
         "username":  "villarealjosemoises",
-        "password":  "sah0496",
         "role":  "homeowner",
         "name":  "VILLAREAL, JOSE MOISES",
         "email":  "villarealjosemoises@sanalfonsohomes.local",
@@ -6437,7 +5942,6 @@
     {
         "id":  "u497",
         "username":  "tarimanfrancisca",
-        "password":  "sah0497",
         "role":  "homeowner",
         "name":  "TARIMAN, FRANCISCA",
         "email":  "tarimanfrancisca@sanalfonsohomes.local",
@@ -6450,7 +5954,6 @@
     {
         "id":  "u498",
         "username":  "ngteresitavillarealjasmi",
-        "password":  "sah0498",
         "role":  "homeowner",
         "name":  "NG, TERESITA / villareal jasmine",
         "email":  "ngteresitavillarealjasmi@sanalfonsohomes.local",
@@ -6463,7 +5966,6 @@
     {
         "id":  "u499",
         "username":  "encinareschristine",
-        "password":  "sah0499",
         "role":  "homeowner",
         "name":  "ENCINARES CHRISTINE",
         "email":  "encinareschristine@sanalfonsohomes.local",
@@ -6476,7 +5978,6 @@
     {
         "id":  "u500",
         "username":  "escarocelestelozanoezeki",
-        "password":  "sah0500",
         "role":  "homeowner",
         "name":  "ESCARO, CELESTE/LOZANO EZEKIEL",
         "email":  "escarocelestelozanoezeki@sanalfonsohomes.local",
@@ -6489,7 +5990,6 @@
     {
         "id":  "u501",
         "username":  "sitlanimikkivincent",
-        "password":  "sah0501",
         "role":  "homeowner",
         "name":  "SITLANI, MIKKI VINCENT",
         "email":  "sitlanimikkivincent@sanalfonsohomes.local",
@@ -6502,7 +6002,6 @@
     {
         "id":  "u502",
         "username":  "bulacancharlie",
-        "password":  "sah0502",
         "role":  "homeowner",
         "name":  "BULACAN, CHARLIE",
         "email":  "bulacancharlie@sanalfonsohomes.local",
@@ -6515,7 +6014,6 @@
     {
         "id":  "u503",
         "username":  "olayresnoe",
-        "password":  "sah0503",
         "role":  "homeowner",
         "name":  "OLAYRES, NOE",
         "email":  "olayresnoe@sanalfonsohomes.local",
@@ -6528,7 +6026,6 @@
     {
         "id":  "u504",
         "username":  "pahuyoberthildaferolinom",
-        "password":  "sah0504",
         "role":  "homeowner",
         "name":  "PAHUYO, BERTHILDA/FEROLINO MARICAR G.",
         "email":  "pahuyoberthildaferolinom@sanalfonsohomes.local",
@@ -6541,7 +6038,6 @@
     {
         "id":  "u505",
         "username":  "pianofayemarie",
-        "password":  "sah0505",
         "role":  "homeowner",
         "name":  "PIANO, FAYE MARIE",
         "email":  "pianofayemarie@sanalfonsohomes.local",
@@ -6554,7 +6050,6 @@
     {
         "id":  "u506",
         "username":  "alparangina",
-        "password":  "sah0506",
         "role":  "homeowner",
         "name":  "ALPARAN, GINA",
         "email":  "alparangina@sanalfonsohomes.local",
@@ -6567,7 +6062,6 @@
     {
         "id":  "u507",
         "username":  "deverawinston2",
-        "password":  "sah0507",
         "role":  "homeowner",
         "name":  "DE VERA, WINSTON",
         "email":  "deverawinston2@sanalfonsohomes.local",
@@ -6580,7 +6074,6 @@
     {
         "id":  "u508",
         "username":  "pinedadianao",
-        "password":  "sah0508",
         "role":  "homeowner",
         "name":  "PINEDA DIANA O.",
         "email":  "pinedadianao@sanalfonsohomes.local",
@@ -6593,7 +6086,6 @@
     {
         "id":  "u509",
         "username":  "deverawinston3",
-        "password":  "sah0509",
         "role":  "homeowner",
         "name":  "DE VERA, WINSTON",
         "email":  "deverawinston3@sanalfonsohomes.local",
@@ -6606,7 +6098,6 @@
     {
         "id":  "u510",
         "username":  "caadamaridore",
-        "password":  "sah0510",
         "role":  "homeowner",
         "name":  "CAÑADA, MARIDORE",
         "email":  "caadamaridore@sanalfonsohomes.local",
@@ -6619,7 +6110,6 @@
     {
         "id":  "u511",
         "username":  "toraldereynaldo",
-        "password":  "sah0511",
         "role":  "homeowner",
         "name":  "TORALDE, REYNALDO",
         "email":  "toraldereynaldo@sanalfonsohomes.local",
@@ -6632,7 +6122,6 @@
     {
         "id":  "u512",
         "username":  "layugathenamelquiades",
-        "password":  "sah0512",
         "role":  "homeowner",
         "name":  "LAYUG, ATHENA/MELQUIADES",
         "email":  "layugathenamelquiades@sanalfonsohomes.local",
@@ -6645,7 +6134,6 @@
     {
         "id":  "u513",
         "username":  "dimaanojoel",
-        "password":  "sah0513",
         "role":  "homeowner",
         "name":  "DIMAANO, JOEL",
         "email":  "dimaanojoel@sanalfonsohomes.local",
@@ -6658,7 +6146,6 @@
     {
         "id":  "u514",
         "username":  "tresvallesalex",
-        "password":  "sah0514",
         "role":  "homeowner",
         "name":  "TRESVALLES, ALEX",
         "email":  "tresvallesalex@sanalfonsohomes.local",
@@ -6671,7 +6158,6 @@
     {
         "id":  "u515",
         "username":  "caselesronaldalfredo",
-        "password":  "sah0515",
         "role":  "homeowner",
         "name":  "CASELES,RONALD ALFREDO",
         "email":  "caselesronaldalfredo@sanalfonsohomes.local",
@@ -6684,7 +6170,6 @@
     {
         "id":  "u516",
         "username":  "hernandezgerardo",
-        "password":  "sah0516",
         "role":  "homeowner",
         "name":  "HERNANDEZ, GERARDO",
         "email":  "hernandezgerardo@sanalfonsohomes.local",
@@ -6697,7 +6182,6 @@
     {
         "id":  "u517",
         "username":  "fullerosfrancisca",
-        "password":  "sah0517",
         "role":  "homeowner",
         "name":  "FULLEROS, FRANCISCA",
         "email":  "fullerosfrancisca@sanalfonsohomes.local",
@@ -6710,7 +6194,6 @@
     {
         "id":  "u518",
         "username":  "amponindante",
-        "password":  "sah0518",
         "role":  "homeowner",
         "name":  "AMPONIN, DANTE",
         "email":  "amponindante@sanalfonsohomes.local",
@@ -6723,7 +6206,6 @@
     {
         "id":  "u519",
         "username":  "pardinasreyaldrin",
-        "password":  "sah0519",
         "role":  "homeowner",
         "name":  "PARDINAS REY ALDRIN",
         "email":  "pardinasreyaldrin@sanalfonsohomes.local",
@@ -6736,7 +6218,6 @@
     {
         "id":  "u520",
         "username":  "borrasleonides",
-        "password":  "sah0520",
         "role":  "homeowner",
         "name":  "BORRAS, LEONIDES",
         "email":  "borrasleonides@sanalfonsohomes.local",
@@ -6749,7 +6230,6 @@
     {
         "id":  "u521",
         "username":  "camposanojodyvillanueva",
-        "password":  "sah0521",
         "role":  "homeowner",
         "name":  "CAMPOSANO, JODY VILLANUEVA",
         "email":  "camposanojodyvillanueva@sanalfonsohomes.local",
@@ -6762,7 +6242,6 @@
     {
         "id":  "u522",
         "username":  "magnopurezajuntadofrankl",
-        "password":  "sah0522",
         "role":  "homeowner",
         "name":  "MAGNO, PUREZA/ JUNTADO, FRANKLIN",
         "email":  "magnopurezajuntadofrankl@sanalfonsohomes.local",
@@ -6775,7 +6254,6 @@
     {
         "id":  "u523",
         "username":  "capistranosonia",
-        "password":  "sah0523",
         "role":  "homeowner",
         "name":  "CAPISTRANO, SONIA",
         "email":  "capistranosonia@sanalfonsohomes.local",
@@ -6788,7 +6266,6 @@
     {
         "id":  "u524",
         "username":  "aldecoamariselpilar",
-        "password":  "sah0524",
         "role":  "homeowner",
         "name":  "ALDECOA, MARISEL PILAR",
         "email":  "aldecoamariselpilar@sanalfonsohomes.local",
@@ -6801,7 +6278,6 @@
     {
         "id":  "u525",
         "username":  "goyenaallan",
-        "password":  "sah0525",
         "role":  "homeowner",
         "name":  "GOYENA, ALLAN",
         "email":  "goyenaallan@sanalfonsohomes.local",
@@ -6814,7 +6290,6 @@
     {
         "id":  "u526",
         "username":  "marfegafaithavigale",
-        "password":  "sah0526",
         "role":  "homeowner",
         "name":  "MARFEGA,  FAITH AVIGALE",
         "email":  "marfegafaithavigale@sanalfonsohomes.local",
@@ -6827,7 +6302,6 @@
     {
         "id":  "u527",
         "username":  "leeniccart",
-        "password":  "sah0527",
         "role":  "homeowner",
         "name":  "LEE, NICCART",
         "email":  "leeniccart@sanalfonsohomes.local",
@@ -6840,7 +6314,6 @@
     {
         "id":  "u528",
         "username":  "fortesegemma",
-        "password":  "sah0528",
         "role":  "homeowner",
         "name":  "FORTE-SE, GEMMA",
         "email":  "fortesegemma@sanalfonsohomes.local",
@@ -6853,7 +6326,6 @@
     {
         "id":  "u529",
         "username":  "garciaarturo",
-        "password":  "sah0529",
         "role":  "homeowner",
         "name":  "GARCIA, ARTURO",
         "email":  "garciaarturo@sanalfonsohomes.local",
@@ -6866,7 +6338,6 @@
     {
         "id":  "u530",
         "username":  "franciscogerardo",
-        "password":  "sah0530",
         "role":  "homeowner",
         "name":  "FRANCISCO, GERARDO",
         "email":  "franciscogerardo@sanalfonsohomes.local",
@@ -6879,7 +6350,6 @@
     {
         "id":  "u531",
         "username":  "sabidoezzobelle",
-        "password":  "sah0531",
         "role":  "homeowner",
         "name":  "SABIDO, EZZOBELLE",
         "email":  "sabidoezzobelle@sanalfonsohomes.local",
@@ -6892,7 +6362,6 @@
     {
         "id":  "u532",
         "username":  "sabidoezzobelle2",
-        "password":  "sah0532",
         "role":  "homeowner",
         "name":  "SABIDO, EZZOBELLE",
         "email":  "sabidoezzobelle2@sanalfonsohomes.local",
@@ -6905,7 +6374,6 @@
     {
         "id":  "u533",
         "username":  "sabidoezzobelle3",
-        "password":  "sah0533",
         "role":  "homeowner",
         "name":  "SABIDO, EZZOBELLE",
         "email":  "sabidoezzobelle3@sanalfonsohomes.local",
@@ -6918,7 +6386,6 @@
     {
         "id":  "u534",
         "username":  "cianojaime",
-        "password":  "sah0534",
         "role":  "homeowner",
         "name":  "CIANO, JAIME",
         "email":  "cianojaime@sanalfonsohomes.local",
@@ -6931,7 +6398,6 @@
     {
         "id":  "u535",
         "username":  "villabrozaklarisse",
-        "password":  "sah0535",
         "role":  "homeowner",
         "name":  "VILLABROZA, KLARISSE",
         "email":  "villabrozaklarisse@sanalfonsohomes.local",
@@ -6944,7 +6410,6 @@
     {
         "id":  "u536",
         "username":  "saculsanyvettekaryl",
-        "password":  "sah0536",
         "role":  "homeowner",
         "name":  "SACULSAN, YVETTE KARYL",
         "email":  "saculsanyvettekaryl@sanalfonsohomes.local",
@@ -6957,7 +6422,6 @@
     {
         "id":  "u537",
         "username":  "dediosmadeline",
-        "password":  "sah0537",
         "role":  "homeowner",
         "name":  "DE DIOS, MADELINE",
         "email":  "dediosmadeline@sanalfonsohomes.local",
@@ -6970,7 +6434,6 @@
     {
         "id":  "u538",
         "username":  "rebuenoarnaldoeduardo",
-        "password":  "sah0538",
         "role":  "homeowner",
         "name":  "REBUENO, ARNALDO EDUARDO",
         "email":  "rebuenoarnaldoeduardo@sanalfonsohomes.local",
@@ -6983,7 +6446,6 @@
     {
         "id":  "u539",
         "username":  "barjarandolf",
-        "password":  "sah0539",
         "role":  "homeowner",
         "name":  "BARJA, RANDOLF",
         "email":  "barjarandolf@sanalfonsohomes.local",
@@ -6996,7 +6458,6 @@
     {
         "id":  "u540",
         "username":  "almonterodolfo",
-        "password":  "sah0540",
         "role":  "homeowner",
         "name":  "ALMONTE, RODOLFO",
         "email":  "almonterodolfo@sanalfonsohomes.local",
@@ -7009,7 +6470,6 @@
     {
         "id":  "u541",
         "username":  "ysmaelmapilar",
-        "password":  "sah0541",
         "role":  "homeowner",
         "name":  "YSMAEL, MA. PILAR",
         "email":  "ysmaelmapilar@sanalfonsohomes.local",
@@ -7022,7 +6482,6 @@
     {
         "id":  "u542",
         "username":  "malangrosalie",
-        "password":  "sah0542",
         "role":  "homeowner",
         "name":  "MALANG, ROSALIE",
         "email":  "malangrosalie@sanalfonsohomes.local",
@@ -7035,7 +6494,6 @@
     {
         "id":  "u543",
         "username":  "malangrosalie2",
-        "password":  "sah0543",
         "role":  "homeowner",
         "name":  "MALANG, ROSALIE",
         "email":  "malangrosalie2@sanalfonsohomes.local",
@@ -7048,7 +6506,6 @@
     {
         "id":  "u544",
         "username":  "argotefrancia",
-        "password":  "sah0544",
         "role":  "homeowner",
         "name":  "ARGOTE FRANCIA",
         "email":  "argotefrancia@sanalfonsohomes.local",
@@ -7061,7 +6518,6 @@
     {
         "id":  "u545",
         "username":  "catanghalfederico",
-        "password":  "sah0545",
         "role":  "homeowner",
         "name":  "CATANGHAL, FEDERICO",
         "email":  "catanghalfederico@sanalfonsohomes.local",
@@ -7074,7 +6530,6 @@
     {
         "id":  "u546",
         "username":  "delossantosanthony",
-        "password":  "sah0546",
         "role":  "homeowner",
         "name":  "DELOS SANTOS, ANTHONY",
         "email":  "delossantosanthony@sanalfonsohomes.local",
@@ -7087,7 +6542,6 @@
     {
         "id":  "u547",
         "username":  "balbastremichael",
-        "password":  "sah0547",
         "role":  "homeowner",
         "name":  "BALBASTRE, MICHAEL",
         "email":  "balbastremichael@sanalfonsohomes.local",
@@ -7100,7 +6554,6 @@
     {
         "id":  "u548",
         "username":  "lasticarosie",
-        "password":  "sah0548",
         "role":  "homeowner",
         "name":  "LASTICA, ROSIE",
         "email":  "lasticarosie@sanalfonsohomes.local",
@@ -7113,7 +6566,6 @@
     {
         "id":  "u549",
         "username":  "manaresmildred",
-        "password":  "sah0549",
         "role":  "homeowner",
         "name":  "MANARES, MILDRED",
         "email":  "manaresmildred@sanalfonsohomes.local",
@@ -7126,7 +6578,6 @@
     {
         "id":  "u550",
         "username":  "mirafuentesmercy",
-        "password":  "sah0550",
         "role":  "homeowner",
         "name":  "MIRAFUENTES, MERCY",
         "email":  "mirafuentesmercy@sanalfonsohomes.local",
@@ -7139,7 +6590,6 @@
     {
         "id":  "u551",
         "username":  "samsonsenen",
-        "password":  "sah0551",
         "role":  "homeowner",
         "name":  "SAMSON, SENEN",
         "email":  "samsonsenen@sanalfonsohomes.local",
@@ -7152,7 +6602,6 @@
     {
         "id":  "u552",
         "username":  "callejateresa",
-        "password":  "sah0552",
         "role":  "homeowner",
         "name":  "CALLEJA, TERESA",
         "email":  "callejateresa@sanalfonsohomes.local",
@@ -7165,7 +6614,6 @@
     {
         "id":  "u553",
         "username":  "garayliezel",
-        "password":  "sah0553",
         "role":  "homeowner",
         "name":  "GARAY, LIEZEL",
         "email":  "garayliezel@sanalfonsohomes.local",
@@ -7178,7 +6626,6 @@
     {
         "id":  "u554",
         "username":  "ciocsonmaanaflorr",
-        "password":  "sah0554",
         "role":  "homeowner",
         "name":  "CIOCSON, MA. ANA FLOR R.",
         "email":  "ciocsonmaanaflorr@sanalfonsohomes.local",
@@ -7191,7 +6638,6 @@
     {
         "id":  "u555",
         "username":  "callejateresa2",
-        "password":  "sah0555",
         "role":  "homeowner",
         "name":  "CALLEJA, TERESA",
         "email":  "callejateresa2@sanalfonsohomes.local",
@@ -7204,7 +6650,6 @@
     {
         "id":  "u556",
         "username":  "copemaiden",
-        "password":  "sah0556",
         "role":  "homeowner",
         "name":  "COPE, MAIDEN",
         "email":  "copemaiden@sanalfonsohomes.local",
@@ -7217,7 +6662,6 @@
     {
         "id":  "u557",
         "username":  "solomowendy",
-        "password":  "sah0557",
         "role":  "homeowner",
         "name":  "SOLOMO, WENDY",
         "email":  "solomowendy@sanalfonsohomes.local",
@@ -7230,7 +6674,6 @@
     {
         "id":  "u558",
         "username":  "labradormahelena",
-        "password":  "sah0558",
         "role":  "homeowner",
         "name":  "LABRADOR, MA. HELENA",
         "email":  "labradormahelena@sanalfonsohomes.local",
@@ -7243,7 +6686,6 @@
     {
         "id":  "u559",
         "username":  "pederiomarilyn",
-        "password":  "sah0559",
         "role":  "homeowner",
         "name":  "PEDERIO, MARILYN",
         "email":  "pederiomarilyn@sanalfonsohomes.local",
@@ -7256,7 +6698,6 @@
     {
         "id":  "u560",
         "username":  "buisingvilma",
-        "password":  "sah0560",
         "role":  "homeowner",
         "name":  "BUISING, VILMA",
         "email":  "buisingvilma@sanalfonsohomes.local",
@@ -7269,7 +6710,6 @@
     {
         "id":  "u561",
         "username":  "asuncionbelmor",
-        "password":  "sah0561",
         "role":  "homeowner",
         "name":  "ASUNCION, BELMOR",
         "email":  "asuncionbelmor@sanalfonsohomes.local",
@@ -7282,7 +6722,6 @@
     {
         "id":  "u562",
         "username":  "olegeramichael",
-        "password":  "sah0562",
         "role":  "homeowner",
         "name":  "OLEGERA MICHAEL",
         "email":  "olegeramichael@sanalfonsohomes.local",
@@ -7295,7 +6734,6 @@
     {
         "id":  "u563",
         "username":  "paacherry",
-        "password":  "sah0563",
         "role":  "homeowner",
         "name":  "PAA, CHERRY",
         "email":  "paacherry@sanalfonsohomes.local",
@@ -7308,7 +6746,6 @@
     {
         "id":  "u564",
         "username":  "salalimajoytereselanuzap",
-        "password":  "sah0564",
         "role":  "homeowner",
         "name":  "SALALIMA, JOY TERESE/ LANUZA, PINKY",
         "email":  "salalimajoytereselanuzap@sanalfonsohomes.local",
@@ -7321,7 +6758,6 @@
     {
         "id":  "u565",
         "username":  "samonteasmabethbalares",
-        "password":  "sah0565",
         "role":  "homeowner",
         "name":  "SAMONTE ASMABETH BALARES",
         "email":  "samonteasmabethbalares@sanalfonsohomes.local",
@@ -7334,7 +6770,6 @@
     {
         "id":  "u566",
         "username":  "lopezrachelleann",
-        "password":  "sah0566",
         "role":  "homeowner",
         "name":  "LOPEZ, RACHELLE ANN",
         "email":  "lopezrachelleann@sanalfonsohomes.local",
@@ -7347,7 +6782,6 @@
     {
         "id":  "u567",
         "username":  "gonzalesgina",
-        "password":  "sah0567",
         "role":  "homeowner",
         "name":  "GONZALES, GINA",
         "email":  "gonzalesgina@sanalfonsohomes.local",
@@ -7360,7 +6794,6 @@
     {
         "id":  "u568",
         "username":  "froyaldejaneta",
-        "password":  "sah0568",
         "role":  "homeowner",
         "name":  "FROYALDE, JANETA",
         "email":  "froyaldejaneta@sanalfonsohomes.local",
@@ -7373,7 +6806,6 @@
     {
         "id":  "u569",
         "username":  "ignaciojoseclementealbal",
-        "password":  "sah0569",
         "role":  "homeowner",
         "name":  "IGNACIO, JOSE CLEMENTE/Albalate Rodora",
         "email":  "ignaciojoseclementealbal@sanalfonsohomes.local",
@@ -7386,7 +6818,6 @@
     {
         "id":  "u570",
         "username":  "balceimelda",
-        "password":  "sah0570",
         "role":  "homeowner",
         "name":  "BALCE, IMELDA",
         "email":  "balceimelda@sanalfonsohomes.local",
@@ -7399,7 +6830,6 @@
     {
         "id":  "u571",
         "username":  "mellafrimafrancia",
-        "password":  "sah0571",
         "role":  "homeowner",
         "name":  "MELLAFRI, MA. FRANCIA",
         "email":  "mellafrimafrancia@sanalfonsohomes.local",
@@ -7412,7 +6842,6 @@
     {
         "id":  "u572",
         "username":  "ibardalozaflorabel",
-        "password":  "sah0572",
         "role":  "homeowner",
         "name":  "IBARDALOZA, FLORABEL",
         "email":  "ibardalozaflorabel@sanalfonsohomes.local",
@@ -7425,7 +6854,6 @@
     {
         "id":  "u573",
         "username":  "ibardalozaflorabel2",
-        "password":  "sah0573",
         "role":  "homeowner",
         "name":  "IBARDALOZA, FLORABEL",
         "email":  "ibardalozaflorabel2@sanalfonsohomes.local",
@@ -7438,7 +6866,6 @@
     {
         "id":  "u574",
         "username":  "remoquilloshermana",
-        "password":  "sah0574",
         "role":  "homeowner",
         "name":  "REMOQUILLO, SHERMAN A.",
         "email":  "remoquilloshermana@sanalfonsohomes.local",
@@ -7451,7 +6878,6 @@
     {
         "id":  "u575",
         "username":  "lucianomariarenea",
-        "password":  "sah0575",
         "role":  "homeowner",
         "name":  "LUCIANO, MARIA RENEA",
         "email":  "lucianomariarenea@sanalfonsohomes.local",
@@ -7464,7 +6890,6 @@
     {
         "id":  "u576",
         "username":  "peconcilloanngo",
-        "password":  "sah0576",
         "role":  "homeowner",
         "name":  "PECONCILLO, ANN GO",
         "email":  "peconcilloanngo@sanalfonsohomes.local",
@@ -7477,7 +6902,6 @@
     {
         "id":  "u577",
         "username":  "peconcilloadrian",
-        "password":  "sah0577",
         "role":  "homeowner",
         "name":  "PECONCILLO, ADRIAN",
         "email":  "peconcilloadrian@sanalfonsohomes.local",
@@ -7490,7 +6914,6 @@
     {
         "id":  "u578",
         "username":  "santiagomadolores",
-        "password":  "sah0578",
         "role":  "homeowner",
         "name":  "SANTIAGO,MA.DOLORES",
         "email":  "santiagomadolores@sanalfonsohomes.local",
@@ -7503,7 +6926,6 @@
     {
         "id":  "u579",
         "username":  "belaleimelda",
-        "password":  "sah0579",
         "role":  "homeowner",
         "name":  "BELALE, IMELDA",
         "email":  "belaleimelda@sanalfonsohomes.local",
@@ -7516,7 +6938,6 @@
     {
         "id":  "u580",
         "username":  "locsindennis",
-        "password":  "sah0580",
         "role":  "homeowner",
         "name":  "LOCSIN, DENNIS",
         "email":  "locsindennis@sanalfonsohomes.local",
@@ -7529,7 +6950,6 @@
     {
         "id":  "u581",
         "username":  "arellanocecilia",
-        "password":  "sah0581",
         "role":  "homeowner",
         "name":  "ARELLANO, CECILIA",
         "email":  "arellanocecilia@sanalfonsohomes.local",
@@ -7542,7 +6962,6 @@
     {
         "id":  "u582",
         "username":  "verdaderoyusonfelix",
-        "password":  "sah0582",
         "role":  "homeowner",
         "name":  "VERDADERO / YUSON, FELIX",
         "email":  "verdaderoyusonfelix@sanalfonsohomes.local",
@@ -7555,7 +6974,6 @@
     {
         "id":  "u583",
         "username":  "alexandermildredpedrajit",
-        "password":  "sah0583",
         "role":  "homeowner",
         "name":  "ALEXANDER/MILDRED PEDRAJITA",
         "email":  "alexandermildredpedrajit@sanalfonsohomes.local",
@@ -7568,7 +6986,6 @@
     {
         "id":  "u584",
         "username":  "beduraljosephferdinand",
-        "password":  "sah0584",
         "role":  "homeowner",
         "name":  "BEDURAL, JOSEPH FERDINAND",
         "email":  "beduraljosephferdinand@sanalfonsohomes.local",
@@ -7581,7 +6998,6 @@
     {
         "id":  "u585",
         "username":  "acostarenerio",
-        "password":  "sah0585",
         "role":  "homeowner",
         "name":  "ACOSTA, RENERIO",
         "email":  "acostarenerio@sanalfonsohomes.local",
@@ -7594,7 +7010,6 @@
     {
         "id":  "u586",
         "username":  "moraldemariajane2",
-        "password":  "sah0586",
         "role":  "homeowner",
         "name":  "MORALDE MARIA JANE",
         "email":  "moraldemariajane2@sanalfonsohomes.local",
@@ -7607,7 +7022,6 @@
     {
         "id":  "u587",
         "username":  "angmarianne",
-        "password":  "sah0587",
         "role":  "homeowner",
         "name":  "ANG, MARIANNE",
         "email":  "angmarianne@sanalfonsohomes.local",
@@ -7620,7 +7034,6 @@
     {
         "id":  "u588",
         "username":  "zabaldicayolanda",
-        "password":  "sah0588",
         "role":  "homeowner",
         "name":  "ZABALDICA, YOLANDA",
         "email":  "zabaldicayolanda@sanalfonsohomes.local",
@@ -7633,7 +7046,6 @@
     {
         "id":  "u589",
         "username":  "sarahjeanlagatuz",
-        "password":  "sah0589",
         "role":  "homeowner",
         "name":  "SARAH JEAN LAGATUZ",
         "email":  "sarahjeanlagatuz@sanalfonsohomes.local",
@@ -7646,7 +7058,6 @@
     {
         "id":  "u590",
         "username":  "alvaroalvin",
-        "password":  "sah0590",
         "role":  "homeowner",
         "name":  "ALVARO, ALVIN",
         "email":  "alvaroalvin@sanalfonsohomes.local",
@@ -7659,7 +7070,6 @@
     {
         "id":  "u591",
         "username":  "julianyanga",
-        "password":  "sah0591",
         "role":  "homeowner",
         "name":  "JULIAN YANGA",
         "email":  "julianyanga@sanalfonsohomes.local",
@@ -7672,7 +7082,6 @@
     {
         "id":  "u592",
         "username":  "solomoivy",
-        "password":  "sah0592",
         "role":  "homeowner",
         "name":  "SOLOMO IVY",
         "email":  "solomoivy@sanalfonsohomes.local",
@@ -7685,7 +7094,6 @@
     {
         "id":  "u593",
         "username":  "navarrokathleen",
-        "password":  "sah0593",
         "role":  "homeowner",
         "name":  "NAVARRO, KATHLEEN",
         "email":  "navarrokathleen@sanalfonsohomes.local",
@@ -7698,7 +7106,6 @@
     {
         "id":  "u594",
         "username":  "lautmiguelito",
-        "password":  "sah0594",
         "role":  "homeowner",
         "name":  "LAUT, MIGUELITO",
         "email":  "lautmiguelito@sanalfonsohomes.local",
@@ -7711,7 +7118,6 @@
     {
         "id":  "u595",
         "username":  "aleluyamaryjoy",
-        "password":  "sah0595",
         "role":  "homeowner",
         "name":  "ALELUYA, MARY JOY",
         "email":  "aleluyamaryjoy@sanalfonsohomes.local",
@@ -7724,7 +7130,6 @@
     {
         "id":  "u596",
         "username":  "moranaannaliza",
-        "password":  "sah0596",
         "role":  "homeowner",
         "name":  "MORANA, ANNA LIZA",
         "email":  "moranaannaliza@sanalfonsohomes.local",
@@ -7737,7 +7142,6 @@
     {
         "id":  "u597",
         "username":  "tolentinobinahi",
-        "password":  "sah0597",
         "role":  "homeowner",
         "name":  "TOLENTINO, BINAH I.",
         "email":  "tolentinobinahi@sanalfonsohomes.local",
@@ -7750,7 +7154,6 @@
     {
         "id":  "u598",
         "username":  "solanoglendaapolinar",
-        "password":  "sah0598",
         "role":  "homeowner",
         "name":  "SOLANO, GLENDA APOLINAR",
         "email":  "solanoglendaapolinar@sanalfonsohomes.local",
@@ -7763,7 +7166,6 @@
     {
         "id":  "u599",
         "username":  "allerarnold",
-        "password":  "sah0599",
         "role":  "homeowner",
         "name":  "ALLER, ARNOLD",
         "email":  "allerarnold@sanalfonsohomes.local",
@@ -7776,7 +7178,6 @@
     {
         "id":  "u600",
         "username":  "kingkingbibottita",
-        "password":  "sah0600",
         "role":  "homeowner",
         "name":  "KINGKING, BIBOT TITA",
         "email":  "kingkingbibottita@sanalfonsohomes.local",
@@ -7789,7 +7190,6 @@
     {
         "id":  "u601",
         "username":  "allerarnold2",
-        "password":  "sah0601",
         "role":  "homeowner",
         "name":  "ALLER, ARNOLD",
         "email":  "allerarnold2@sanalfonsohomes.local",
@@ -7802,7 +7202,6 @@
     {
         "id":  "u602",
         "username":  "arnedorichard",
-        "password":  "sah0602",
         "role":  "homeowner",
         "name":  "ARNEDO, RICHARD",
         "email":  "arnedorichard@sanalfonsohomes.local",
@@ -7815,7 +7214,6 @@
     {
         "id":  "u603",
         "username":  "luisdecastrojr",
-        "password":  "sah0603",
         "role":  "homeowner",
         "name":  "LUIS DE CASTRO JR.",
         "email":  "luisdecastrojr@sanalfonsohomes.local",
@@ -7828,7 +7226,6 @@
     {
         "id":  "u604",
         "username":  "derisneryl",
-        "password":  "sah0604",
         "role":  "homeowner",
         "name":  "DERIS, NERYL",
         "email":  "derisneryl@sanalfonsohomes.local",
@@ -7841,7 +7238,6 @@
     {
         "id":  "u605",
         "username":  "luisdecastrojr2",
-        "password":  "sah0605",
         "role":  "homeowner",
         "name":  "LUIS DE CASTRO JR.",
         "email":  "luisdecastrojr2@sanalfonsohomes.local",
@@ -7854,7 +7250,6 @@
     {
         "id":  "u606",
         "username":  "calwitedgar",
-        "password":  "sah0606",
         "role":  "homeowner",
         "name":  "CALWIT, EDGAR",
         "email":  "calwitedgar@sanalfonsohomes.local",
@@ -7867,7 +7262,6 @@
     {
         "id":  "u607",
         "username":  "genotivacherryann",
-        "password":  "sah0607",
         "role":  "homeowner",
         "name":  "GENOTIVA, CHERRY ANN",
         "email":  "genotivacherryann@sanalfonsohomes.local",
@@ -7880,7 +7274,6 @@
     {
         "id":  "u608",
         "username":  "escobalmarianojrcatallam",
-        "password":  "sah0608",
         "role":  "homeowner",
         "name":  "ESCOBAL, MARIANO JR./Catalla Maricel",
         "email":  "escobalmarianojrcatallam@sanalfonsohomes.local",
@@ -7893,7 +7286,6 @@
     {
         "id":  "u609",
         "username":  "soasmaryannwoodrobjr",
-        "password":  "sah0609",
         "role":  "homeowner",
         "name":  "SOÑAS MARY ANN/WOODRO B. JR",
         "email":  "soasmaryannwoodrobjr@sanalfonsohomes.local",
@@ -7906,7 +7298,6 @@
     {
         "id":  "u610",
         "username":  "ramoshugo",
-        "password":  "sah0610",
         "role":  "homeowner",
         "name":  "RAMOS, HUGO",
         "email":  "ramoshugo@sanalfonsohomes.local",
@@ -7919,7 +7310,6 @@
     {
         "id":  "u611",
         "username":  "asicomichelle",
-        "password":  "sah0611",
         "role":  "homeowner",
         "name":  "ASICO, MICHELLE",
         "email":  "asicomichelle@sanalfonsohomes.local",
@@ -7932,7 +7322,6 @@
     {
         "id":  "u612",
         "username":  "froalizas",
-        "password":  "sah0612",
         "role":  "homeowner",
         "name":  "FROA, LIZA S.",
         "email":  "froalizas@sanalfonsohomes.local",
@@ -7945,7 +7334,6 @@
     {
         "id":  "u613",
         "username":  "silerioabegail",
-        "password":  "sah0613",
         "role":  "homeowner",
         "name":  "SILERIO ABEGAIL",
         "email":  "silerioabegail@sanalfonsohomes.local",
@@ -7958,7 +7346,6 @@
     {
         "id":  "u614",
         "username":  "pesimolany",
-        "password":  "sah0614",
         "role":  "homeowner",
         "name":  "PESIMO, LANY",
         "email":  "pesimolany@sanalfonsohomes.local",
@@ -7971,7 +7358,6 @@
     {
         "id":  "u615",
         "username":  "ropetareenamarie",
-        "password":  "sah0615",
         "role":  "homeowner",
         "name":  "ROPETA REENA MARIE",
         "email":  "ropetareenamarie@sanalfonsohomes.local",
@@ -7984,7 +7370,6 @@
     {
         "id":  "u616",
         "username":  "froacarlitoiii",
-        "password":  "sah0616",
         "role":  "homeowner",
         "name":  "FROA, CARLITO III",
         "email":  "froacarlitoiii@sanalfonsohomes.local",
@@ -7997,7 +7382,6 @@
     {
         "id":  "u617",
         "username":  "basgrace",
-        "password":  "sah0617",
         "role":  "homeowner",
         "name":  "BAS, GRACE",
         "email":  "basgrace@sanalfonsohomes.local",
@@ -8010,7 +7394,6 @@
     {
         "id":  "u618",
         "username":  "mangaoangrufinojr",
-        "password":  "sah0618",
         "role":  "homeowner",
         "name":  "MANGAOANG, RUFINO JR.",
         "email":  "mangaoangrufinojr@sanalfonsohomes.local",
@@ -8023,7 +7406,6 @@
     {
         "id":  "u619",
         "username":  "bellecadanilo",
-        "password":  "sah0619",
         "role":  "homeowner",
         "name":  "BELLECA, DANILO",
         "email":  "bellecadanilo@sanalfonsohomes.local",
@@ -8036,7 +7418,6 @@
     {
         "id":  "u620",
         "username":  "bonareymel",
-        "password":  "sah0620",
         "role":  "homeowner",
         "name":  "BONA, REYMEL",
         "email":  "bonareymel@sanalfonsohomes.local",
@@ -8049,7 +7430,6 @@
     {
         "id":  "u621",
         "username":  "cavitenehemia",
-        "password":  "sah0621",
         "role":  "homeowner",
         "name":  "CAVITE, NEHEMIA",
         "email":  "cavitenehemia@sanalfonsohomes.local",
@@ -8062,7 +7442,6 @@
     {
         "id":  "u622",
         "username":  "cavitecarolyn",
-        "password":  "sah0622",
         "role":  "homeowner",
         "name":  "CAVITE, CAROLYN",
         "email":  "cavitecarolyn@sanalfonsohomes.local",
@@ -8075,7 +7454,6 @@
     {
         "id":  "u623",
         "username":  "simandorobertoamador",
-        "password":  "sah0623",
         "role":  "homeowner",
         "name":  "SIMANDO, ROBERTO AMADOR",
         "email":  "simandorobertoamador@sanalfonsohomes.local",
@@ -8088,7 +7466,6 @@
     {
         "id":  "u624",
         "username":  "infelizveronica",
-        "password":  "sah0624",
         "role":  "homeowner",
         "name":  "INFELIZ VERONICA",
         "email":  "infelizveronica@sanalfonsohomes.local",
@@ -8101,7 +7478,6 @@
     {
         "id":  "u625",
         "username":  "quijanoromnic",
-        "password":  "sah0625",
         "role":  "homeowner",
         "name":  "QUIJANO, ROMNIC",
         "email":  "quijanoromnic@sanalfonsohomes.local",
@@ -8114,7 +7490,6 @@
     {
         "id":  "u626",
         "username":  "viscayamabel",
-        "password":  "sah0626",
         "role":  "homeowner",
         "name":  "VISCAYA, MABEL",
         "email":  "viscayamabel@sanalfonsohomes.local",
@@ -8127,7 +7502,6 @@
     {
         "id":  "u627",
         "username":  "sanbuenaventuraargie",
-        "password":  "sah0627",
         "role":  "homeowner",
         "name":  "SAN BUENAVENTURA, ARGIE",
         "email":  "sanbuenaventuraargie@sanalfonsohomes.local",
@@ -8140,7 +7514,6 @@
     {
         "id":  "u628",
         "username":  "victoriaramonjr",
-        "password":  "sah0628",
         "role":  "homeowner",
         "name":  "VICTORIA, RAMON JR.",
         "email":  "victoriaramonjr@sanalfonsohomes.local",
@@ -8153,7 +7526,6 @@
     {
         "id":  "u629",
         "username":  "chavezmadina",
-        "password":  "sah0629",
         "role":  "homeowner",
         "name":  "CHAVEZ, MA. DINA",
         "email":  "chavezmadina@sanalfonsohomes.local",
@@ -8166,7 +7538,6 @@
     {
         "id":  "u630",
         "username":  "nericeleanor",
-        "password":  "sah0630",
         "role":  "homeowner",
         "name":  "NERIC, ELEANOR",
         "email":  "nericeleanor@sanalfonsohomes.local",
@@ -8179,7 +7550,6 @@
     {
         "id":  "u631",
         "username":  "mendozarufino",
-        "password":  "sah0631",
         "role":  "homeowner",
         "name":  "MENDOZA, RUFINO",
         "email":  "mendozarufino@sanalfonsohomes.local",
@@ -8192,7 +7562,6 @@
     {
         "id":  "u632",
         "username":  "estravillamejanijeansen",
-        "password":  "sah0632",
         "role":  "homeowner",
         "name":  "ESTRAVILLA, MEJANI JEANSEN",
         "email":  "estravillamejanijeansen@sanalfonsohomes.local",
@@ -8205,7 +7574,6 @@
     {
         "id":  "u633",
         "username":  "abarientosallan",
-        "password":  "sah0633",
         "role":  "homeowner",
         "name":  "ABARIENTOS, ALLAN",
         "email":  "abarientosallan@sanalfonsohomes.local",
@@ -8218,7 +7586,6 @@
     {
         "id":  "u634",
         "username":  "villamorkay",
-        "password":  "sah0634",
         "role":  "homeowner",
         "name":  "VILLAMOR, KAY",
         "email":  "villamorkay@sanalfonsohomes.local",
@@ -8231,7 +7598,6 @@
     {
         "id":  "u635",
         "username":  "delloromanuel",
-        "password":  "sah0635",
         "role":  "homeowner",
         "name":  "DELLORO, MANUEL",
         "email":  "delloromanuel@sanalfonsohomes.local",
@@ -8244,7 +7610,6 @@
     {
         "id":  "u636",
         "username":  "villamorkay2",
-        "password":  "sah0636",
         "role":  "homeowner",
         "name":  "VILLAMOR, KAY",
         "email":  "villamorkay2@sanalfonsohomes.local",
@@ -8257,7 +7622,6 @@
     {
         "id":  "u637",
         "username":  "transonamaginetrilonny",
-        "password":  "sah0637",
         "role":  "homeowner",
         "name":  "TRANSONA, MAGINE TRILONNY",
         "email":  "transonamaginetrilonny@sanalfonsohomes.local",
@@ -8270,7 +7634,6 @@
     {
         "id":  "u638",
         "username":  "albargerald",
-        "password":  "sah0638",
         "role":  "homeowner",
         "name":  "ALBAR, GERALD",
         "email":  "albargerald@sanalfonsohomes.local",
@@ -8283,7 +7646,6 @@
     {
         "id":  "u639",
         "username":  "elevadojoel",
-        "password":  "sah0639",
         "role":  "homeowner",
         "name":  "ELEVADO, JOEL",
         "email":  "elevadojoel@sanalfonsohomes.local",
@@ -8296,7 +7658,6 @@
     {
         "id":  "u640",
         "username":  "agapayalberto",
-        "password":  "sah0640",
         "role":  "homeowner",
         "name":  "AGAPAY, ALBERTO",
         "email":  "agapayalberto@sanalfonsohomes.local",
@@ -8309,7 +7670,6 @@
     {
         "id":  "u641",
         "username":  "obiasruthann",
-        "password":  "sah0641",
         "role":  "homeowner",
         "name":  "OBIAS RUTH ANN",
         "email":  "obiasruthann@sanalfonsohomes.local",
@@ -8322,7 +7682,6 @@
     {
         "id":  "u642",
         "username":  "nolascovjeremie",
-        "password":  "sah0642",
         "role":  "homeowner",
         "name":  "NOLASCO V. JEREMIE",
         "email":  "nolascovjeremie@sanalfonsohomes.local",
@@ -8335,7 +7694,6 @@
     {
         "id":  "u643",
         "username":  "tuygraceousheryl",
-        "password":  "sah0643",
         "role":  "homeowner",
         "name":  "TUY GRACE / Ou Sheryl",
         "email":  "tuygraceousheryl@sanalfonsohomes.local",
@@ -8348,7 +7706,6 @@
     {
         "id":  "u644",
         "username":  "permalemariane",
-        "password":  "sah0644",
         "role":  "homeowner",
         "name":  "PERMALE, MARIANE",
         "email":  "permalemariane@sanalfonsohomes.local",
@@ -8361,7 +7718,6 @@
     {
         "id":  "u645",
         "username":  "rapalsherwin",
-        "password":  "sah0645",
         "role":  "homeowner",
         "name":  "RAPAL, SHERWIN",
         "email":  "rapalsherwin@sanalfonsohomes.local",
@@ -8374,7 +7730,6 @@
     {
         "id":  "u646",
         "username":  "plantadodonnamia",
-        "password":  "sah0646",
         "role":  "homeowner",
         "name":  "PLANTADO,DONNA MIA",
         "email":  "plantadodonnamia@sanalfonsohomes.local",
@@ -8387,7 +7742,6 @@
     {
         "id":  "u647",
         "username":  "evascogiovanni",
-        "password":  "sah0647",
         "role":  "homeowner",
         "name":  "EVASCO, GIOVANNI",
         "email":  "evascogiovanni@sanalfonsohomes.local",
@@ -8400,7 +7754,6 @@
     {
         "id":  "u648",
         "username":  "carumbaspsjobbymacecilia",
-        "password":  "sah0648",
         "role":  "homeowner",
         "name":  "CARUMBA, SPS.JOBBY \u0026 MA. CECILIA",
         "email":  "carumbaspsjobbymacecilia@sanalfonsohomes.local",
@@ -8413,7 +7766,6 @@
     {
         "id":  "u649",
         "username":  "correocynthiab",
-        "password":  "sah0649",
         "role":  "homeowner",
         "name":  "CORREO CYNTHIA B.",
         "email":  "correocynthiab@sanalfonsohomes.local",
@@ -8426,7 +7778,6 @@
     {
         "id":  "u650",
         "username":  "asorelviraobias",
-        "password":  "sah0650",
         "role":  "homeowner",
         "name":  "ASOR, ELVIRA_OBIAS",
         "email":  "asorelviraobias@sanalfonsohomes.local",
@@ -8439,7 +7790,6 @@
     {
         "id":  "u651",
         "username":  "osmasalvacion",
-        "password":  "sah0651",
         "role":  "homeowner",
         "name":  "OSMA SALVACION",
         "email":  "osmasalvacion@sanalfonsohomes.local",
@@ -8452,7 +7802,6 @@
     {
         "id":  "u652",
         "username":  "bastarecheryan",
-        "password":  "sah0652",
         "role":  "homeowner",
         "name":  "BASTARECHE, RYAN",
         "email":  "bastarecheryan@sanalfonsohomes.local",
@@ -8465,7 +7814,6 @@
     {
         "id":  "u653",
         "username":  "gonzalesgina2",
-        "password":  "sah0653",
         "role":  "homeowner",
         "name":  "GONZALES, GINA",
         "email":  "gonzalesgina2@sanalfonsohomes.local",
@@ -8478,7 +7826,6 @@
     {
         "id":  "u654",
         "username":  "bastarecheandy",
-        "password":  "sah0654",
         "role":  "homeowner",
         "name":  "BASTARECHE, ANDY",
         "email":  "bastarecheandy@sanalfonsohomes.local",
@@ -8491,7 +7838,6 @@
     {
         "id":  "u655",
         "username":  "chavezdolores",
-        "password":  "sah0655",
         "role":  "homeowner",
         "name":  "CHAVEZ, DOLORES",
         "email":  "chavezdolores@sanalfonsohomes.local",
@@ -8504,7 +7850,6 @@
     {
         "id":  "u656",
         "username":  "villantealma",
-        "password":  "sah0656",
         "role":  "homeowner",
         "name":  "VILLANTE, ALMA",
         "email":  "villantealma@sanalfonsohomes.local",
@@ -8517,7 +7862,6 @@
     {
         "id":  "u657",
         "username":  "marcograce",
-        "password":  "sah0657",
         "role":  "homeowner",
         "name":  "MARCO, GRACE",
         "email":  "marcograce@sanalfonsohomes.local",
@@ -8530,7 +7874,6 @@
     {
         "id":  "u658",
         "username":  "marcograce2",
-        "password":  "sah0658",
         "role":  "homeowner",
         "name":  "MARCO, GRACE",
         "email":  "marcograce2@sanalfonsohomes.local",
@@ -8543,7 +7886,6 @@
     {
         "id":  "u659",
         "username":  "daduyaemma",
-        "password":  "sah0659",
         "role":  "homeowner",
         "name":  "DADUYA, EMMA",
         "email":  "daduyaemma@sanalfonsohomes.local",
@@ -8556,7 +7898,6 @@
     {
         "id":  "u660",
         "username":  "amilanomayjohn",
-        "password":  "sah0660",
         "role":  "homeowner",
         "name":  "AMILANO, MAY JOHN",
         "email":  "amilanomayjohn@sanalfonsohomes.local",
@@ -8569,7 +7910,6 @@
     {
         "id":  "u661",
         "username":  "guzmanhelengrace",
-        "password":  "sah0661",
         "role":  "homeowner",
         "name":  "GUZMAN, HELEN GRACE",
         "email":  "guzmanhelengrace@sanalfonsohomes.local",
@@ -8582,7 +7922,6 @@
     {
         "id":  "u662",
         "username":  "guzmanhelengrace2",
-        "password":  "sah0662",
         "role":  "homeowner",
         "name":  "GUZMAN, HELEN GRACE",
         "email":  "guzmanhelengrace2@sanalfonsohomes.local",
@@ -8595,7 +7934,6 @@
     {
         "id":  "u663",
         "username":  "burcemaria",
-        "password":  "sah0663",
         "role":  "homeowner",
         "name":  "BURCE, MARIA",
         "email":  "burcemaria@sanalfonsohomes.local",
@@ -8608,7 +7946,6 @@
     {
         "id":  "u664",
         "username":  "sumangidpascualpederesen",
-        "password":  "sah0664",
         "role":  "homeowner",
         "name":  "SUMANGID, PASCUAL/Pederesen MA. Cristina",
         "email":  "sumangidpascualpederesen@sanalfonsohomes.local",
@@ -8621,7 +7958,6 @@
     {
         "id":  "u665",
         "username":  "zalsosferdinand",
-        "password":  "sah0665",
         "role":  "homeowner",
         "name":  "ZALSOS, FERDINAND",
         "email":  "zalsosferdinand@sanalfonsohomes.local",
@@ -8634,7 +7970,6 @@
     {
         "id":  "u666",
         "username":  "posugacnormanpaul",
-        "password":  "sah0666",
         "role":  "homeowner",
         "name":  "POSUGAC, NORMAN PAUL",
         "email":  "posugacnormanpaul@sanalfonsohomes.local",
@@ -8647,7 +7982,6 @@
     {
         "id":  "u667",
         "username":  "padillojennifer",
-        "password":  "sah0667",
         "role":  "homeowner",
         "name":  "PADILLO, JENNIFER",
         "email":  "padillojennifer@sanalfonsohomes.local",
@@ -8660,7 +7994,6 @@
     {
         "id":  "u668",
         "username":  "belmontepearl",
-        "password":  "sah0668",
         "role":  "homeowner",
         "name":  "BELMONTE, PEARL",
         "email":  "belmontepearl@sanalfonsohomes.local",
@@ -8673,7 +8006,6 @@
     {
         "id":  "u669",
         "username":  "padillojennifer2",
-        "password":  "sah0669",
         "role":  "homeowner",
         "name":  "PADILLO, JENNIFER",
         "email":  "padillojennifer2@sanalfonsohomes.local",
@@ -8686,7 +8018,6 @@
     {
         "id":  "u670",
         "username":  "belmontemarilou",
-        "password":  "sah0670",
         "role":  "homeowner",
         "name":  "BELMONTE, MARILOU",
         "email":  "belmontemarilou@sanalfonsohomes.local",
@@ -8699,7 +8030,6 @@
     {
         "id":  "u671",
         "username":  "reaporbenjamin",
-        "password":  "sah0671",
         "role":  "homeowner",
         "name":  "REAPOR, BENJAMIN",
         "email":  "reaporbenjamin@sanalfonsohomes.local",
@@ -8712,7 +8042,6 @@
     {
         "id":  "u672",
         "username":  "buenafejosephine",
-        "password":  "sah0672",
         "role":  "homeowner",
         "name":  "BUENAFE, JOSEPHINE",
         "email":  "buenafejosephine@sanalfonsohomes.local",
@@ -8725,7 +8054,6 @@
     {
         "id":  "u673",
         "username":  "amadoradonisbuenafejosep",
-        "password":  "sah0673",
         "role":  "homeowner",
         "name":  "AMADOR,ADONIS/BUENAFE, JOSEPHINE (lot only)?",
         "email":  "amadoradonisbuenafejosep@sanalfonsohomes.local",
@@ -8738,7 +8066,6 @@
     {
         "id":  "u674",
         "username":  "salvadorromerrroberto",
-        "password":  "sah0674",
         "role":  "homeowner",
         "name":  "SALVADOR, ROMERR ROBERTO",
         "email":  "salvadorromerrroberto@sanalfonsohomes.local",
@@ -8751,7 +8078,6 @@
     {
         "id":  "u675",
         "username":  "borjaagnes",
-        "password":  "sah0675",
         "role":  "homeowner",
         "name":  "BORJA,AGNES",
         "email":  "borjaagnes@sanalfonsohomes.local",
@@ -8764,7 +8090,6 @@
     {
         "id":  "u676",
         "username":  "loquiasmonet",
-        "password":  "sah0676",
         "role":  "homeowner",
         "name":  "LOQUIAS, MONET",
         "email":  "loquiasmonet@sanalfonsohomes.local",
@@ -8777,7 +8102,6 @@
     {
         "id":  "u677",
         "username":  "loquiasvictorjohn",
-        "password":  "sah0677",
         "role":  "homeowner",
         "name":  "LOQUIAS, VICTOR JOHN",
         "email":  "loquiasvictorjohn@sanalfonsohomes.local",
@@ -8790,7 +8114,6 @@
     {
         "id":  "u678",
         "username":  "rullerlinda",
-        "password":  "sah0678",
         "role":  "homeowner",
         "name":  "RULL, ERLINDA",
         "email":  "rullerlinda@sanalfonsohomes.local",
@@ -8803,7 +8126,6 @@
     {
         "id":  "u679",
         "username":  "pelagioalisondelacruzzue",
-        "password":  "sah0679",
         "role":  "homeowner",
         "name":  "PELAGIO, ALISON / DE LA CRUZ ZUELA MAE",
         "email":  "pelagioalisondelacruzzue@sanalfonsohomes.local",
@@ -8816,7 +8138,6 @@
     {
         "id":  "u680",
         "username":  "fernandezeliazarfrancis",
-        "password":  "sah0680",
         "role":  "homeowner",
         "name":  "FERNANDEZ, ELIAZAR FRANCIS",
         "email":  "fernandezeliazarfrancis@sanalfonsohomes.local",
@@ -8829,7 +8150,6 @@
     {
         "id":  "u681",
         "username":  "delmundohermogenes",
-        "password":  "sah0681",
         "role":  "homeowner",
         "name":  "DEL MUNDO, HERMOGENES",
         "email":  "delmundohermogenes@sanalfonsohomes.local",
@@ -8842,7 +8162,6 @@
     {
         "id":  "u682",
         "username":  "ansusminda",
-        "password":  "sah0682",
         "role":  "homeowner",
         "name":  "ANSUS, MINDA",
         "email":  "ansusminda@sanalfonsohomes.local",
@@ -8855,7 +8174,6 @@
     {
         "id":  "u683",
         "username":  "borjacarlvincentgomezphi",
-        "password":  "sah0683",
         "role":  "homeowner",
         "name":  "BORJA, CARL VINCENT/GOMEZ PHILIP",
         "email":  "borjacarlvincentgomezphi@sanalfonsohomes.local",
@@ -8868,7 +8186,6 @@
     {
         "id":  "u684",
         "username":  "chavezjohnfloro",
-        "password":  "sah0684",
         "role":  "homeowner",
         "name":  "CHAVEZ, JOHN FLORO",
         "email":  "chavezjohnfloro@sanalfonsohomes.local",
@@ -8881,7 +8198,6 @@
     {
         "id":  "u685",
         "username":  "embestrofelicitas",
-        "password":  "sah0685",
         "role":  "homeowner",
         "name":  "EMBESTRO, FELICITAS",
         "email":  "embestrofelicitas@sanalfonsohomes.local",
@@ -8894,7 +8210,6 @@
     {
         "id":  "u686",
         "username":  "garciajocelyn",
-        "password":  "sah0686",
         "role":  "homeowner",
         "name":  "GARCIA, JOCELYN",
         "email":  "garciajocelyn@sanalfonsohomes.local",
@@ -8907,7 +8222,6 @@
     {
         "id":  "u687",
         "username":  "sanbuenaventuraargie2",
-        "password":  "sah0687",
         "role":  "homeowner",
         "name":  "SAN BUENAVENTURA ARGIE",
         "email":  "sanbuenaventuraargie2@sanalfonsohomes.local",
@@ -8920,7 +8234,6 @@
     {
         "id":  "u688",
         "username":  "dulayelmer",
-        "password":  "sah0688",
         "role":  "homeowner",
         "name":  "DULAY, ELMER",
         "email":  "dulayelmer@sanalfonsohomes.local",
@@ -8933,7 +8246,6 @@
     {
         "id":  "u689",
         "username":  "roakimrichard",
-        "password":  "sah0689",
         "role":  "homeowner",
         "name":  "ROA, KIM RICHARD",
         "email":  "roakimrichard@sanalfonsohomes.local",
@@ -8946,7 +8258,6 @@
     {
         "id":  "u690",
         "username":  "dulongjoan",
-        "password":  "sah0690",
         "role":  "homeowner",
         "name":  "DULONG, JOAN",
         "email":  "dulongjoan@sanalfonsohomes.local",
@@ -8959,7 +8270,6 @@
     {
         "id":  "u691",
         "username":  "ceajennifer",
-        "password":  "sah0691",
         "role":  "homeowner",
         "name":  "CEA, JENNIFER",
         "email":  "ceajennifer@sanalfonsohomes.local",
@@ -8972,7 +8282,6 @@
     {
         "id":  "u692",
         "username":  "sonnorifelramales",
-        "password":  "sah0692",
         "role":  "homeowner",
         "name":  "SON, NORIFEL RAMALES",
         "email":  "sonnorifelramales@sanalfonsohomes.local",
@@ -8985,7 +8294,6 @@
     {
         "id":  "u693",
         "username":  "jasarenocharolejeanzagno",
-        "password":  "sah0693",
         "role":  "homeowner",
         "name":  "JASARENO CHAROLE JEANZ  AGNO",
         "email":  "jasarenocharolejeanzagno@sanalfonsohomes.local",
@@ -8998,7 +8306,6 @@
     {
         "id":  "u694",
         "username":  "aspeofelia",
-        "password":  "sah0694",
         "role":  "homeowner",
         "name":  "ASPE, OFELIA",
         "email":  "aspeofelia@sanalfonsohomes.local",
@@ -9011,7 +8318,6 @@
     {
         "id":  "u695",
         "username":  "aspeeric",
-        "password":  "sah0695",
         "role":  "homeowner",
         "name":  "ASPE, ERIC",
         "email":  "aspeeric@sanalfonsohomes.local",
@@ -9024,7 +8330,6 @@
     {
         "id":  "u696",
         "username":  "barbonioshiela",
-        "password":  "sah0696",
         "role":  "homeowner",
         "name":  "BARBONIO, SHIELA",
         "email":  "barbonioshiela@sanalfonsohomes.local",
@@ -9037,7 +8342,6 @@
     {
         "id":  "u697",
         "username":  "nialgajosephinec",
-        "password":  "sah0697",
         "role":  "homeowner",
         "name":  "NIÑALGA, JOSEPHINE C.",
         "email":  "nialgajosephinec@sanalfonsohomes.local",
@@ -9050,7 +8354,6 @@
     {
         "id":  "u698",
         "username":  "fajardoadolfo",
-        "password":  "sah0698",
         "role":  "homeowner",
         "name":  "FAJARDO, ADOLFO",
         "email":  "fajardoadolfo@sanalfonsohomes.local",
@@ -9063,7 +8366,6 @@
     {
         "id":  "u699",
         "username":  "brusolacherry",
-        "password":  "sah0699",
         "role":  "homeowner",
         "name":  "BRUSOLA, CHERRY",
         "email":  "brusolacherry@sanalfonsohomes.local",
@@ -9076,7 +8378,6 @@
     {
         "id":  "u700",
         "username":  "credorichelle",
-        "password":  "sah0700",
         "role":  "homeowner",
         "name":  "CREDO, RICHELLE",
         "email":  "credorichelle@sanalfonsohomes.local",
@@ -9089,7 +8390,6 @@
     {
         "id":  "u701",
         "username":  "aquinoarnaldoriveraivan",
-        "password":  "sah0701",
         "role":  "homeowner",
         "name":  "AQUINO, ARNALDO / RIVERA, IVAN",
         "email":  "aquinoarnaldoriveraivan@sanalfonsohomes.local",
@@ -9102,7 +8402,6 @@
     {
         "id":  "u702",
         "username":  "credorichelle2",
-        "password":  "sah0702",
         "role":  "homeowner",
         "name":  "CREDO, RICHELLE",
         "email":  "credorichelle2@sanalfonsohomes.local",
@@ -9115,7 +8414,6 @@
     {
         "id":  "u703",
         "username":  "garciaerwin",
-        "password":  "sah0703",
         "role":  "homeowner",
         "name":  "GARCIA, ERWIN",
         "email":  "garciaerwin@sanalfonsohomes.local",
@@ -9128,7 +8426,6 @@
     {
         "id":  "u704",
         "username":  "pedrajitamildred",
-        "password":  "sah0704",
         "role":  "homeowner",
         "name":  "PEDRAJITA, MILDRED",
         "email":  "pedrajitamildred@sanalfonsohomes.local",
@@ -9141,7 +8438,6 @@
     {
         "id":  "u705",
         "username":  "rodriguezjosevi",
-        "password":  "sah0705",
         "role":  "homeowner",
         "name":  "RODRIGUEZ, JOSE VI",
         "email":  "rodriguezjosevi@sanalfonsohomes.local",
@@ -9154,7 +8450,6 @@
     {
         "id":  "u706",
         "username":  "sanpascualarmchel",
-        "password":  "sah0706",
         "role":  "homeowner",
         "name":  "SAN PASCUAL, ARMCHEL",
         "email":  "sanpascualarmchel@sanalfonsohomes.local",
@@ -9167,7 +8462,6 @@
     {
         "id":  "u707",
         "username":  "desturaaugustoeulalio",
-        "password":  "sah0707",
         "role":  "homeowner",
         "name":  "DESTURA, AUGUSTO EULALIO",
         "email":  "desturaaugustoeulalio@sanalfonsohomes.local",
@@ -9180,7 +8474,6 @@
     {
         "id":  "u708",
         "username":  "sileriozarah",
-        "password":  "sah0708",
         "role":  "homeowner",
         "name":  "SILERIO, ZARAH",
         "email":  "sileriozarah@sanalfonsohomes.local",
@@ -9193,7 +8486,6 @@
     {
         "id":  "u709",
         "username":  "mucerosmaricor",
-        "password":  "sah0709",
         "role":  "homeowner",
         "name":  "MUCEROS, MARICOR",
         "email":  "mucerosmaricor@sanalfonsohomes.local",
@@ -9206,7 +8498,6 @@
     {
         "id":  "u710",
         "username":  "arejolamaricar",
-        "password":  "sah0710",
         "role":  "homeowner",
         "name":  "AREJOLA, MARICAR",
         "email":  "arejolamaricar@sanalfonsohomes.local",
@@ -9219,7 +8510,6 @@
     {
         "id":  "u711",
         "username":  "palconnellytes",
-        "password":  "sah0711",
         "role":  "homeowner",
         "name":  "PALCON, NELLYTES",
         "email":  "palconnellytes@sanalfonsohomes.local",
@@ -9232,7 +8522,6 @@
     {
         "id":  "u712",
         "username":  "nullanchristine",
-        "password":  "sah0712",
         "role":  "homeowner",
         "name":  "NULLAN, CHRISTINE",
         "email":  "nullanchristine@sanalfonsohomes.local",
@@ -9245,7 +8534,6 @@
     {
         "id":  "u713",
         "username":  "espedidoarlene",
-        "password":  "sah0713",
         "role":  "homeowner",
         "name":  "ESPEDIDO, ARLENE",
         "email":  "espedidoarlene@sanalfonsohomes.local",
@@ -9258,7 +8546,6 @@
     {
         "id":  "u714",
         "username":  "encisojuanita",
-        "password":  "sah0714",
         "role":  "homeowner",
         "name":  "ENCISO, JUANITA",
         "email":  "encisojuanita@sanalfonsohomes.local",
@@ -9271,7 +8558,6 @@
     {
         "id":  "u715",
         "username":  "giananfrancia",
-        "password":  "sah0715",
         "role":  "homeowner",
         "name":  "GIANAN, FRANCIA",
         "email":  "giananfrancia@sanalfonsohomes.local",
@@ -9284,7 +8570,6 @@
     {
         "id":  "u716",
         "username":  "basalloterandy",
-        "password":  "sah0716",
         "role":  "homeowner",
         "name":  "BASALLOTE, RANDY",
         "email":  "basalloterandy@sanalfonsohomes.local",
@@ -9297,7 +8582,6 @@
     {
         "id":  "u717",
         "username":  "agananjorgejohn",
-        "password":  "sah0717",
         "role":  "homeowner",
         "name":  "AGANAN, JORGE JOHN",
         "email":  "agananjorgejohn@sanalfonsohomes.local",
@@ -9310,7 +8594,6 @@
     {
         "id":  "u718",
         "username":  "benemeritosalvacionsings",
-        "password":  "sah0718",
         "role":  "homeowner",
         "name":  "BENEMERITO, SALVACION/singson nida",
         "email":  "benemeritosalvacionsings@sanalfonsohomes.local",

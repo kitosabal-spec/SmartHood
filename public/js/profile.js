@@ -302,7 +302,6 @@ async function uploadProfilePhoto() {
     form.append('photo', croppedFile, croppedFile.name);
     const response = await fetch(`/api/users/${encodeURIComponent(currentUser.id)}/photo`, {
       method: 'POST',
-      headers: { 'X-User-Id': currentUser.id },
       body: form,
     });
     const result = await response.json().catch(() => ({}));
@@ -337,7 +336,6 @@ async function removeProfilePhoto() {
   try {
     const response = await fetch(`/api/users/${encodeURIComponent(currentUser.id)}/photo`, {
       method: 'DELETE',
-      headers: { 'X-User-Id': currentUser.id },
     });
     const result = await response.json().catch(() => ({}));
     if (!response.ok) throw new Error(result.error || 'Could not remove photo.');

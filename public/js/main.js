@@ -112,16 +112,28 @@ const HOMEOWNER_NAV = [
 // SECTION 2: SEED DATA
 
 async function seedData() {
-  await api.loadAll();
+  const hasSessionHint = Boolean(sessionStorage.getItem('sah_session'));
+  if (hasSessionHint) {
+    try {
+      await api.loadAll();
+      return;
+    } catch {
+      // The signed cookie may have expired while sessionStorage remained.
+      sessionStorage.removeItem('sah_session');
+      currentUser = null;
+      currentRole = null;
+    }
+  }
+  await api.loadPublic();
   return;
   if (!localStorage.getItem('sah_seeded')) {
     const users = [
-      { id: 'u001', username: 'admin', password: 'admin123', role: 'admin', name: 'Amy Antipolo', email: 'admin@sanalfonsohomes.com' },
-      { id: 'u002', username: 'juandelacruz', password: 'home123', role: 'homeowner', name: 'Juan Dela Cruz', email: 'juan@email.com', block: 'Block 3', lot: 'Lot 7', contact: '09171234567', balance: 3500 },
-      { id: 'u003', username: 'annamaria', password: 'home123', role: 'homeowner', name: 'Anna Maria Reyes', email: 'anna@email.com', block: 'Block 1', lot: 'Lot 2', contact: '09281234567', balance: 0 },
-      { id: 'u004', username: 'carlosmagno', password: 'home123', role: 'homeowner', name: 'Carlos Magno', email: 'carlos@email.com', block: 'Block 2', lot: 'Lot 5', contact: '09351234567', balance: 7000 },
-      { id: 'u005', username: 'ritaflores', password: 'home123', role: 'homeowner', name: 'Rita Flores', email: 'rita@email.com', block: 'Block 4', lot: 'Lot 1', contact: '09461234567', balance: 1500 },
-      { id: 'u006', username: 'pedroparcero', password: 'home123', role: 'homeowner', name: 'Pedro Parcero', email: 'pedro@email.com', block: 'Block 1', lot: 'Lot 8', contact: '09571234567', balance: 0 },
+      { id: 'u001', username: 'admin', role: 'admin', name: 'Amy Antipolo', email: 'admin@sanalfonsohomes.com' },
+      { id: 'u002', username: 'juandelacruz', role: 'homeowner', name: 'Juan Dela Cruz', email: 'juan@email.com', block: 'Block 3', lot: 'Lot 7', contact: '09171234567', balance: 3500 },
+      { id: 'u003', username: 'annamaria', role: 'homeowner', name: 'Anna Maria Reyes', email: 'anna@email.com', block: 'Block 1', lot: 'Lot 2', contact: '09281234567', balance: 0 },
+      { id: 'u004', username: 'carlosmagno', role: 'homeowner', name: 'Carlos Magno', email: 'carlos@email.com', block: 'Block 2', lot: 'Lot 5', contact: '09351234567', balance: 7000 },
+      { id: 'u005', username: 'ritaflores', role: 'homeowner', name: 'Rita Flores', email: 'rita@email.com', block: 'Block 4', lot: 'Lot 1', contact: '09461234567', balance: 1500 },
+      { id: 'u006', username: 'pedroparcero', role: 'homeowner', name: 'Pedro Parcero', email: 'pedro@email.com', block: 'Block 1', lot: 'Lot 8', contact: '09571234567', balance: 0 },
     ];
 
     const billings = [
@@ -202,19 +214,6 @@ const api = {
     if (!(options.body instanceof FormData)) {
       if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
     }
-    const sessionUserId = (typeof currentUser !== 'undefined' && currentUser && (currentUser.id || currentUser.user_id))
-      ? (currentUser.id || currentUser.user_id)
-      : (() => {
-          try {
-            const raw = sessionStorage.getItem('sah_session');
-            return raw ? JSON.parse(raw)?.id : null;
-          } catch {
-            return null;
-          }
-        })();
-    if (sessionUserId) {
-      headers['X-User-Id'] = sessionUserId;
-    }
     const response = await fetch(path, {
       ...options,
       headers,
@@ -239,6 +238,12 @@ const api = {
 
   async loadAll() {
     dbCache = await this.request('/api/data');
+    return dbCache;
+  },
+
+  async loadPublic() {
+    const publicData = await this.request('/api/public-data');
+    dbCache = { ...dbCache, ...publicData };
     return dbCache;
   },
 
@@ -377,6 +382,14 @@ const api = {
 
   async logout() {
     return this.request('/api/logout', { method: 'POST' });
+  },
+
+  async dismissNotification(id) {
+    return this.request(`/api/notifications/${encodeURIComponent(id)}/dismiss`, { method: 'PATCH' });
+  },
+
+  async dismissAllNotifications() {
+    return this.request('/api/notifications/dismiss-all', { method: 'POST' });
   },
 
   async createManualPayment(data) {
@@ -3363,29 +3376,9 @@ function saveSeenNotificationIds(ids) {
 }
 
 function addNotification(title, message, options = {}) {
-  const stored = db.get('notifications');
-  const hasAudience = Boolean(options.audience || options.roles || options.userIds);
-  const notification = {
-    id: db.newId('n'),
-    title,
-    message,
-    time: new Date().toLocaleTimeString(),
-    audience: options.audience || (options.roles ? 'roles' : 'users'),
-    targetIds: normalizeNotificationList(options.roles || options.userIds || (hasAudience ? [] : [currentUser?.id])),
-    dismissedBy: [],
-  };
-
-  if (notification.audience === 'all') notification.targetIds = [];
-  if (notification.audience === 'users') notification.targetIds = notification.targetIds.filter(Boolean);
-
-  stored.unshift(notification);
-  db.save('notifications', notification);
-  const panel = document.getElementById('notifPanel');
-  if (panel && !panel.classList.contains('hidden')) {
-    renderNotificationList();
-    markVisibleNotificationsSeen();
-  }
-  updateNotifBadge();
+  // Notifications are server-authored so a browser cannot forge messages for
+  // another user or role. Resource APIs create their own trusted notices.
+  console.warn('Client-side notification creation is disabled.', { title, message, options });
 }
 
 function canSeeNotification(notification) {
@@ -3460,16 +3453,16 @@ function renderNotificationList() {
 }
 
 function deleteNotification(notifId) {
-  openConfirm('Delete Notification', 'Delete this notification?', () => {
+  openConfirm('Delete Notification', 'Delete this notification?', async () => {
     if (!currentUser) return;
-    const stored = db.get('notifications').map(notification => {
-      if (notification.id !== notifId) return notification;
-      const dismissedBy = normalizeNotificationList(notification.dismissedBy);
-      return { ...notification, dismissedBy: [...new Set([...dismissedBy, currentUser.id])] };
-    });
-    db.set('notifications', stored);
-    renderNotificationList();
-    updateNotifBadge();
+    try {
+      await api.dismissNotification(notifId);
+      dbCache.notifications = db.get('notifications').filter(notification => notification.id !== notifId);
+      renderNotificationList();
+      updateNotifBadge();
+    } catch (error) {
+      showToast('error', 'Could Not Dismiss', error.message || 'Please try again.');
+    }
   });
 }
 
@@ -3551,17 +3544,17 @@ function toggleNotifPanel() {
   }
 }
 
-function clearNotifications() {
+async function clearNotifications() {
   if (!currentUser) return;
-  const stored = db.get('notifications').map(notification => {
-    if (!canSeeNotification(notification)) return notification;
-    const dismissedBy = normalizeNotificationList(notification.dismissedBy);
-    return { ...notification, dismissedBy: [...new Set([...dismissedBy, currentUser.id])] };
-  });
-  db.set('notifications', stored);
-  const list = document.getElementById('notifList');
-  if (list) list.innerHTML = '<p class="empty-note">No notifications</p>';
-  updateNotifBadge();
+  try {
+    await api.dismissAllNotifications();
+    dbCache.notifications = [];
+    const list = document.getElementById('notifList');
+    if (list) list.innerHTML = '<p class="empty-note">No notifications</p>';
+    updateNotifBadge();
+  } catch (error) {
+    showToast('error', 'Could Not Clear', error.message || 'Please try again.');
+  }
 }
 
 
@@ -3994,7 +3987,8 @@ async function init() {
     localStorage.removeItem('sah_session');
   } catch {}
 
-  // Set provisional currentUser from sessionStorage so api.loadAll sends X-User-Id
+  // Restore UI state provisionally; the server still authenticates exclusively
+  // with its signed HttpOnly session cookie.
   try {
     const raw = sessionStorage.getItem('sah_session');
     if (raw) {
