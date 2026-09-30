@@ -871,7 +871,7 @@ function renderLostFoundManagement(filtered = null) {
     </div>
   </div>
 
-  <div class="stats-grid">
+  <div class="stats-grid lostfound-stats-grid">
     <div class="stat-card" style="--card-accent:#d97706;--card-accent-bg:#fef3c7">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-clock"/></svg></div>
       <div class="stat-info">

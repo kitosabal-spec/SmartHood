@@ -289,3 +289,34 @@
   border: 1px solid var(--border);
 }
 
+/* ── LOST AND FOUND MANAGEMENT SUMMARY / STATUS CARDS ── */
+.lostfound-stats-grid,
+.lf-admin-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) !important;
+  grid-auto-rows: 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.lostfound-stats-grid .stat-card,
+.lf-admin-stats-grid .stat-card {
+  height: 100%;
+  box-sizing: border-box;
+}
+
+@media (max-width: 1024px) {
+  .lostfound-stats-grid,
+  .lf-admin-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+}
+
+@media (max-width: 640px) {
+  .lostfound-stats-grid,
+  .lf-admin-stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+
