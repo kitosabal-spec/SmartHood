@@ -1,5 +1,182 @@
 // SECTION 6: ADMIN — DASHBOARD
 
+const REVENUE_YEAR_STORAGE_KEYS_LIST = [
+  'sah_revenue_year',
+  'monthlyRevenueYear',
+  'monthly_revenue_year',
+  'revenue_year',
+  'adminRevenueYear',
+  'sah_monthly_revenue_year'
+];
+
+function readSavedRevenueYear() {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    for (const k of REVENUE_YEAR_STORAGE_KEYS_LIST) {
+      const v = localStorage.getItem(k);
+      if (v !== null && v !== '') {
+        const n = Number(v);
+        if (Number.isFinite(n) && n >= 1900 && n <= 2100) return n;
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function writeSavedRevenueYear(year) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const s = String(year);
+    for (const k of REVENUE_YEAR_STORAGE_KEYS_LIST) {
+      localStorage.setItem(k, s);
+    }
+  } catch (e) {}
+}
+
+let adminRevenueYear = readSavedRevenueYear();
+
+function toggleRevenueYearDropdown(event) {
+  if (event) {
+    event.stopPropagation();
+  }
+  const dropdown = document.getElementById('revenueYearDropdown');
+  const btn = document.getElementById('revenueYearDisplay');
+  if (!dropdown) return;
+  const isHidden = dropdown.classList.contains('hidden');
+  if (isHidden) {
+    dropdown.classList.remove('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'true');
+  } else {
+    dropdown.classList.add('hidden');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function closeRevenueYearDropdown() {
+  const dropdown = document.getElementById('revenueYearDropdown');
+  if (dropdown && !dropdown.classList.contains('hidden')) {
+    dropdown.classList.add('hidden');
+    const btn = document.getElementById('revenueYearDisplay');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+  }
+}
+
+function setAdminRevenueYear(year, event) {
+  if (event) {
+    event.stopPropagation();
+  }
+  const numYear = Number(year);
+  if (!Number.isFinite(numYear)) return;
+
+  const payments = db.get('payments');
+  const billings = db.get('billings');
+  const getAvailYearsFn = typeof getAvailableRevenueYears === 'function'
+    ? getAvailableRevenueYears
+    : (typeof window !== 'undefined' && typeof window.getAvailableRevenueYears === 'function' ? window.getAvailableRevenueYears : null);
+  const years = typeof getAvailYearsFn === 'function'
+    ? getAvailYearsFn(payments, billings)
+    : [numYear];
+  if (!years.length) return;
+
+  const minYear = years[0];
+  const maxYear = years[years.length - 1];
+  const targetYear = Math.max(minYear, Math.min(maxYear, numYear));
+
+  adminRevenueYear = targetYear;
+  writeSavedRevenueYear(targetYear);
+  if (typeof window !== 'undefined') {
+    window.adminRevenueYear = adminRevenueYear;
+  }
+
+  const buildMonthlyRevenueDataFn = typeof buildMonthlyRevenueData === 'function'
+    ? buildMonthlyRevenueData
+    : (typeof window !== 'undefined' && typeof window.buildMonthlyRevenueData === 'function' ? window.buildMonthlyRevenueData : () => []);
+  const monthlyData = buildMonthlyRevenueDataFn(payments, adminRevenueYear);
+
+  const renderChartFn = typeof renderMonthlyBarChart === 'function'
+    ? renderMonthlyBarChart
+    : (typeof window !== 'undefined' && typeof window.renderMonthlyBarChart === 'function' ? window.renderMonthlyBarChart : () => {});
+  renderChartFn('barChart', monthlyData, adminRevenueYear);
+
+  const textEl = document.getElementById('revenueYearText');
+  if (textEl) textEl.textContent = String(adminRevenueYear);
+
+  const prevBtn = document.getElementById('revenuePrevYearBtn');
+  if (prevBtn) {
+    prevBtn.disabled = adminRevenueYear <= minYear;
+  }
+
+  const nextBtn = document.getElementById('revenueNextYearBtn');
+  if (nextBtn) {
+    nextBtn.disabled = adminRevenueYear >= maxYear;
+  }
+
+  const select = document.getElementById('revenueYearSelect');
+  if (select && select.value !== String(adminRevenueYear)) {
+    select.value = String(adminRevenueYear);
+  }
+
+  document.querySelectorAll('.chart-year-option').forEach(opt => {
+    opt.classList.toggle('active', Number(opt.dataset.year) === adminRevenueYear);
+  });
+
+  closeRevenueYearDropdown();
+}
+
+function changeAdminRevenueYear(delta) {
+  const payments = db.get('payments');
+  const billings = db.get('billings');
+  const getAvailYearsFn = typeof getAvailableRevenueYears === 'function'
+    ? getAvailableRevenueYears
+    : (typeof window !== 'undefined' && typeof window.getAvailableRevenueYears === 'function' ? window.getAvailableRevenueYears : null);
+  const years = typeof getAvailYearsFn === 'function'
+    ? getAvailYearsFn(payments, billings)
+    : (adminRevenueYear ? [adminRevenueYear] : [new Date().getFullYear()]);
+  if (!years.length) return;
+
+  const saved = readSavedRevenueYear();
+  const currentYear = adminRevenueYear !== null
+    ? adminRevenueYear
+    : (saved !== null && years.includes(saved) ? saved : years[years.length - 1]);
+  const currentIndex = years.indexOf(currentYear);
+  if (currentIndex === -1) {
+    setAdminRevenueYear(years[0]);
+    return;
+  }
+
+  const newIndex = currentIndex + delta;
+  if (newIndex >= 0 && newIndex < years.length) {
+    setAdminRevenueYear(years[newIndex]);
+  }
+}
+
+if (typeof document !== 'undefined') {
+  document.addEventListener('click', (e) => {
+    const wrap = document.getElementById('monthlyRevenueYearSelector');
+    if (wrap && !wrap.contains(e.target)) {
+      closeRevenueYearDropdown();
+    }
+  });
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') {
+      closeRevenueYearDropdown();
+    }
+  });
+}
+
+if (typeof window !== 'undefined') {
+  window.adminRevenueYear = adminRevenueYear;
+  window.toggleRevenueYearDropdown = toggleRevenueYearDropdown;
+  window.closeRevenueYearDropdown = closeRevenueYearDropdown;
+  window.setAdminRevenueYear = setAdminRevenueYear;
+  window.changeAdminRevenueYear = changeAdminRevenueYear;
+  window.getSavedRevenueYear = readSavedRevenueYear;
+  window.saveRevenueYear = writeSavedRevenueYear;
+  window.renderAdminDashboard = renderAdminDashboard;
+}
+
+
 
 function renderAdminDashboard() {
   syncHomeownerBalances();
@@ -15,8 +192,41 @@ function renderAdminDashboard() {
   const reviewedComplaints = complaints.filter(c => normalizeComplaintStatus(c.status) === 'Reviewed').length;
   const area = document.getElementById('contentArea');
 
-  const analysisYear = getAnalysisYear(payments, billings);
-  const monthlyData = buildMonthlyRevenueData(payments, analysisYear);
+  const getAnalysisYearFn = typeof getAnalysisYear === 'function'
+    ? getAnalysisYear
+    : (typeof window !== 'undefined' && typeof window.getAnalysisYear === 'function' ? window.getAnalysisYear : () => new Date().getFullYear());
+  const analysisYear = getAnalysisYearFn(payments, billings);
+
+  const getAvailYearsFn = typeof getAvailableRevenueYears === 'function'
+    ? getAvailableRevenueYears
+    : (typeof window !== 'undefined' && typeof window.getAvailableRevenueYears === 'function' ? window.getAvailableRevenueYears : null);
+  const availableYears = typeof getAvailYearsFn === 'function'
+    ? getAvailYearsFn(payments, billings)
+    : [analysisYear];
+
+  const defaultYear = availableYears.includes(analysisYear)
+    ? analysisYear
+    : availableYears[availableYears.length - 1];
+
+  const savedYear = readSavedRevenueYear();
+  if (savedYear !== null) {
+    if (!availableYears.includes(savedYear) && Number.isInteger(savedYear) && savedYear >= 2000 && savedYear <= 2100) {
+      availableYears.push(savedYear);
+      availableYears.sort((a, b) => a - b);
+    }
+    adminRevenueYear = availableYears.includes(savedYear) ? savedYear : defaultYear;
+  } else {
+    adminRevenueYear = defaultYear;
+  }
+
+  if (typeof window !== 'undefined') {
+    window.adminRevenueYear = adminRevenueYear;
+  }
+
+  const buildMonthlyRevenueDataFn = typeof buildMonthlyRevenueData === 'function'
+    ? buildMonthlyRevenueData
+    : (typeof window !== 'undefined' && typeof window.buildMonthlyRevenueData === 'function' ? window.buildMonthlyRevenueData : () => []);
+  const monthlyData = buildMonthlyRevenueDataFn(payments, adminRevenueYear);
   const paymentCounts = paymentStatusCounts(payments);
   const paymentTotal = paymentCounts.approved + paymentCounts.pending + paymentCounts.rejected;
 
@@ -24,7 +234,7 @@ function renderAdminDashboard() {
   <div class="page-header">
     <div class="page-header-left">
       <h2>Dashboard</h2>
-      <p>Welcome back, ${currentUser.name}. Here's your overview.</p>
+      <p>Welcome back, ${currentUser?.name || currentUser?.username || 'Admin'}. Here's your overview.</p>
     </div>
   </div>
 
@@ -63,9 +273,30 @@ function renderAdminDashboard() {
 
   <div class="charts-row">
     <div class="chart-card chart-card-wide">
-      <h4>Monthly Revenue (${analysisYear})</h4>
+      <div class="chart-header">
+        <h4>Monthly Revenue</h4>
+        <div class="chart-year-selector" id="monthlyRevenueYearSelector">
+          <button type="button" class="chart-year-btn chart-year-prev" id="revenuePrevYearBtn" onclick="changeAdminRevenueYear(-1)" title="Previous year" aria-label="Previous year" ${adminRevenueYear <= availableYears[0] ? 'disabled' : ''}>&lt;</button>
+          <div class="chart-year-dropdown-wrap">
+            <button type="button" class="chart-year-display" id="revenueYearDisplay" onclick="toggleRevenueYearDropdown(event)" aria-haspopup="listbox" aria-expanded="false" title="Select year">
+              <span id="revenueYearText">${adminRevenueYear}</span>
+            </button>
+            <div class="chart-year-dropdown hidden" id="revenueYearDropdown" role="listbox">
+              ${[...availableYears].reverse().map(y => `
+                <button type="button" class="chart-year-option ${y === adminRevenueYear ? 'active' : ''}" data-year="${y}" onclick="setAdminRevenueYear(${y}, event)">${y}</button>
+              `).join('')}
+            </div>
+            <select class="chart-year-select" id="revenueYearSelect" onchange="setAdminRevenueYear(Number(this.value))" aria-label="Select year">
+              ${availableYears.map(y => `
+                <option value="${y}" ${y === adminRevenueYear ? 'selected' : ''}>${y}</option>
+              `).join('')}
+            </select>
+          </div>
+          <button type="button" class="chart-year-btn chart-year-next" id="revenueNextYearBtn" onclick="changeAdminRevenueYear(1)" title="Next year" aria-label="Next year" ${adminRevenueYear >= availableYears[availableYears.length - 1] ? 'disabled' : ''}>&gt;</button>
+        </div>
+      </div>
       <div class="chart-bars" id="barChart"></div>
-      <div style="display:flex;gap:8px;margin-top:6px">
+      <div style="display:flex;gap:8px;margin-top:6px" class="chart-month-labels" id="barChartMonthLabels">
         ${monthlyData.map(d => `<div style="flex:1;text-align:center;font-size:0.72rem;color:var(--text-3)">${d.m}</div>`).join('')}
       </div>
     </div>
@@ -122,7 +353,10 @@ function renderAdminDashboard() {
     </div>
   </div>`;
 
-  renderMonthlyBarChart('barChart', monthlyData, analysisYear);
+  const renderChartFn = typeof renderMonthlyBarChart === 'function'
+    ? renderMonthlyBarChart
+    : (typeof window !== 'undefined' && typeof window.renderMonthlyBarChart === 'function' ? window.renderMonthlyBarChart : () => {});
+  renderChartFn('barChart', monthlyData, adminRevenueYear);
   const total = paymentTotal;
   renderDonut('donutChart', [
     { value: paymentCounts.approved, color: '#16a34a' },
@@ -131,7 +365,7 @@ function renderAdminDashboard() {
   ], total, 'Total', total);
 
   const tbody = document.getElementById('recentPaymentsTable');
-  const recentP = [...payments].sort((a,b) => b.submittedAt.localeCompare(a.submittedAt)).slice(0, 5);
+  const recentP = [...payments].sort((a,b) => (b.submittedAt || '').localeCompare(a.submittedAt || '')).slice(0, 5);
   recentP.forEach(p => {
     const ho = db.getOne('users', p.homeownerId);
     tbody.innerHTML += `

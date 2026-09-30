@@ -1125,6 +1125,89 @@ function getAnalysisYear(payments = db.get('payments'), billings = db.get('billi
   return years.length ? Math.max(...years) : new Date().getFullYear();
 }
 
+const REVENUE_YEAR_STORAGE_KEY = 'sah_revenue_year';
+const REVENUE_YEAR_STORAGE_KEYS = [
+  'sah_revenue_year',
+  'monthlyRevenueYear',
+  'monthly_revenue_year',
+  'revenue_year',
+  'adminRevenueYear',
+  'sah_monthly_revenue_year'
+];
+
+function getSavedRevenueYear() {
+  try {
+    if (typeof localStorage === 'undefined') return null;
+    for (const key of REVENUE_YEAR_STORAGE_KEYS) {
+      const val = localStorage.getItem(key);
+      if (val !== null && val !== '') {
+        const num = Number(val);
+        if (Number.isFinite(num) && num >= 1900 && num <= 2100) {
+          return num;
+        }
+      }
+    }
+  } catch (e) {}
+  return null;
+}
+
+function saveRevenueYear(year) {
+  try {
+    if (typeof localStorage === 'undefined') return;
+    const val = String(year);
+    for (const key of REVENUE_YEAR_STORAGE_KEYS) {
+      localStorage.setItem(key, val);
+    }
+  } catch (e) {}
+}
+
+function getAvailableRevenueYears(payments = db.get('payments'), billings = db.get('billings')) {
+  const recorded = new Set();
+  const currentYear = new Date().getFullYear();
+  recorded.add(currentYear);
+
+  const savedYear = typeof getSavedRevenueYear === 'function' ? getSavedRevenueYear() : null;
+  if (savedYear && Number.isInteger(savedYear) && savedYear >= 2000 && savedYear <= 2100) {
+    recorded.add(savedYear);
+  }
+
+  (payments || []).forEach(p => {
+    if (p.monthly_dues_month && /^\d{4}-\d{2}$/.test(p.monthly_dues_month)) {
+      recorded.add(Number(p.monthly_dues_month.split('-')[0]));
+    }
+    const y = getRecordYear(p.payment_date, p.reviewedAt, p.submittedAt, p.createdAt);
+    if (y) recorded.add(y);
+  });
+
+  (billings || []).forEach(b => {
+    if (b.monthly_dues_month && /^\d{4}-\d{2}$/.test(b.monthly_dues_month)) {
+      recorded.add(Number(b.monthly_dues_month.split('-')[0]));
+    }
+    const y = getRecordYear(b.createdAt, b.dueDate);
+    if (y) recorded.add(y);
+  });
+
+  const validYears = Array.from(recorded).filter(y => Number.isInteger(y) && y >= 2000 && y <= 2100);
+  if (!validYears.length) return [currentYear];
+
+  const minYear = Math.min(...validYears);
+  const maxYear = Math.max(...validYears);
+
+  const years = [];
+  for (let y = minYear; y <= maxYear; y++) {
+    years.push(y);
+  }
+  return years;
+}
+if (typeof window !== 'undefined') {
+  window.getAnalysisYear = getAnalysisYear;
+  window.getSavedRevenueYear = getSavedRevenueYear;
+  window.saveRevenueYear = saveRevenueYear;
+  window.getAvailableRevenueYears = getAvailableRevenueYears;
+  window.buildMonthlyRevenueData = buildMonthlyRevenueData;
+  window.renderMonthlyBarChart = renderMonthlyBarChart;
+}
+
 function buildMonthlyRevenueData(payments, year) {
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   const totals = months.map(month => ({ m: month, v: 0 }));
@@ -1168,17 +1251,16 @@ function renderMonthlyBarChart(containerId, monthlyData, year) {
   const barWrap = document.getElementById(containerId);
   if (!barWrap) return;
 
-  const maxMonthly = Math.max(...monthlyData.map(d => d.v), 0);
-  if (maxMonthly <= 0) {
-    barWrap.innerHTML = `<div class="chart-empty">No approved payments recorded for ${year}.</div>`;
-    return;
-  }
+  const maxMonthly = Math.max(...monthlyData.map(d => toMoneyNumber(d.v)), 0);
 
   barWrap.innerHTML = monthlyData.map(d => {
-    const pct = Math.max((d.v / maxMonthly) * 100, d.v > 0 ? 4 : 0);
+    const val = toMoneyNumber(d.v);
+    const pct = maxMonthly > 0 ? (val > 0 ? Math.max((val / maxMonthly) * 100, 4) : 0) : 0;
+    const displayVal = val === 0 ? '0' : formatCurrency(val);
+    const barBg = val > 0 ? 'linear-gradient(180deg,#2271c3,#4a90d9)' : 'var(--border)';
     return `
       <div class="chart-bar-wrap">
-        <div class="chart-bar" style="height:${pct}%;background:linear-gradient(180deg,#2271c3,#4a90d9)" data-val="${formatCurrency(d.v)}"></div>
+        <div class="chart-bar" style="height:${pct}%;background:${barBg}" data-val="${displayVal}" data-value="${val}" data-month="${d.m}" title="${d.m}: ${displayVal}" role="img" aria-label="${d.m}: ${displayVal}"></div>
       </div>`;
   }).join('');
 }
