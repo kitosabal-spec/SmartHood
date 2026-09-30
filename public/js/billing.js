@@ -73,11 +73,226 @@ if (typeof getLocalDateValue !== 'function') {
 }
 
 
+let billingPaginationState = { page: 1, pageSize: 10 };
+let currentBillingFilteredList = null;
+
+function changeBillingPage(page) {
+  billingPaginationState.page = page;
+  renderBillingTable(currentBillingFilteredList, false);
+}
+if (typeof window !== 'undefined') window.changeBillingPage = changeBillingPage;
+
+function changeBillingPageSize(pageSize) {
+  billingPaginationState.pageSize = pageSize;
+  billingPaginationState.page = 1;
+  renderBillingTable(currentBillingFilteredList, false);
+}
+if (typeof window !== 'undefined') window.changeBillingPageSize = changeBillingPageSize;
+
+function parseBillingFilterDate(value) {
+  if (!value) return null;
+  const str = String(value).trim();
+  const dateOnly = str.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnly) {
+    return new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+  }
+  const d = new Date(str);
+  return Number.isFinite(d.getTime()) ? d : null;
+}
+if (typeof window !== 'undefined') window.parseBillingFilterDate = parseBillingFilterDate;
+
+function getBillingRecordDates(billing) {
+  const dates = [];
+  if (billing?.dueDate) {
+    const d = parseBillingFilterDate(billing.dueDate);
+    if (d) dates.push(d);
+  }
+  if (billing?.createdAt) {
+    const d = parseBillingFilterDate(billing.createdAt);
+    if (d) dates.push(d);
+  }
+  if (!dates.length && billing?.monthly_dues_month) {
+    const d = parseBillingFilterDate(`${billing.monthly_dues_month}-01`);
+    if (d) dates.push(d);
+  }
+  return dates;
+}
+
+function filterBillings(resetPage = true) {
+  if (resetPage) {
+    billingPaginationState.page = 1;
+  }
+  const q = (document.getElementById('billSearch')?.value || '').trim().toLowerCase();
+  const statusFilter = (document.getElementById('billStatusFilter')?.value || 'all').toLowerCase();
+  const datePreset = (document.getElementById('billDateFilter')?.value || 'all').toLowerCase();
+  const dateInput = document.getElementById('billDate');
+  const startInput = document.getElementById('billStartDate');
+  const endInput = document.getElementById('billEndDate');
+
+  const now = new Date();
+  let rangeStart = null;
+  let rangeEnd = null;
+
+  if (datePreset === 'today') {
+    rangeStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    rangeEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  } else if (datePreset === 'week') {
+    const day = now.getDay() || 7; // Monday is the start of the week
+    rangeStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - day + 1, 0, 0, 0, 0);
+    rangeEnd = new Date(rangeStart.getFullYear(), rangeStart.getMonth(), rangeStart.getDate() + 6, 23, 59, 59, 999);
+  } else if (datePreset === 'month') {
+    rangeStart = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
+    rangeEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  } else if (datePreset === 'year') {
+    rangeStart = new Date(now.getFullYear(), 0, 1, 0, 0, 0, 0);
+    rangeEnd = new Date(now.getFullYear(), 11, 31, 23, 59, 59, 999);
+  } else if (datePreset === 'date') {
+    const d = parseBillingFilterDate(dateInput?.value);
+    if (d) {
+      rangeStart = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 0, 0, 0, 0);
+      rangeEnd = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 23, 59, 59, 999);
+    }
+  } else if (datePreset === 'range') {
+    const s = parseBillingFilterDate(startInput?.value);
+    const e = parseBillingFilterDate(endInput?.value);
+    if (s) rangeStart = new Date(s.getFullYear(), s.getMonth(), s.getDate(), 0, 0, 0, 0);
+    if (e) rangeEnd = new Date(e.getFullYear(), e.getMonth(), e.getDate(), 23, 59, 59, 999);
+    if (rangeStart && rangeEnd && rangeStart > rangeEnd) {
+      const tmp = rangeStart;
+      rangeStart = rangeEnd;
+      rangeEnd = tmp;
+    }
+  }
+
+  const allBillings = db.get('billings') || [];
+  const users = db.get('users') || [];
+  const userMap = new Map(users.map(u => [u.id, u]));
+
+  const filtered = allBillings.filter(b => {
+    // 1. Search filter: resident name or billing information
+    if (q) {
+      const assignedIds = getAssignedHomeownerIds(b);
+      const residentMatch = assignedIds.some(id => {
+        const u = userMap.get(id);
+        if (!u) return false;
+        return (u.name || '').toLowerCase().includes(q)
+          || (u.username || '').toLowerCase().includes(q)
+          || (u.email || '').toLowerCase().includes(q)
+          || (u.block || '').toLowerCase().includes(q)
+          || (u.lot || '').toLowerCase().includes(q);
+      });
+
+      const amt = Number(b.amount || 0);
+      const amountFormatted = amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      const monthText = b.monthly_dues_month ? formatBillingMonth(b.monthly_dues_month) : '';
+      const billingMatch = (b.title || '').toLowerCase().includes(q)
+        || (b.description || '').toLowerCase().includes(q)
+        || (b.dueDate || '').toLowerCase().includes(q)
+        || (b.createdAt || '').toLowerCase().includes(q)
+        || (b.billing_type || '').toLowerCase().includes(q)
+        || (b.id || '').toLowerCase().includes(q)
+        || String(b.amount || '').includes(q)
+        || amountFormatted.includes(q)
+        || `₱${amountFormatted}`.toLowerCase().includes(q)
+        || (b.monthly_dues_month || '').toLowerCase().includes(q)
+        || monthText.toLowerCase().includes(q);
+
+      if (!residentMatch && !billingMatch) return false;
+    }
+
+    // 2. Status filter: All, Paid, Unpaid, Overdue
+    if (statusFilter && statusFilter !== 'all') {
+      const colStatus = getBillingCollectionStatus(b);
+      const isPaid = colStatus === 'paid' || b.status === 'paid';
+      const isOverdue = colStatus === 'overdue' || (b.dueDate && b.dueDate < getLocalDateValue() && !isPaid);
+
+      if (statusFilter === 'paid') {
+        if (!isPaid) return false;
+      } else if (statusFilter === 'overdue') {
+        if (!isOverdue) return false;
+      } else if (statusFilter === 'unpaid') {
+        if (isPaid || isOverdue) return false;
+      }
+    }
+
+    // 3. Date filter
+    if (datePreset !== 'all' && (rangeStart || rangeEnd)) {
+      const bDates = getBillingRecordDates(b);
+      if (!bDates.length) return false;
+      const matchesDate = bDates.some(d => {
+        if (rangeStart && d < rangeStart) return false;
+        if (rangeEnd && d > rangeEnd) return false;
+        return true;
+      });
+      if (!matchesDate) return false;
+    }
+
+    return true;
+  });
+
+  renderBillingTable(filtered, resetPage);
+}
+if (typeof window !== 'undefined') window.filterBillings = filterBillings;
+
+function onBillingDateFilterChange() {
+  const mode = document.getElementById('billDateFilter')?.value || 'all';
+  const dateWrap = document.getElementById('billDateWrap');
+  const rangeWrap = document.getElementById('billRangeWrap');
+  const dateInput = document.getElementById('billDate');
+  const startInput = document.getElementById('billStartDate');
+  const endInput = document.getElementById('billEndDate');
+
+  if (dateWrap) dateWrap.style.display = (mode === 'date') ? 'inline-flex' : 'none';
+  if (rangeWrap) rangeWrap.style.display = (mode === 'range') ? 'inline-flex' : 'none';
+
+  if (mode === 'date' && dateInput && !dateInput.value) {
+    dateInput.value = getLocalDateValue();
+  }
+  if (mode === 'range') {
+    if (startInput && !startInput.value) {
+      const d = new Date();
+      d.setDate(d.getDate() - 7);
+      startInput.value = getLocalDateValue(d);
+    }
+    if (endInput && !endInput.value) {
+      endInput.value = getLocalDateValue();
+    }
+  }
+
+  filterBillings(true);
+}
+if (typeof window !== 'undefined') window.onBillingDateFilterChange = onBillingDateFilterChange;
+
+function resetBillingFilters() {
+  const searchInput = document.getElementById('billSearch');
+  const statusFilter = document.getElementById('billStatusFilter');
+  const dateFilter = document.getElementById('billDateFilter');
+  const dateInput = document.getElementById('billDate');
+  const startInput = document.getElementById('billStartDate');
+  const endInput = document.getElementById('billEndDate');
+  const dateWrap = document.getElementById('billDateWrap');
+  const rangeWrap = document.getElementById('billRangeWrap');
+
+  if (searchInput) searchInput.value = '';
+  if (statusFilter) statusFilter.value = 'all';
+  if (dateFilter) dateFilter.value = 'all';
+  if (dateInput) dateInput.value = '';
+  if (startInput) startInput.value = '';
+  if (endInput) endInput.value = '';
+  if (dateWrap) dateWrap.style.display = 'none';
+  if (rangeWrap) rangeWrap.style.display = 'none';
+
+  filterBillings(true);
+}
+if (typeof window !== 'undefined') window.resetBillingFilters = resetBillingFilters;
+
 function renderBilling() {
   if (canManageBilling()) {
     syncHomeownerBalances();
   }
-  const billings = db.get('billings');
+  billingPaginationState.page = 1;
+  currentBillingFilteredList = null;
+
   const manageBilling = canManageBilling();
   const area = document.getElementById('contentArea');
   area.innerHTML = `
@@ -90,8 +305,37 @@ function renderBilling() {
   </div>
   <div class="section-card">
     <div class="section-card-header">
-      <div class="filters-row">
-        <div class="search-box"><span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span><input id="billSearch" type="text" placeholder="Search billings..."/></div>
+      <div class="filters-row" style="align-items:center;">
+        <div class="search-box">
+          <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
+          <input id="billSearch" type="text" placeholder="Search by resident name or billing information..." oninput="filterBillings()"/>
+        </div>
+        <select class="filter-select" id="billStatusFilter" onchange="filterBillings()">
+          <option value="all">All Statuses</option>
+          <option value="paid">Paid</option>
+          <option value="unpaid">Unpaid</option>
+          <option value="overdue">Overdue</option>
+        </select>
+        <select class="filter-select" id="billDateFilter" onchange="onBillingDateFilterChange()">
+          <option value="all">All Dates</option>
+          <option value="today">Today</option>
+          <option value="week">This Week</option>
+          <option value="month">This Month</option>
+          <option value="year">This Year</option>
+          <option value="date">Choose Date</option>
+          <option value="range">Date Range</option>
+        </select>
+        <div id="billDateWrap" class="date-input-group" style="display:none;">
+          <input type="date" class="filter-select" id="billDate" onchange="filterBillings()" title="Select specific date"/>
+        </div>
+        <div id="billRangeWrap" class="date-input-group" style="display:none;">
+          <input type="date" class="filter-select" id="billStartDate" onchange="filterBillings()" title="Start date" placeholder="Start Date"/>
+          <span class="date-range-sep">to</span>
+          <input type="date" class="filter-select" id="billEndDate" onchange="filterBillings()" title="End date" placeholder="End Date"/>
+        </div>
+        <button class="btn btn-secondary btn-sm" id="billResetBtn" onclick="resetBillingFilters()" title="Reset all filters">
+          Reset
+        </button>
       </div>
     </div>
     <div class="section-card-body no-pad">
@@ -100,27 +344,52 @@ function renderBilling() {
         <tbody id="billTableBody"></tbody>
       </table></div>
     </div>
+    <div id="billingPagination"></div>
   </div>`;
 
-  const searchEl = document.getElementById('billSearch');
-  if (searchEl) {
-    searchEl.addEventListener('input', () => {
-      const q = searchEl.value.toLowerCase();
-      const currentList = db.get('billings');
-      const filtered = currentList.filter(b => (b.title || '').toLowerCase().includes(q));
-      renderBillingTable(filtered);
-    });
-  }
-
-  renderBillingTable(billings);
+  filterBillings(false);
 }
 
-function renderBillingTable(billings) {
+function renderBillingTable(billings = null, resetPage = false) {
+  if (billings !== null) {
+    currentBillingFilteredList = billings;
+  } else if (currentBillingFilteredList === null) {
+    currentBillingFilteredList = db.get('billings') || [];
+  }
+  const list = currentBillingFilteredList || [];
   const tbody = document.getElementById('billTableBody');
   if (!tbody) return;
-  const list = Array.isArray(billings) ? billings : [];
-  if (!list.length) { tbody.innerHTML = `<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings found.</div></td></tr>`; return; }
-  tbody.innerHTML = list.map(b => {
+
+  if (resetPage) billingPaginationState.page = 1;
+
+  const totalItems = list.length;
+  const pageSize = billingPaginationState.pageSize || 10;
+  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
+  if (billingPaginationState.page > totalPages) billingPaginationState.page = totalPages;
+  if (billingPaginationState.page < 1) billingPaginationState.page = 1;
+
+  if (!totalItems) {
+    tbody.innerHTML = `<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings found.</div></td></tr>`;
+    if (typeof renderPaginationComponent === 'function') {
+      renderPaginationComponent({
+        containerId: 'billingPagination',
+        currentPage: 1,
+        pageSize,
+        totalItems: 0,
+        pageSizeOptions: [5, 10, 20, 50],
+        onPageChangeFn: 'changeBillingPage',
+        onPageSizeChangeFn: 'changeBillingPageSize',
+        itemLabel: 'billings',
+      });
+    }
+    return;
+  }
+
+  const startIndex = (billingPaginationState.page - 1) * pageSize;
+  const endIndex = Math.min(startIndex + pageSize, totalItems);
+  const pageItems = list.slice(startIndex, endIndex);
+
+  tbody.innerHTML = pageItems.map(b => {
     const assignedIds = getAssignedHomeownerIds(b);
     const collectionStatus = getBillingCollectionStatus(b);
     const overdue = collectionStatus === 'overdue';
@@ -141,7 +410,21 @@ function renderBillingTable(billings) {
       </div></td>
     </tr>`;
   }).join('');
+
+  if (typeof renderPaginationComponent === 'function') {
+    renderPaginationComponent({
+      containerId: 'billingPagination',
+      currentPage: billingPaginationState.page,
+      pageSize,
+      totalItems,
+      pageSizeOptions: [5, 10, 20, 50],
+      onPageChangeFn: 'changeBillingPage',
+      onPageSizeChangeFn: 'changeBillingPageSize',
+      itemLabel: 'billings',
+    });
+  }
 }
+if (typeof window !== 'undefined') window.renderBillingTable = renderBillingTable;
 
 function openAddBillingModal() {
   const homeowners = db.get('users').filter(u => u.role === 'homeowner');
