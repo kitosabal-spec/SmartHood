@@ -28,7 +28,7 @@ function renderAdminDashboard() {
     </div>
   </div>
 
-  <div class="stat-grid">
+  <div class="stat-grid admin-stat-grid">
     <div class="stat-card" style="--card-accent:#2271c3;--card-accent-bg:#eef5fd">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-users"/></svg></div>
       <div class="stat-value">${homeowners.length}</div>
