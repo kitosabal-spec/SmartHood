@@ -8,6 +8,7 @@ const dbConfig = {
   password: process.env.MYSQL_PASSWORD || '',
   database: process.env.MYSQL_DATABASE || 'san_alfonso_homes',
 };
+const sessions = new Map();
 
 async function postLogin(username, password) {
   const res = await fetch(`${BASE_URL}/api/login`, {
@@ -16,12 +17,14 @@ async function postLogin(username, password) {
     body: JSON.stringify({ username, password }),
   });
   const data = await res.json().catch(() => ({}));
+  const sessionCookie = res.headers.get('set-cookie')?.split(';')[0];
+  if (data?.id && sessionCookie) sessions.set(data.id, sessionCookie);
   return { status: res.status, data, userId: data?.id };
 }
 
 async function request(path, userId, options = {}) {
   const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
-  if (userId) headers['x-user-id'] = userId;
+  if (userId && sessions.has(userId)) headers.Cookie = sessions.get(userId);
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
   const data = await res.json().catch(() => ({}));
   return { status: res.status, data };
@@ -103,11 +106,19 @@ async function run() {
     const ho1Found = (ho1Data.data?.billings || []).find(b => b.id === bill1Id);
     expect('Billing is visible to Homeowner 1 (Keith) in GET /api/data', !!ho1Found);
     expect('Homeowner 1 sees correct amount and title', ho1Found?.amount === testBill1.amount && ho1Found?.title === testBill1.title);
+    const ho1BillingNotification = (ho1Data.data?.notifications || []).find(n =>
+      n.title === 'New Billing Created' && n.message.includes(testBill1.title)
+    );
+    expect('Homeowner 1 receives a notification for their new billing', !!ho1BillingNotification);
 
     // 6. Homeowner 2 must NOT see billing 1
     const ho2Data = await request('/api/data', ho2Id);
     const ho2Found = (ho2Data.data?.billings || []).find(b => b.id === bill1Id);
     expect('Billing 1 is completely isolated from Homeowner 2 (Joy)', !ho2Found);
+    const ho2BillingNotification = (ho2Data.data?.notifications || []).find(n =>
+      n.title === 'New Billing Created' && n.message.includes(testBill1.title)
+    );
+    expect('Unassigned homeowner does not receive the billing notification', !ho2BillingNotification);
 
     // 7. Multi-Homeowner Assignment: Admin creates billing assigned to BOTH Keith and Joy
     const testBillMulti = {
@@ -144,12 +155,22 @@ async function run() {
     const ho2MultiData = await request('/api/data', ho2Id);
     const ho2MultiFound = (ho2MultiData.data?.billings || []).find(b => b.id === multiBillId);
     expect('Multi-assigned billing visible to Joy', !!ho2MultiFound);
+    const ho2MultiBillingNotification = (ho2MultiData.data?.notifications || []).find(n =>
+      n.title === 'New Billing Created' && n.message.includes(testBillMulti.title)
+    );
+    expect('Each assigned homeowner receives the shared billing notification', !!ho2MultiBillingNotification);
 
     // 8. Clean up created test billings
     const del1 = await request(`/api/billings/${bill1Id}`, adminId, { method: 'DELETE' });
     expect('Deleted test bill 1', del1.status === 200);
     const del2 = await request(`/api/billings/${multiBillId}`, adminId, { method: 'DELETE' });
     expect('Deleted multi test bill', del2.status === 200);
+
+    // Remove only the notifications created by these deterministic test bills.
+    await pool.query(
+      'DELETE FROM notifications WHERE title = ? AND (message LIKE ? OR message LIKE ?)',
+      ['New Billing Created', `%${testBill1.title}%`, `%${testBillMulti.title}%`]
+    );
 
     // Verify deletion in MySQL
     const [mysqlAfterDel] = await pool.query('SELECT COUNT(*) AS count FROM billings WHERE id IN (?, ?)', [bill1Id, multiBillId]);

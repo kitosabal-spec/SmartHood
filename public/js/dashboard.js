@@ -284,7 +284,7 @@ function renderHODashboard() {
   <div class="page-header">
     <div class="page-header-left"><h2>My Dashboard</h2><p>Welcome, ${currentUser.name}. Your account overview.</p></div>
   </div>
-  <div class="stat-grid">
+  <div class="stat-grid resident-stat-grid">
     <div class="stat-card" style="--card-accent:#dc2626;--card-accent-bg:#fee2e2">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-credit"/></svg></div>
       <div class="stat-value">₱${(currentUser.balance||0).toLocaleString()}</div>

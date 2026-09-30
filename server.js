@@ -4336,6 +4336,19 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
   if (complaintFiles) {
     for (const filename of complaintFiles.newFilenames) claimStagedPrivateUpload('complaints', filename, allowed);
   }
+
+  // Notifications are authored here instead of the browser so recipients cannot
+  // be forged by an untrusted client.
+  if (table === 'billings') {
+    const assignedHomeownerIds = getAssignedHomeownerIds(body);
+    if (assignedHomeownerIds.length > 0) {
+      await createServerNotification(
+        'New Billing Created',
+        `"${body.title || 'A new billing'}" has been assigned to your account.`,
+        { userIds: assignedHomeownerIds }
+      );
+    }
+  }
   res.status(201).json(presentPrivateFiles(table, sanitizeRecord(table, body), allowed));
 }));
 

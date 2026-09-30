@@ -828,10 +828,6 @@ async function saveAddBilling() {
     if (typeof logAction === 'function') {
       logAction(`Created billing: ${finalTitle} for ${checked.length} homeowner(s)`);
     }
-    if (typeof addNotification === 'function') {
-      addNotification('New Billing Created', `"${finalTitle}" has been assigned to you.`, { userIds: checked });
-    }
-
     closeModal();
     hideLoading();
     showToast('success', 'Billing Created', `"${finalTitle}" has been created.`);
