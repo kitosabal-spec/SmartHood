@@ -2740,7 +2740,8 @@ input[type="date"].filter-select {
   /* Nested elements inside mobile cells */
   .homeowner-name-cell,
   .user-cell,
-  .cell-user {
+  .cell-user,
+  .vehicle-cell-val {
     max-width: 100% !important;
     min-width: 0 !important;
     justify-content: flex-end !important;
@@ -3323,6 +3324,47 @@ input[type="date"].filter-select {
   .complaints-stats-grid,
   .complaint-stats-grid,
   .stat-grid.complaints-stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Vehicle Management Responsive Grid */
+.vehicles-stats-grid,
+.stat-grid.vehicles-stats-grid,
+.stats-grid.vehicles-stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  grid-auto-rows: 1fr;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+.vehicles-stats-grid .stat-card,
+.stat-grid.vehicles-stats-grid .stat-card,
+.stats-grid.vehicles-stats-grid .stat-card {
+  height: 100%;
+  box-sizing: border-box;
+}
+@media (max-width: 860px) {
+  .vehicles-stats-grid,
+  .stat-grid.vehicles-stats-grid,
+  .stats-grid.vehicles-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px;
+  }
+}
+@media (max-width: 640px) {
+  .vehicles-stats-grid,
+  .stat-grid.vehicles-stats-grid,
+  .stats-grid.vehicles-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px 10px;
+    margin-bottom: 16px;
+  }
+}
+@media (max-width: 340px) {
+  .vehicles-stats-grid,
+  .stat-grid.vehicles-stats-grid,
+  .stats-grid.vehicles-stats-grid {
     grid-template-columns: 1fr !important;
   }
 }

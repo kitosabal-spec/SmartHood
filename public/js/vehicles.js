@@ -1,5 +1,15 @@
 // SECTION 9B: VEHICLE REGISTRATION
 
+function safeVehicleEscape(str) {
+  if (typeof escapeHtml === 'function') return escapeHtml(str);
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
 
 function normalizeStickerNumber(value) {
   return (value || '').trim().toUpperCase();
@@ -22,7 +32,7 @@ function vehicleRegistrationStatusBadge(status) {
     Rejected: '<span class="badge badge-red">Rejected</span>',
     Expired: '<span class="badge badge-gray">Expired</span>',
   };
-  return map[status] || `<span class="badge badge-gray">${status || 'Unknown'}</span>`;
+  return map[status] || `<span class="badge badge-gray">${safeVehicleEscape(status || 'Unknown')}</span>`;
 }
 
 function vehiclePaymentStatusBadge(status) {
@@ -51,6 +61,54 @@ function updateVehicleFeePreview() {
   if (feeEl) feeEl.textContent = formatPeso(fee);
 }
 
+function renderResidentVehicleRow(vehicle) {
+  const safeOwner = safeVehicleEscape(vehicle.ownerName);
+  const safeLoc = safeVehicleEscape(getVehicleLocation(vehicle));
+  const safeType = safeVehicleEscape(vehicle.vehicleType);
+  const safePlate = safeVehicleEscape(vehicle.plateNumber);
+  const stickerHtml = vehicle.stickerNumber
+    ? `<strong class="vehicle-sticker-no">${safeVehicleEscape(vehicle.stickerNumber)}</strong>${vehicle.releasedAt ? `<span class="vehicle-sticker-released">Released ${safeVehicleEscape(vehicle.releasedAt)}</span>` : ''}`
+    : '<span class="vehicle-text-muted">Not assigned</span>';
+  const remarksHtml = vehicle.remarks
+    ? `<span>${safeVehicleEscape(vehicle.remarks)}</span>`
+    : '<span class="vehicle-text-muted">None</span>';
+
+  return `
+    <tr>
+      <td data-label="Vehicle">
+        <div class="vehicle-cell-val">
+          <strong class="vehicle-plate-no">${safePlate}</strong>
+          <span class="vehicle-cell-sub">${safeType}</span>
+        </div>
+      </td>
+      <td data-label="Owner">
+        <div class="vehicle-cell-val">
+          <strong class="vehicle-owner-name">${safeOwner}</strong>
+          <span class="vehicle-cell-sub">${safeLoc}</span>
+        </div>
+      </td>
+      <td data-label="Fee">
+        <span class="vehicle-fee-val">${formatPeso(vehicle.fee)}</span>
+      </td>
+      <td data-label="Payment">
+        ${vehiclePaymentStatusBadge(vehicle.paymentStatus)}
+      </td>
+      <td data-label="Sticker">
+        <div class="vehicle-cell-val">
+          ${stickerHtml}
+        </div>
+      </td>
+      <td data-label="Status">
+        ${vehicleRegistrationStatusBadge(vehicle.registrationStatus)}
+      </td>
+      <td data-label="Remarks">
+        <div class="vehicle-cell-val vehicle-cell-remarks">
+          ${remarksHtml}
+        </div>
+      </td>
+    </tr>`;
+}
+
 function renderHOVehicles() {
   const vehicles = db.get('vehicleRegistrations')
     .filter(vehicle => vehicle.homeownerId === currentUser.id)
@@ -65,19 +123,10 @@ function renderHOVehicles() {
   </div>
   <div class="section-card">
     <div class="section-card-body no-pad">
-      <div class="table-wrapper"><table class="data-table">
+      <div class="table-wrapper"><table class="data-table vehicle-table">
         <thead><tr><th>Vehicle</th><th>Owner</th><th>Fee</th><th>Payment</th><th>Sticker</th><th>Status</th><th>Remarks</th></tr></thead>
         <tbody>
-          ${vehicles.map(vehicle => `
-            <tr>
-              <td><strong>${vehicle.plateNumber}</strong><br><span style="font-size:0.78rem;color:var(--text-3)">${vehicle.vehicleType}</span></td>
-              <td>${vehicle.ownerName}<br><span style="font-size:0.78rem;color:var(--text-3)">${getVehicleLocation(vehicle)}</span></td>
-              <td>${formatPeso(vehicle.fee)}</td>
-              <td>${vehiclePaymentStatusBadge(vehicle.paymentStatus)}</td>
-              <td>${vehicle.stickerNumber ? `<strong>${vehicle.stickerNumber}</strong>${vehicle.releasedAt ? `<br><span style="font-size:0.75rem;color:var(--green-600)">Released ${vehicle.releasedAt}</span>` : ''}` : '<span style="color:var(--text-3)">Not assigned</span>'}</td>
-              <td>${vehicleRegistrationStatusBadge(vehicle.registrationStatus)}</td>
-              <td>${vehicle.remarks || '<span style="color:var(--text-3)">None</span>'}</td>
-            </tr>`).join('') || '<tr><td colspan="7"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-parking"/></svg>No vehicle registrations yet.</div></td></tr>'}
+          ${vehicles.map(renderResidentVehicleRow).join('') || '<tr><td colspan="7"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-parking"/></svg>No vehicle registrations yet.</div></td></tr>'}
         </tbody>
       </table></div>
     </div>
@@ -85,8 +134,9 @@ function renderHOVehicles() {
 }
 
 function openVehicleRegistrationModal() {
-  const block = currentUser.block || '';
-  const lot = currentUser.lot || '';
+  const block = safeVehicleEscape(currentUser.block || '');
+  const lot = safeVehicleEscape(currentUser.lot || '');
+  const ownerName = safeVehicleEscape(currentUser.name || '');
   openModal('Register Vehicle', `
     <div class="vehicle-fee-panel">
       <div>
@@ -106,11 +156,11 @@ function openVehicleRegistrationModal() {
       <div class="form-group">
         <label>Vehicle Type *</label>
         <select id="vr_vehicleType">
-          ${VEHICLE_TYPES.map(type => `<option value="${type}">${type}</option>`).join('')}
+          ${VEHICLE_TYPES.map(type => `<option value="${safeVehicleEscape(type)}">${safeVehicleEscape(type)}</option>`).join('')}
         </select>
       </div>
     </div>
-    <div class="form-group"><label>Owner Name *</label><input id="vr_ownerName" value="${currentUser.name}" placeholder="Vehicle owner name"></div>
+    <div class="form-group"><label>Owner Name *</label><input id="vr_ownerName" value="${ownerName}" placeholder="Vehicle owner name"></div>
     <div class="grid-2">
       <div class="form-group"><label>Block *</label><input id="vr_block" value="${block}" placeholder="Block"></div>
       <div class="form-group"><label>Lot *</label><input id="vr_lot" value="${lot}" placeholder="Lot"></div>
@@ -137,7 +187,7 @@ function confirmSubmitVehicleRegistration() {
 
   openConfirm(
     'Submit Vehicle Registration',
-    `Submit vehicle registration for <strong>${plateNumber}</strong> with a fee of <strong>${formatPeso(getVehicleRegistrationFee(registrantType))}</strong>?`,
+    `Submit vehicle registration for <strong>${safeVehicleEscape(plateNumber)}</strong> with a fee of <strong>${formatPeso(getVehicleRegistrationFee(registrantType))}</strong>?`,
     () => submitVehicleRegistration({ registrantType, ownerName, block, lot, plateNumber, vehicleType })
   );
 }
@@ -170,25 +220,87 @@ function submitVehicleRegistration({ registrantType, ownerName, block, lot, plat
   renderHOVehicles();
 }
 
+function renderAdminVehicleRow(vehicle) {
+  const safeOwner = safeVehicleEscape(vehicle.ownerName);
+  const safeLoc = safeVehicleEscape(getVehicleLocation(vehicle));
+  const safeType = safeVehicleEscape(vehicle.vehicleType);
+  const safePlate = safeVehicleEscape(vehicle.plateNumber);
+  const isNonHO = vehicle.registrantType === 'nonHomeowner';
+  const registrantTypeLabel = isNonHO ? 'Non-homeowner' : 'Homeowner';
+  const stickerHtml = vehicle.stickerNumber
+    ? `<strong class="vehicle-sticker-no">${safeVehicleEscape(vehicle.stickerNumber)}</strong>${vehicle.releasedAt ? '<span class="vehicle-sticker-released">Released</span>' : ''}`
+    : '<span class="vehicle-text-muted">Not assigned</span>';
+
+  return `
+    <tr>
+      <td data-label="Owner">
+        <div class="vehicle-cell-val">
+          <strong class="vehicle-owner-name">${safeOwner}</strong>
+          <span class="vehicle-cell-sub">${safeLoc} &bull; ${registrantTypeLabel}</span>
+        </div>
+      </td>
+      <td data-label="Vehicle">
+        <div class="vehicle-cell-val">
+          <strong class="vehicle-plate-no">${safePlate}</strong>
+          <span class="vehicle-cell-sub">${safeType}</span>
+        </div>
+      </td>
+      <td data-label="Fee">
+        <span class="vehicle-fee-val">${formatPeso(vehicle.fee)}</span>
+      </td>
+      <td data-label="Payment">
+        ${vehiclePaymentStatusBadge(vehicle.paymentStatus)}
+      </td>
+      <td data-label="Status">
+        ${vehicleRegistrationStatusBadge(vehicle.registrationStatus)}
+      </td>
+      <td data-label="Sticker">
+        <div class="vehicle-cell-val">
+          ${stickerHtml}
+        </div>
+      </td>
+      <td data-label="Actions">
+        <div class="td-actions">
+          <button class="btn btn-secondary btn-sm" onclick="openVehicleAdminModal('${vehicle.id}')">Manage</button>
+        </div>
+      </td>
+    </tr>`;
+}
+
 function renderVehicleManagement(filtered = null) {
-  const allVehicles = filtered || db.get('vehicleRegistrations');
-  const vehicles = [...allVehicles].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  const pendingCount = db.get('vehicleRegistrations').filter(vehicle => vehicle.registrationStatus === 'Pending').length;
-  const unpaidCount = db.get('vehicleRegistrations').filter(vehicle => vehicle.paymentStatus !== 'Paid').length;
-  const releasedCount = db.get('vehicleRegistrations').filter(vehicle => vehicle.releasedAt).length;
   const area = document.getElementById('contentArea');
+  const tbody = document.getElementById('vehicleTableBody');
+  const allRegistrations = db.get('vehicleRegistrations');
+  const vehicles = (filtered !== null ? filtered : allRegistrations)
+    .slice()
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+
+  // If already rendered and this is an in-place filter update, update only table body to preserve search input focus
+  if (filtered !== null && tbody && area) {
+    if (!vehicles.length) {
+      tbody.innerHTML = '<tr><td colspan="7"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-parking"/></svg>No vehicle registrations found.</div></td></tr>';
+    } else {
+      tbody.innerHTML = vehicles.map(renderAdminVehicleRow).join('');
+    }
+    return;
+  }
+
+  const pendingCount = allRegistrations.filter(vehicle => vehicle.registrationStatus === 'Pending').length;
+  const unpaidCount = allRegistrations.filter(vehicle => vehicle.paymentStatus !== 'Paid').length;
+  const releasedCount = allRegistrations.filter(vehicle => vehicle.releasedAt).length;
+
   area.innerHTML = `
   <div class="page-header">
     <div class="page-header-left"><h2>Vehicle Management</h2><p>Review registrations, track payments, and release physical stickers.</p></div>
   </div>
-  <div class="stats-grid">
+  <div class="stats-grid vehicles-stats-grid">
     <div class="stat-card"><div class="stat-icon"><svg width="22" height="22"><use href="#ico-clock"/></svg></div><div class="stat-info"><span class="stat-value">${pendingCount}</span><span class="stat-label">Pending</span></div></div>
     <div class="stat-card"><div class="stat-icon"><svg width="22" height="22"><use href="#ico-credit"/></svg></div><div class="stat-info"><span class="stat-value">${unpaidCount}</span><span class="stat-label">Unpaid</span></div></div>
     <div class="stat-card"><div class="stat-icon"><svg width="22" height="22"><use href="#ico-parking"/></svg></div><div class="stat-info"><span class="stat-value">${releasedCount}</span><span class="stat-label">Released Stickers</span></div></div>
   </div>
   <div class="section-card">
     <div class="section-card-header">
-      <div class="filters-row">
+      <div class="filters-row vehicles-filters-row">
         <div class="search-box"><span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span><input id="vehicleSearch" type="text" placeholder="Search owner, plate, block, sticker..."/></div>
         <select class="filter-select" id="vehicleStatusFilter" onchange="filterVehicles()">
           <option value="">All Statuses</option>
@@ -202,19 +314,8 @@ function renderVehicleManagement(filtered = null) {
     <div class="section-card-body no-pad">
       <div class="table-wrapper"><table class="data-table vehicle-table">
         <thead><tr><th>Owner</th><th>Vehicle</th><th>Fee</th><th>Payment</th><th>Status</th><th>Sticker</th><th>Actions</th></tr></thead>
-        <tbody>
-          ${vehicles.map(vehicle => `
-            <tr>
-              <td><strong>${vehicle.ownerName}</strong><br><span style="font-size:0.78rem;color:var(--text-3)">${getVehicleLocation(vehicle)} - ${vehicle.registrantType === 'nonHomeowner' ? 'Non-homeowner' : 'Homeowner'}</span></td>
-              <td><strong>${vehicle.plateNumber}</strong><br><span style="font-size:0.78rem;color:var(--text-3)">${vehicle.vehicleType}</span></td>
-              <td>${formatPeso(vehicle.fee)}</td>
-              <td>${vehiclePaymentStatusBadge(vehicle.paymentStatus)}</td>
-              <td>${vehicleRegistrationStatusBadge(vehicle.registrationStatus)}</td>
-              <td>${vehicle.stickerNumber ? `<strong>${vehicle.stickerNumber}</strong>${vehicle.releasedAt ? `<br><span style="font-size:0.75rem;color:var(--green-600)">Released</span>` : ''}` : '<span style="color:var(--text-3)">Not assigned</span>'}</td>
-              <td><div class="td-actions">
-                <button class="btn btn-secondary btn-sm" onclick="openVehicleAdminModal('${vehicle.id}')">Manage</button>
-              </div></td>
-            </tr>`).join('') || '<tr><td colspan="7"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-parking"/></svg>No vehicle registrations found.</div></td></tr>'}
+        <tbody id="vehicleTableBody">
+          ${vehicles.map(renderAdminVehicleRow).join('') || '<tr><td colspan="7"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-parking"/></svg>No vehicle registrations found.</div></td></tr>'}
         </tbody>
       </table></div>
     </div>
@@ -243,7 +344,7 @@ function filterVehicles() {
   renderVehicleManagement(filtered);
   const search = document.getElementById('vehicleSearch');
   const statusEl = document.getElementById('vehicleStatusFilter');
-  if (search) search.value = query;
+  if (search && document.activeElement !== search) search.value = query;
   if (statusEl) statusEl.value = status;
 }
 
@@ -252,12 +353,12 @@ function openVehicleAdminModal(id) {
   if (!vehicle) return;
   openModal('Manage Vehicle Registration', `
     <div class="vehicle-detail-grid">
-      <div><span>Owner</span><strong>${vehicle.ownerName}</strong></div>
-      <div><span>Location</span><strong>${getVehicleLocation(vehicle)}</strong></div>
-      <div><span>Plate Number</span><strong>${vehicle.plateNumber}</strong></div>
-      <div><span>Vehicle Type</span><strong>${vehicle.vehicleType}</strong></div>
+      <div><span>Owner</span><strong>${safeVehicleEscape(vehicle.ownerName)}</strong></div>
+      <div><span>Location</span><strong>${safeVehicleEscape(getVehicleLocation(vehicle))}</strong></div>
+      <div><span>Plate Number</span><strong>${safeVehicleEscape(vehicle.plateNumber)}</strong></div>
+      <div><span>Vehicle Type</span><strong>${safeVehicleEscape(vehicle.vehicleType)}</strong></div>
       <div><span>Fee</span><strong>${formatPeso(vehicle.fee)}</strong></div>
-      <div><span>Submitted</span><strong>${vehicle.createdAt || 'N/A'}</strong></div>
+      <div><span>Submitted</span><strong>${safeVehicleEscape(vehicle.createdAt || 'N/A')}</strong></div>
     </div>
     <div class="grid-2" style="margin-top:16px">
       <div class="form-group">
@@ -276,11 +377,11 @@ function openVehicleAdminModal(id) {
     </div>
     <div class="form-group">
       <label>Physical Sticker Number</label>
-      <input id="vm_stickerNumber" value="${vehicle.stickerNumber || ''}" placeholder="Unique sticker number" style="text-transform:uppercase">
+      <input id="vm_stickerNumber" value="${safeVehicleEscape(vehicle.stickerNumber || '')}" placeholder="Unique sticker number" style="text-transform:uppercase">
     </div>
     <div class="form-group">
       <label>Remarks</label>
-      <textarea id="vm_remarks" placeholder="Payment notes, rejection reason, release remarks...">${vehicle.remarks || ''}</textarea>
+      <textarea id="vm_remarks" placeholder="Payment notes, rejection reason, release remarks...">${safeVehicleEscape(vehicle.remarks || '')}</textarea>
     </div>
     <label class="vehicle-release-check">
       <input id="vm_releaseSticker" type="checkbox" ${vehicle.releasedAt ? 'checked' : ''}>
