@@ -3382,11 +3382,26 @@ function closeModalOutside(e) {
   if (e.target === document.getElementById('modalOverlay')) closeModal();
 }
 
-function openConfirm(title, message, onConfirm) {
-  openModal(title, `<p style="color:var(--text-2);line-height:1.6">${message}</p>`, [
-    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    { label: 'Confirm', cls: 'btn-primary', action: () => { closeModal(); onConfirm(); } },
-  ]);
+function openConfirm(title, message, onConfirm, confirmCls = 'btn-primary', confirmLabel = 'Confirm') {
+  let cls = confirmCls;
+  let label = confirmLabel;
+  if (typeof confirmCls === 'object' && confirmCls !== null) {
+    cls = confirmCls.cls || confirmCls.btnClass || 'btn-primary';
+    label = confirmCls.label || confirmCls.btnLabel || 'Confirm';
+  }
+  const isSignOut = title === 'Sign Out' || (typeof title === 'string' && title.toLowerCase().includes('sign out'));
+  if (isSignOut && cls === 'btn-primary') {
+    cls = 'btn-danger';
+  }
+  openModal(
+    title,
+    `<p style="color:var(--text-2);line-height:1.6">${message}</p>`,
+    [
+      { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+      { label: label, cls: cls, action: () => { closeModal(); onConfirm(); } },
+    ],
+    'modal-confirm' + (isSignOut ? ' modal-signout' : '')
+  );
 }
 
 
@@ -4051,7 +4066,7 @@ function performLogout() {
 }
 
 function handleLogout() {
-  openConfirm('Sign Out', 'Are you sure you want to sign out?', performLogout);
+  openConfirm('Sign Out', 'Are you sure you want to sign out?', performLogout, 'btn-danger', 'Confirm');
 }
 
 
