@@ -2374,7 +2374,7 @@ input[type="date"].filter-select {
   .hamburger { display: flex; }
   .content-area { padding: 18px; }
   .stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stats-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
   .charts-row { grid-template-columns: 1fr; }
   .chart-card-wide { grid-column: 1; }
   .page-header { flex-direction: column; align-items: stretch; gap: 14px; }
@@ -2485,7 +2485,7 @@ input[type="date"].filter-select {
     margin-bottom: 16px;
   }
   .stats-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 8px 10px;
     margin-bottom: 16px;
   }
@@ -2723,18 +2723,33 @@ input[type="date"].filter-select {
   .data-table .td-actions {
     display: flex !important;
     flex-wrap: wrap !important;
-    gap: 6px !important;
-    justify-content: flex-end !important;
+    gap: 8px !important;
+    justify-content: stretch !important;
     align-items: center !important;
-    width: auto !important;
+    width: 100% !important;
+  }
+  .data-table .td-actions .btn {
+    flex: 1 1 0 !important;
+    min-width: 0 !important;
+    min-height: 38px !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
   }
   .data-table td[data-label="Actions"],
   .data-table td[data-label="Action"] {
-    padding-top: 8px !important;
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding-top: 10px !important;
     margin-top: 4px !important;
     border-top: 1px solid var(--border) !important;
     border-bottom: none !important;
-    align-items: center !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+  .data-table td[data-label="Actions"]::before,
+  .data-table td[data-label="Action"]::before {
+    display: none !important;
   }
 
   /* Nested elements inside mobile cells */

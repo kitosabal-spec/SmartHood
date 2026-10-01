@@ -125,20 +125,20 @@ function renderBoardOfDirectorsManagement() {
   ]));
 
   area.innerHTML = `
-    <div class="page-header">
+    <div class="page-header bod-page-header">
       <div class="page-header-left">
         <h2>Board of Directors</h2>
         <p>Manage elected HOA officers, positions, contact details, term years, and profile photos.</p>
       </div>
-      <div class="page-header-actions">
-        <button class="btn btn-primary" onclick="openAddBoardMemberModal()">
+      <div class="page-header-actions bod-page-header-actions">
+        <button class="btn btn-primary bod-btn-add" onclick="openAddBoardMemberModal()">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:-2px"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
           Add Board Member
         </button>
       </div>
     </div>
 
-    <div class="stats-grid">
+    <div class="stats-grid bod-stats-grid">
       <div class="stat-card">
         <div class="stat-icon" style="background:var(--teal-50);color:var(--teal-600);"><svg width="22" height="22"><use href="#ico-users"/></svg></div>
         <div class="stat-info">
@@ -177,7 +177,7 @@ function renderBoardOfDirectorsManagement() {
       </div>
       <div class="section-card-body no-pad">
         <div class="table-wrapper">
-          <table class="data-table">
+          <table class="data-table bod-data-table">
             <thead>
               <tr>
                 <th style="width:70px;">Photo</th>
@@ -228,31 +228,31 @@ function renderBoardMembersTable(filtered = null) {
       : `<div class="bod-table-avatar" style="display:flex;align-items:center;justify-content:center;background:var(--teal-100);color:var(--teal-800);font-weight:700;">${initial}</div>`;
     return `
       <tr>
-        <td>${photoHtml}</td>
-        <td>
-          <strong>${escapeHtml(m.name)}</strong>
+        <td data-label="Photo" class="bod-td-photo">${photoHtml}</td>
+        <td data-label="Full Name" class="bod-td-name">
+          <strong class="bod-member-name">${escapeHtml(m.name)}</strong>
         </td>
-        <td>
-          <span class="pub-board-pos-badge ${getPositionBadgeClass(m.position)}" style="margin-bottom:0;font-size:0.73rem;">
+        <td data-label="Position" class="bod-td-pos">
+          <span class="pub-board-pos-badge ${getPositionBadgeClass(m.position)} bod-pos-badge">
             ${escapeHtml(m.position)}
           </span>
         </td>
-        <td>
-          <span style="font-family:monospace;font-weight:600;color:var(--text-2);">${escapeHtml(m.contact_number || '—')}</span>
+        <td data-label="Contact Number" class="bod-td-contact">
+          <span class="bod-contact-val">${escapeHtml(m.contact_number || '—')}</span>
         </td>
-        <td>
-          <span class="badge badge-gray">${escapeHtml(m.term_years || '2026 - 2028')}</span>
+        <td data-label="Term Years" class="bod-td-term">
+          <span class="badge badge-gray bod-term-badge">${escapeHtml(m.term_years || '2026 - 2028')}</span>
         </td>
-        <td>
-          <span style="font-weight:700;color:var(--text-3);">${m.display_order ?? 0}</span>
+        <td data-label="Order" class="bod-td-order">
+          <span class="bod-order-val">${m.display_order ?? 0}</span>
         </td>
-        <td style="text-align:right;">
-          <div class="td-actions" style="justify-content:flex-end;">
-            <button class="btn btn-secondary btn-sm" onclick="openEditBoardMemberModal('${m.id}')">
+        <td data-label="Actions" class="bod-td-actions">
+          <div class="td-actions">
+            <button class="btn btn-secondary btn-sm bod-btn-edit" onclick="openEditBoardMemberModal('${m.id}')">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
               Edit
             </button>
-            <button class="btn btn-danger btn-sm" onclick="confirmDeleteBoardMember('${m.id}')">
+            <button class="btn btn-danger btn-sm bod-btn-delete" onclick="confirmDeleteBoardMember('${m.id}')">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/></svg>
               Delete
             </button>
@@ -261,6 +261,10 @@ function renderBoardMembersTable(filtered = null) {
       </tr>
     `;
   }).join('');
+
+  if (typeof window !== 'undefined' && typeof window.applyResponsiveTableLabels === 'function') {
+    window.applyResponsiveTableLabels(tbody);
+  }
 }
 
 function filterBoardMembers() {

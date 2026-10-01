@@ -173,6 +173,62 @@
 }
 
 /* Admin Board of Directors styles */
+.bod-page-header {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.bod-page-header .page-header-left {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.bod-page-header .page-header-left h2,
+.bod-page-header .page-header-left p {
+  word-break: break-word;
+  overflow-wrap: break-word;
+}
+
+.bod-stats-grid,
+.stats-grid.bod-stats-grid {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  display: grid !important;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.bod-stats-grid .stat-card,
+.stats-grid.bod-stats-grid .stat-card {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box !important;
+  overflow: hidden;
+}
+
+.bod-stats-grid .stat-info,
+.stats-grid.bod-stats-grid .stat-info {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  overflow: hidden !important;
+}
+
+.bod-stats-grid .stat-value,
+.stats-grid.bod-stats-grid .stat-value {
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+  line-height: 1.2 !important;
+}
+
+.bod-stats-grid .stat-label,
+.stats-grid.bod-stats-grid .stat-label {
+  word-break: break-word !important;
+  overflow-wrap: break-word !important;
+}
+
 .bod-photo-cell {
   display: flex;
   align-items: center;
@@ -180,14 +236,54 @@
 }
 
 .bod-table-avatar {
-  width: 48px;
-  height: 48px;
+  width: 44px;
+  height: 44px;
   aspect-ratio: 1 / 1;
   border-radius: var(--radius-md);
   object-fit: cover;
   border: 1px solid var(--border);
   background: var(--surface-2);
   flex-shrink: 0;
+}
+
+.bod-member-name {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  color: var(--text);
+  font-weight: 700;
+}
+
+.bod-pos-badge {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  display: inline-block;
+  margin-bottom: 0;
+  font-size: 0.73rem;
+  line-height: 1.35;
+}
+
+.bod-contact-val {
+  font-family: monospace;
+  font-weight: 600;
+  color: var(--text-2);
+  word-break: break-word;
+  overflow-wrap: break-word;
+  display: inline-block;
+}
+
+.bod-term-badge {
+  word-break: break-word;
+  overflow-wrap: break-word;
+  white-space: normal;
+  display: inline-block;
+  line-height: 1.35;
+}
+
+.bod-order-val {
+  font-weight: 700;
+  color: var(--text-3);
+  display: inline-block;
 }
 
 .bod-upload-container {
@@ -199,6 +295,8 @@
   border-radius: var(--radius-md);
   background: var(--surface-2);
   margin-top: 6px;
+  max-width: 100%;
+  box-sizing: border-box;
 }
 
 .bod-photo-preview-wrap {
@@ -240,7 +338,56 @@
   }
 }
 
-@media (max-width: 580px) {
+/* Tablet adjustments (max-width: 768px) */
+@media (max-width: 768px) {
+  .bod-page-header,
+  .page-header {
+    flex-direction: column !important;
+    align-items: stretch !important;
+    gap: 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .bod-page-header-actions,
+  .page-header-actions {
+    width: 100% !important;
+    max-width: 100% !important;
+    display: flex !important;
+    flex-direction: column !important;
+  }
+
+  .bod-page-header-actions .btn,
+  .page-header-actions .btn {
+    width: 100% !important;
+    max-width: 100% !important;
+    justify-content: center !important;
+    box-sizing: border-box !important;
+    min-height: 40px !important;
+  }
+
+  .bod-stats-grid,
+  .stats-grid.bod-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px !important;
+  }
+
+  .bod-stats-grid .stat-card:last-child:nth-child(odd),
+  .stats-grid.bod-stats-grid .stat-card:last-child:nth-child(odd) {
+    grid-column: span 2 !important;
+  }
+
+  .table-wrapper {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+}
+
+/* Phone screens (max-width: 640px) */
+@media (max-width: 640px) {
   .pub-board-grid {
     grid-template-columns: 1fr;
     max-width: 100%;
@@ -258,6 +405,264 @@
     align-items: center;
     text-align: center;
   }
+
+  .bod-stats-grid,
+  .stats-grid.bod-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px 10px !important;
+    margin-bottom: 16px !important;
+  }
+
+  .bod-stats-grid .stat-card:last-child:nth-child(odd),
+  .stats-grid.bod-stats-grid .stat-card:last-child:nth-child(odd) {
+    grid-column: span 2 !important;
+  }
+
+  .bod-stats-grid .stat-card,
+  .stats-grid.bod-stats-grid .stat-card {
+    padding: 10px 12px !important;
+    min-height: 64px !important;
+    gap: 10px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+  }
+
+  .bod-stats-grid .stat-icon,
+  .stats-grid.bod-stats-grid .stat-icon {
+    width: 36px !important;
+    height: 36px !important;
+    flex-shrink: 0 !important;
+    margin-bottom: 0 !important;
+    border-radius: var(--radius-sm) !important;
+  }
+
+  .bod-stats-grid .stat-icon svg,
+  .stats-grid.bod-stats-grid .stat-icon svg {
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .bod-stats-grid .stat-value,
+  .stats-grid.bod-stats-grid .stat-value {
+    font-size: 1.25rem !important;
+    line-height: 1.15 !important;
+  }
+
+  .bod-stats-grid .stat-label,
+  .stats-grid.bod-stats-grid .stat-label {
+    font-size: 0.72rem !important;
+  }
+
+  /* Table-to-Cards Transformation */
+  .bod-data-table.data-table {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    border: none !important;
+  }
+
+  .bod-data-table.data-table thead {
+    display: none !important;
+  }
+
+  .bod-data-table.data-table tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 2px 0 !important;
+    box-sizing: border-box !important;
+  }
+
+  .bod-data-table.data-table tbody tr {
+    display: flex !important;
+    flex-direction: column !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    padding: 12px 14px !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+    margin-bottom: 0 !important;
+    gap: 8px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+  }
+
+  .bod-data-table.data-table tbody tr:hover td {
+    background: transparent !important;
+  }
+
+  .bod-data-table.data-table tbody td {
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: space-between !important;
+    padding: 6px 0 !important;
+    border-bottom: 1px dashed var(--border) !important;
+    font-size: 0.84rem !important;
+    gap: 10px !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    text-align: right !important;
+    line-height: 1.35 !important;
+  }
+
+  .bod-data-table.data-table tbody td:last-child {
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+  }
+
+  .bod-data-table.data-table tbody td::before {
+    content: attr(data-label) !important;
+    font-size: 0.74rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.04em !important;
+    color: var(--text-3) !important;
+    text-align: left !important;
+    flex: 0 0 auto !important;
+    max-width: 42% !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    align-self: flex-start !important;
+    padding-top: 2px !important;
+  }
+
+  /* Values on the right side of mobile cards */
+  .bod-data-table .bod-member-name,
+  .bod-data-table .bod-pos-badge,
+  .bod-data-table .bod-contact-val,
+  .bod-data-table .bod-term-badge,
+  .bod-data-table .bod-order-val,
+  .bod-data-table .bod-table-avatar {
+    max-width: 58% !important;
+    min-width: 0 !important;
+    text-align: right !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+    margin-left: auto !important;
+  }
+
+  .bod-data-table .bod-td-photo {
+    align-items: center !important;
+  }
+
+  .bod-data-table .bod-table-avatar {
+    width: 40px !important;
+    height: 40px !important;
+  }
+
+  .bod-data-table .bod-pos-badge {
+    padding: 3px 10px !important;
+    font-size: 0.72rem !important;
+    letter-spacing: 0.02em !important;
+    white-space: normal !important;
+    line-height: 1.3 !important;
+  }
+
+  .bod-data-table .bod-term-badge {
+    padding: 3px 8px !important;
+    font-size: 0.72rem !important;
+    white-space: normal !important;
+    line-height: 1.3 !important;
+  }
+
+  /* Actions row on mobile cards */
+  .bod-data-table td[data-label="Actions"],
+  .bod-data-table .bod-td-actions {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: stretch !important;
+    padding-top: 10px !important;
+    margin-top: 4px !important;
+    border-top: 1px solid var(--border) !important;
+    border-bottom: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .bod-data-table td[data-label="Actions"]::before,
+  .bod-data-table .bod-td-actions::before {
+    display: none !important;
+  }
+
+  .bod-data-table .td-actions {
+    display: flex !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    gap: 8px !important;
+    justify-content: stretch !important;
+  }
+
+  .bod-data-table .td-actions .btn {
+    flex: 1 1 0 !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    min-height: 38px !important;
+    display: flex !important;
+    align-items: center !important;
+    justify-content: center !important;
+    font-size: 0.85rem !important;
+    font-weight: 600 !important;
+    padding: 8px 12px !important;
+    border-radius: var(--radius) !important;
+    touch-action: manipulation;
+    box-sizing: border-box !important;
+  }
+
+  /* Keep table-wrapper from enforcing horizontal scroll on cards */
+  .table-wrapper {
+    overflow-x: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+/* Very small screens (360px and below, e.g. 320px) */
+@media (max-width: 360px) {
+  .bod-stats-grid,
+  .stats-grid.bod-stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .bod-stats-grid .stat-card:last-child:nth-child(odd),
+  .stats-grid.bod-stats-grid .stat-card:last-child:nth-child(odd) {
+    grid-column: auto !important;
+  }
+
+  .bod-data-table.data-table tbody tr {
+    padding: 10px 10px !important;
+  }
+
+  .bod-data-table.data-table tbody td {
+    font-size: 0.8rem !important;
+    gap: 6px !important;
+    padding: 5px 0 !important;
+  }
+
+  .bod-data-table.data-table tbody td::before {
+    font-size: 0.7rem !important;
+    max-width: 40% !important;
+  }
+
+  .bod-data-table .bod-member-name,
+  .bod-data-table .bod-pos-badge,
+  .bod-data-table .bod-contact-val,
+  .bod-data-table .bod-term-badge,
+  .bod-data-table .bod-order-val {
+    max-width: 60% !important;
+    font-size: 0.78rem !important;
+  }
+
+  .bod-data-table .td-actions .btn {
+    font-size: 0.78rem !important;
+    padding: 6px 8px !important;
+    min-height: 34px !important;
+  }
 }
 
 @media (max-width: 375px) {
@@ -269,9 +674,16 @@
   }
 }
 
+/* Dark mode for admin board cards */
+[data-theme="dark"] .bod-data-table.data-table tbody tr {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
 /* ── Board Member Photo Cropper (Square profile photo) ── */
 .bod-crop-viewport::after {
   border-radius: var(--radius-md, 8px) !important;
 }
+
 
 
