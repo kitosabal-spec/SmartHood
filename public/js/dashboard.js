@@ -427,6 +427,61 @@ function renderDonut(containerId, segments, total, centerLabel, centerVal) {
 
 
 // ══════════════════════════════════════════════════════════════
+// RESPONSIVE MOBILE TABLE UTILITY (AUTO DATA-LABEL ATTRIBUTION)
+// ══════════════════════════════════════════════════════════════
+
+function applyResponsiveTableLabels(root = document) {
+  if (!root || typeof root.querySelectorAll !== 'function') return;
+  const tables = root.querySelectorAll('table.data-table');
+  tables.forEach(table => {
+    const headers = [];
+    table.querySelectorAll('thead th').forEach(th => {
+      // Clean header text (exclude any trailing icons/subtext)
+      const text = (th.textContent || '').replace(/\s+/g, ' ').trim();
+      headers.push(text);
+    });
+    if (!headers.length) return;
+
+    table.querySelectorAll('tbody tr').forEach(tr => {
+      // Don't label single full-width informational rows (e.g. colspan="6")
+      if (tr.querySelector('td[colspan]')) return;
+      const cells = tr.querySelectorAll('td');
+      cells.forEach((td, i) => {
+        if (!td.hasAttribute('data-label') && headers[i]) {
+          td.setAttribute('data-label', headers[i]);
+        }
+      });
+    });
+  });
+}
+if (typeof window !== 'undefined') {
+  window.applyResponsiveTableLabels = applyResponsiveTableLabels;
+  // Initialize automatic observer so dynamically rendered tables receive data-label immediately
+  if (typeof MutationObserver !== 'undefined' && typeof document !== 'undefined') {
+    const observer = new MutationObserver(mutations => {
+      let shouldScan = false;
+      for (const m of mutations) {
+        if (m.addedNodes && m.addedNodes.length > 0) {
+          shouldScan = true;
+          break;
+        }
+      }
+      if (shouldScan) {
+        applyResponsiveTableLabels(document);
+      }
+    });
+    if (document.body) {
+      observer.observe(document.body, { childList: true, subtree: true });
+    } else {
+      document.addEventListener('DOMContentLoaded', () => {
+        observer.observe(document.body, { childList: true, subtree: true });
+        applyResponsiveTableLabels(document);
+      });
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
 // TABLE PAGINATION UTILITY COMPONENT
 // ══════════════════════════════════════════════════════════════
 

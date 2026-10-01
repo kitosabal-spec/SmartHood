@@ -345,9 +345,17 @@
   .complaints-stats-grid,
   .complaint-stats-grid,
   .stat-grid.complaints-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px 10px;
+    margin-bottom: 16px;
+  }
+}
+
+@media (max-width: 340px) {
+  .complaints-stats-grid,
+  .complaint-stats-grid,
+  .stat-grid.complaints-stats-grid {
     grid-template-columns: 1fr !important;
-    gap: 12px;
-    margin-bottom: 18px;
   }
 }
 

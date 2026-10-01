@@ -952,6 +952,9 @@ function renderView(viewId) {
   if (typeof window.refreshSearchSlidingPlaceholders === 'function') {
     window.refreshSearchSlidingPlaceholders();
   }
+  if (typeof applyResponsiveTableLabels === 'function') {
+    applyResponsiveTableLabels(document);
+  }
 }
 
 function toMoneyNumber(value) {

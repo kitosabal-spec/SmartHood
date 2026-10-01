@@ -2475,10 +2475,29 @@ input[type="date"].filter-select {
   .admin-stat-grid,
   .stat-grid.resident-stat-grid,
   .resident-stat-grid {
-    grid-template-columns: 1fr;
-    gap: 12px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
+    margin-bottom: 16px;
   }
-  .stats-grid { grid-template-columns: 1fr; }
+  .stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
+    margin-bottom: 16px;
+  }
+  .report-summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px 10px;
+    margin-bottom: 16px;
+  }
+  .report-summary-item {
+    padding: 10px 12px;
+  }
+  .report-summary-item .r-val {
+    font-size: 1.25rem;
+  }
+  .report-summary-item .r-lbl {
+    font-size: 0.72rem;
+  }
   .charts-row { gap: 14px; }
   .chart-card { padding: 16px; }
   .chart-header { flex-direction: column; align-items: flex-start; gap: 8px; }
@@ -2515,12 +2534,12 @@ input[type="date"].filter-select {
   .section-card-header { padding: 12px 14px; }
   .section-card-body { padding: 14px; }
   .page-header-left h2 { font-size: 1.35rem; }
-  .page-header-actions { flex-direction: column; }
+  .page-header-actions { flex-direction: column; width: 100%; }
   .page-header-actions .btn { width: 100%; justify-content: center; }
   .modal-overlay { padding: 8px; }
-  .modal { max-height: calc(100vh - 16px); }
+  .modal { max-height: calc(100vh - 16px); max-height: calc(100dvh - 16px); width: 100%; max-width: 100%; }
   .modal-header { padding: 14px 14px 10px; }
-  .modal-body { padding: 14px; }
+  .modal-body { padding: 14px; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   .modal-footer {
     padding: 10px 14px 14px;
     display: flex;
@@ -2538,6 +2557,13 @@ input[type="date"].filter-select {
     padding: 8px 12px;
     font-size: 0.84rem;
     justify-content: center;
+  }
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
   }
   .pub-hero { padding: 90px 14px 60px; }
   .pub-hero-title { font-size: 1.85rem; }
@@ -2559,6 +2585,17 @@ input[type="date"].filter-select {
   .pub-hero-sub { font-size: 0.92rem; }
 }
 
+@media (max-width: 340px) {
+  .stat-grid,
+  .admin-stat-grid,
+  .stat-grid.resident-stat-grid,
+  .resident-stat-grid,
+  .stats-grid,
+  .report-summary-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
 @media (max-width: 320px) {
   .pub-login-btn { padding: 4px 8px; font-size: 0.7rem; }
   .pub-login-btn .btn-ico { display: none; }
@@ -2572,7 +2609,6 @@ input[type="date"].filter-select {
   .modal-header h3 { font-size: 0.95rem; }
   .modal-footer { padding: 8px 10px 12px; gap: 6px; }
   .modal-footer .btn { min-width: 75px; padding: 6px 8px; font-size: 0.78rem; min-height: 34px; }
-  .data-table th, .data-table td { padding: 8px 6px; font-size: 0.78rem; }
   .badge { font-size: 0.68rem; padding: 2px 6px; }
   .btn { padding: 6px 10px; font-size: 0.78rem; }
 }
@@ -2584,6 +2620,176 @@ input[type="date"].filter-select {
   z-index: 190;
 }
 .sidebar-overlay.active { display: block; }
+
+/* ══════════════════════════════════════════════════════════════
+   MOBILE RESPONSIVE TABLES (CARD / STACKED ROW TRANSFORMATION)
+   ══════════════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  /* Let tables transform into stacked mobile cards instead of forcing horizontal scrolling */
+  .data-table {
+    display: block !important;
+    width: 100% !important;
+    border: none !important;
+  }
+  .data-table thead {
+    display: none !important;
+  }
+  .data-table tbody {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    width: 100% !important;
+    padding: 2px 0 !important;
+  }
+  .data-table tbody tr {
+    display: flex !important;
+    flex-direction: column !important;
+    background: var(--surface) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    padding: 12px 14px !important;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04) !important;
+    margin-bottom: 0 !important;
+    gap: 8px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+  }
+  .data-table tbody tr:hover td {
+    background: transparent !important;
+  }
+  .data-table tbody td {
+    display: flex !important;
+    align-items: flex-start !important;
+    justify-content: space-between !important;
+    padding: 4px 0 !important;
+    border-bottom: 1px dashed var(--border) !important;
+    font-size: 0.84rem !important;
+    gap: 10px !important;
+    width: 100% !important;
+    box-sizing: border-box !important;
+    min-width: 0 !important;
+    text-align: right !important;
+    line-height: 1.35 !important;
+  }
+  .data-table tbody td:last-child {
+    border-bottom: none !important;
+    padding-bottom: 0 !important;
+  }
+  .data-table tbody td::before {
+    content: attr(data-label);
+    font-size: 0.74rem !important;
+    font-weight: 700 !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.04em !important;
+    color: var(--text-3) !important;
+    text-align: left !important;
+    flex: 0 0 auto !important;
+    max-width: 45% !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+    align-self: flex-start !important;
+    padding-top: 2px !important;
+  }
+  .data-table tbody td:empty {
+    display: none !important;
+  }
+  /* When td has no data-label, don't leave empty space */
+  .data-table tbody td:not([data-label])::before {
+    display: none !important;
+  }
+  .data-table tbody td:not([data-label]) {
+    justify-content: flex-start !important;
+    text-align: left !important;
+  }
+
+  /* Single full-width rows like 'No records found' */
+  .data-table tbody tr td[colspan] {
+    display: block !important;
+    text-align: center !important;
+    border-bottom: none !important;
+    padding: 18px 10px !important;
+  }
+  .data-table tbody tr td[colspan]::before {
+    display: none !important;
+  }
+
+  /* Actions row styling on mobile cards */
+  .data-table .td-actions {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 6px !important;
+    justify-content: flex-end !important;
+    align-items: center !important;
+    width: auto !important;
+  }
+  .data-table td[data-label="Actions"],
+  .data-table td[data-label="Action"] {
+    padding-top: 8px !important;
+    margin-top: 4px !important;
+    border-top: 1px solid var(--border) !important;
+    border-bottom: none !important;
+    align-items: center !important;
+  }
+
+  /* Nested elements inside mobile cells */
+  .homeowner-name-cell,
+  .user-cell,
+  .cell-user {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    justify-content: flex-end !important;
+    text-align: right !important;
+    flex-wrap: wrap !important;
+  }
+  .user-cell-meta {
+    max-width: 100% !important;
+    min-width: 0 !important;
+    text-align: right !important;
+  }
+  .user-cell .user-name {
+    max-width: 100% !important;
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  .user-sub {
+    max-width: 100% !important;
+    white-space: normal !important;
+    word-break: break-all !important;
+    justify-content: flex-end !important;
+  }
+  .block-lot-cell {
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  .paynow-month-cell {
+    justify-content: flex-end !important;
+    text-align: right !important;
+    max-width: 100% !important;
+  }
+  .paynow-month-desc {
+    white-space: normal !important;
+    word-break: break-word !important;
+  }
+  .data-table code {
+    word-break: break-all !important;
+    white-space: normal !important;
+  }
+  .data-table strong {
+    word-break: break-word !important;
+  }
+
+  /* Keep table-wrapper from enforcing a rigid horizontal scroll on cards */
+  .table-wrapper {
+    overflow-x: visible !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+}
+
+[data-theme="dark"] .data-table tbody tr {
+  background: var(--surface) !important;
+  border-color: var(--border) !important;
+}
 
 
 
@@ -3017,7 +3223,13 @@ input[type="date"].filter-select {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
   }
 }
-@media (max-width: 580px) {
+@media (max-width: 640px) {
+  .accounts-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px 10px;
+  }
+}
+@media (max-width: 340px) {
   .accounts-stats-grid {
     grid-template-columns: 1fr !important;
   }
@@ -3042,6 +3254,13 @@ input[type="date"].filter-select {
   }
 }
 @media (max-width: 640px) {
+  .lostfound-stats-grid,
+  .lf-admin-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px 10px;
+  }
+}
+@media (max-width: 340px) {
   .lostfound-stats-grid,
   .lf-admin-stats-grid {
     grid-template-columns: 1fr !important;
@@ -3075,8 +3294,15 @@ input[type="date"].filter-select {
   .complaints-stats-grid,
   .complaint-stats-grid,
   .stat-grid.complaints-stats-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px 10px;
+  }
+}
+@media (max-width: 340px) {
+  .complaints-stats-grid,
+  .complaint-stats-grid,
+  .stat-grid.complaints-stats-grid {
     grid-template-columns: 1fr !important;
-    gap: 12px;
   }
 }
 

@@ -315,19 +315,27 @@
 @media (max-width: 640px) {
   .lostfound-stats-grid,
   .lf-admin-stats-grid {
-    grid-template-columns: 1fr !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px 10px;
   }
   .lf-nav-tabs {
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-    padding-bottom: 2px;
+    overflow-x: visible;
+    flex-wrap: wrap;
+    gap: 6px;
+    padding-bottom: 0;
   }
   .lf-nav-tab {
     padding: 8px 12px;
     font-size: 0.84rem;
-    white-space: nowrap;
-    flex-shrink: 0;
+    white-space: normal;
+    flex-shrink: 1;
+  }
+}
+
+@media (max-width: 340px) {
+  .lostfound-stats-grid,
+  .lf-admin-stats-grid {
+    grid-template-columns: 1fr !important;
   }
 }
 
