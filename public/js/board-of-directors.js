@@ -561,7 +561,7 @@ function openAddBoardMemberModal() {
         <input type="text" id="bod_contact_input" placeholder="e.g. 09125225210" />
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="grid-2" style="gap:14px;">
         <div class="form-group">
           <label>Term Years</label>
           <input type="text" id="bod_term_input" value="2026 - 2028" placeholder="e.g. 2026 - 2028" />
@@ -642,7 +642,7 @@ function openEditBoardMemberModal(memberId) {
         <input type="text" id="bod_contact_input" value="${escapeHtml(m.contact_number || '')}" placeholder="e.g. 09125225210" />
       </div>
 
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">
+      <div class="grid-2" style="gap:14px;">
         <div class="form-group">
           <label>Term Years</label>
           <input type="text" id="bod_term_input" value="${escapeHtml(m.term_years || '2026 - 2028')}" placeholder="e.g. 2026 - 2028" />

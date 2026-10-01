@@ -351,3 +351,27 @@
   }
 }
 
+@media (max-width: 580px) {
+  .complaint-timeline-item {
+    gap: 10px;
+  }
+  .complaint-media-preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+  .complaint-evidence-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 430px) {
+  .complaint-media-preview-grid {
+    grid-template-columns: 1fr;
+  }
+  .complaint-status-pill {
+    font-size: 0.72rem;
+    padding: 2px 6px;
+  }
+}
+
+

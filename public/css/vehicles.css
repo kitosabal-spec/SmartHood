@@ -106,3 +106,15 @@
   border-color: var(--border);
 }
 
+@media (max-width: 580px) {
+  .vehicle-detail-grid {
+    grid-template-columns: 1fr;
+  }
+  .vehicle-fee-panel div {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+  }
+}
+
+

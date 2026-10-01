@@ -317,6 +317,35 @@
   .lf-admin-stats-grid {
     grid-template-columns: 1fr !important;
   }
+  .lf-nav-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+  .lf-nav-tab {
+    padding: 8px 12px;
+    font-size: 0.84rem;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
 }
+
+@media (max-width: 580px) {
+  .lostfound-media-preview-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+}
+
+@media (max-width: 430px) {
+  .lostfound-media-preview-grid {
+    grid-template-columns: 1fr;
+  }
+  .lf-detail-modal-media {
+    max-height: 220px;
+  }
+}
+
 
 

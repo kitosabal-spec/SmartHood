@@ -71,3 +71,9 @@
   background: rgba(24, 134, 141, 0.24);
   border-color: var(--teal-400);
 }
+
+@media (max-width: 768px) {
+  .homeowner-compact-table {
+    min-width: 600px;
+  }
+}

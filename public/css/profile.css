@@ -209,9 +209,19 @@
 @media (max-width: 640px) {
   .photo-upload-row { flex-direction: column; align-items: center; text-align: center; }
   .photo-upload-actions { justify-content: center; }
-  .profile-card { flex-direction: column; text-align: center; }
+  .profile-card { flex-direction: column; text-align: center; padding: 18px 16px; }
   .profile-avatar-wrapper { margin: 0 auto 8px auto; }
+  .photo-upload-info { min-width: 0; width: 100%; }
 }
+
+@media (max-width: 430px) {
+  .profile-card { padding: 14px 12px; }
+  .profile-info h3 { font-size: 1.05rem; }
+  .profile-info p { font-size: 0.8rem; }
+  .crop-viewport { width: 200px; max-width: 75vw; }
+  .crop-controls { max-width: 200px; }
+}
+
 
 /* ── PROFILE DARK MODE ── */
 [data-theme="dark"] .profile-avatar-wrapper .profile-avatar-big {

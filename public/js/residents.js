@@ -211,7 +211,7 @@ function openViewHO(id) {
       <div class="profile-avatar-big">${avatarHTML(u, 'avatar-xl')}</div>
       <div class="profile-info"><h3>${u.name}</h3><p>${u.email}</p><p>${u.block||''} ${u.lot||''}</p></div>
     </div>
-    <div class="grid-2" style="grid-template-columns:1fr 1fr 1fr;gap:10px">
+    <div class="report-summary-grid" style="gap:10px;margin-bottom:0">
       <div class="report-summary-item"><div class="r-val">${billings.length}</div><div class="r-lbl">Bills Assigned</div></div>
       <div class="report-summary-item"><div class="r-val">${payments.filter(p=>p.status==='approved').length}</div><div class="r-lbl">Approved Payments</div></div>
       <div class="report-summary-item"><div class="r-val">${complaints.length}</div><div class="r-lbl">Complaints Filed</div></div>

@@ -209,17 +209,19 @@ function renderHOAmenityBooking() {
     <div class="section-card">
       <div class="section-card-header"><div><h3>My Requests</h3><p>Status of your amenity bookings.</p></div></div>
       <div class="section-card-body no-pad">
-        <table class="data-table">
-          <thead><tr><th>Amenity</th><th>Date</th><th>Status</th></tr></thead>
-          <tbody>
-            ${myBookings.map(booking => `
-              <tr>
-                <td><strong>${booking.amenity}</strong><br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
-                <td>${formatAmenityDate(booking.bookingDate)}</td>
-                <td>${amenityStatusBadge(booking.status)}</td>
-              </tr>`).join('') || '<tr><td colspan="3"><div class="no-results">No amenity requests yet.</div></td></tr>'}
-          </tbody>
-        </table>
+        <div class="table-wrapper">
+          <table class="data-table">
+            <thead><tr><th>Amenity</th><th>Date</th><th>Status</th></tr></thead>
+            <tbody>
+              ${myBookings.map(booking => `
+                <tr>
+                  <td><strong>${booking.amenity}</strong><br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
+                  <td>${formatAmenityDate(booking.bookingDate)}</td>
+                  <td>${amenityStatusBadge(booking.status)}</td>
+                </tr>`).join('') || '<tr><td colspan="3"><div class="no-results">No amenity requests yet.</div></td></tr>'}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   </div>`;
@@ -360,26 +362,28 @@ function renderAmenityBookingsAdmin() {
   <div class="section-card">
     <div class="section-card-header"><div><h3>Booking Requests</h3><p>Approve or reject submitted amenity requests.</p></div></div>
     <div class="section-card-body no-pad">
-      <table class="data-table">
-        <thead><tr><th>Homeowner</th><th>Amenity</th><th>Date / Time</th><th>Status</th><th>Actions</th></tr></thead>
-        <tbody>
-          ${bookings.map(booking => {
-            const homeowner = db.getOne('users', booking.homeownerId);
-            return `<tr>
-              <td><div class="cell-user">${avatarHTML(homeowner, 'avatar-sm')}<strong>${homeowner ? homeowner.name : 'Unknown'}</strong></div></td>
-              <td>${booking.amenity}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.purpose || 'No purpose provided'}</span></td>
-              <td>${formatAmenityDate(booking.bookingDate)}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
-              <td>${amenityStatusBadge(booking.status)}</td>
-              <td><div class="td-actions">
-                ${booking.status === 'Pending' ? `
-                  <button class="btn btn-success btn-sm" onclick="confirmApproveAmenityBooking('${booking.id}')">Approve</button>
-                  <button class="btn btn-danger btn-sm" onclick="openRejectAmenityBooking('${booking.id}')">Reject</button>
-                ` : `<button class="btn btn-secondary btn-sm" onclick="viewAmenityBooking('${booking.id}')">View</button>`}
-              </div></td>
-            </tr>`;
-          }).join('') || '<tr><td colspan="5"><div class="no-results">No amenity booking requests.</div></td></tr>'}
-        </tbody>
-      </table>
+      <div class="table-wrapper">
+        <table class="data-table">
+          <thead><tr><th>Homeowner</th><th>Amenity</th><th>Date / Time</th><th>Status</th><th>Actions</th></tr></thead>
+          <tbody>
+            ${bookings.map(booking => {
+              const homeowner = db.getOne('users', booking.homeownerId);
+              return `<tr>
+                <td><div class="cell-user">${avatarHTML(homeowner, 'avatar-sm')}<strong>${homeowner ? homeowner.name : 'Unknown'}</strong></div></td>
+                <td>${booking.amenity}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.purpose || 'No purpose provided'}</span></td>
+                <td>${formatAmenityDate(booking.bookingDate)}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
+                <td>${amenityStatusBadge(booking.status)}</td>
+                <td><div class="td-actions">
+                  ${booking.status === 'Pending' ? `
+                    <button class="btn btn-success btn-sm" onclick="confirmApproveAmenityBooking('${booking.id}')">Approve</button>
+                    <button class="btn btn-danger btn-sm" onclick="openRejectAmenityBooking('${booking.id}')">Reject</button>
+                  ` : `<button class="btn btn-secondary btn-sm" onclick="viewAmenityBooking('${booking.id}')">View</button>`}
+                </div></td>
+              </tr>`;
+            }).join('') || '<tr><td colspan="5"><div class="no-results">No amenity booking requests.</div></td></tr>'}
+          </tbody>
+        </table>
+      </div>
     </div>
   </div>`;
   renderAdminAmenityCalendar();

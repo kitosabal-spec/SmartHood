@@ -334,7 +334,7 @@ function renderAdminDashboard() {
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+  <div class="grid-2" style="gap:18px">
     <div class="section-card">
       <div class="section-card-header"><div><h3>Recent Payments</h3><p>Latest submissions</p></div></div>
       <div class="section-card-body no-pad">
@@ -541,7 +541,7 @@ function renderHODashboard() {
     </div>
   </div>
 
-  <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+  <div class="grid-2" style="gap:18px">
     <div class="section-card">
       <div class="section-card-header"><div><h3>Upcoming Due Dates</h3></div></div>
       <div class="section-card-body">
