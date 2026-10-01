@@ -1832,6 +1832,11 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.
 .data-table tbody tr:last-child td { border-bottom: none; }
 .data-table tbody tr:hover td { background: var(--surface-2); }
 .data-table .td-actions { display: flex; gap: 6px; }
+.payment-remarks-cell {
+  font-size: 0.82rem;
+  max-width: 240px;
+  word-break: break-word;
+}
 
 /* ── BADGES ── */
 .badge {
@@ -2666,6 +2671,7 @@ input[type="date"].filter-select {
     font-size: 0.84rem !important;
     gap: 10px !important;
     width: 100% !important;
+    max-width: none !important;
     box-sizing: border-box !important;
     min-width: 0 !important;
     text-align: right !important;
@@ -2776,6 +2782,21 @@ input[type="date"].filter-select {
   }
   .data-table strong {
     word-break: break-word !important;
+    text-align: right !important;
+  }
+  .payment-remarks-cell {
+    max-width: 100% !important;
+    width: 100% !important;
+    justify-content: space-between !important;
+    text-align: right !important;
+  }
+  .payment-remarks-text,
+  .payment-remarks-cell strong,
+  .payment-remarks-cell span {
+    text-align: right !important;
+    margin-left: auto !important;
+    word-break: break-word !important;
+    display: inline-block !important;
   }
 
   /* Keep table-wrapper from enforcing a rigid horizontal scroll on cards */

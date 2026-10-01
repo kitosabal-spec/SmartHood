@@ -2662,9 +2662,9 @@ function renderHOHistory() {
 
                 let remarksDisplay = '—';
                 if (p.status === 'rejected') {
-                  remarksDisplay = `<strong style="color:var(--red-600)">${escapeHtml(p.rejection_reason || p.remarks || 'Rejected by admin')}</strong>`;
+                  remarksDisplay = `<strong class="payment-remarks-text" style="color:var(--red-600)">${escapeHtml(p.rejection_reason || p.remarks || 'Rejected by admin')}</strong>`;
                 } else if (p.remarks) {
-                  remarksDisplay = escapeHtml(p.remarks);
+                  remarksDisplay = `<span class="payment-remarks-text">${escapeHtml(p.remarks)}</span>`;
                 }
 
                 return `<tr>
@@ -2677,7 +2677,7 @@ function renderHOHistory() {
                   <td><code style="font-size:0.84rem;font-weight:700;color:var(--text)">${escapeHtml(p.refNum)}</code></td>
                   <td>${escapeHtml(p.payment_date || p.submittedAt || '—')}</td>
                   <td>${statusBadge}</td>
-                  <td style="font-size:0.82rem;max-width:220px">${remarksDisplay}</td>
+                  <td class="payment-remarks-cell">${remarksDisplay}</td>
                   <td>
                     ${p.receipt ? `
                       <button class="btn btn-secondary btn-sm" onclick="openReceiptLightbox('${p.receipt}')">
