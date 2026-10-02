@@ -1159,9 +1159,18 @@ const qrUpload = multer({
 });
 
 function signedSessionToken(userId) {
-  const payload = Buffer.from(JSON.stringify({ userId, expires: Date.now() + (8 * 60 * 60 * 1000) })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({ userId })).toString('base64url');
   const signature = crypto.createHmac('sha256', SESSION_SECRET).update(payload).digest('base64url');
   return `${payload}.${signature}`;
+}
+
+function sessionCookieOptions() {
+  return {
+    httpOnly: true,
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production',
+    path: '/',
+  };
 }
 
 function sessionUserId(req) {
@@ -1175,7 +1184,11 @@ function sessionUserId(req) {
   if (signature.length !== expected.length || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) return null;
   try {
     const claims = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'));
-    return claims.userId && Number(claims.expires) > Date.now() ? claims.userId : null;
+    // Accept still-valid cookies from the previous format during deployment,
+    // while new session cookies live only for the browser session.
+    if (!claims.userId) return null;
+    if (claims.expires && Number(claims.expires) <= Date.now()) return null;
+    return claims.userId;
   } catch {
     return null;
   }
@@ -2527,6 +2540,21 @@ app.get('/api/data', asyncHandler(async (req, res) => {
   res.json(await loadAllData(requester));
 }));
 
+app.get('/api/session', asyncHandler(async (req, res) => {
+  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+  res.setHeader('Pragma', 'no-cache');
+  res.setHeader('Expires', '0');
+
+  const user = await getRequester(req);
+  if (!user || user.status === 'inactive' || user.status === 'deactivated') {
+    res.clearCookie(SESSION_COOKIE_NAME, sessionCookieOptions());
+    res.json({ authenticated: false, user: null });
+    return;
+  }
+
+  res.json({ authenticated: true, user });
+}));
+
 app.post('/api/login', asyncHandler(async (req, res) => {
   const username = (req.body.username || '').trim();
   const password = (req.body.password || '').trim();
@@ -2580,18 +2608,13 @@ app.post('/api/login', asyncHandler(async (req, res) => {
     res.status(403).json({ error: 'Your account has been deactivated. Please contact the administrator.' });
     return;
   }
-  res.cookie(SESSION_COOKIE_NAME, signedSessionToken(user.id), {
-    httpOnly: true,
-    sameSite: 'lax',
-    secure: process.env.NODE_ENV === 'production',
-    maxAge: 8 * 60 * 60 * 1000,
-    path: '/',
-  });
+  // Deliberately omit maxAge/expires: closing the browser ends the cookie session.
+  res.cookie(SESSION_COOKIE_NAME, signedSessionToken(user.id), sessionCookieOptions());
   res.json(deserializeRow('users', user));
 }));
 
 app.post('/api/logout', (req, res) => {
-  res.clearCookie(SESSION_COOKIE_NAME, { httpOnly: true, sameSite: 'lax', secure: process.env.NODE_ENV === 'production', path: '/' });
+  res.clearCookie(SESSION_COOKIE_NAME, sessionCookieOptions());
   res.json({ ok: true });
 });
 

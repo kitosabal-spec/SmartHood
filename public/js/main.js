@@ -111,18 +111,10 @@ const HOMEOWNER_NAV = [
 
 // SECTION 2: SEED DATA
 
-async function seedData() {
-  const hasSessionHint = Boolean(sessionStorage.getItem('sah_session'));
-  if (hasSessionHint) {
-    try {
-      await api.loadAll();
-      return;
-    } catch {
-      // The signed cookie may have expired while sessionStorage remained.
-      sessionStorage.removeItem('sah_session');
-      currentUser = null;
-      currentRole = null;
-    }
+async function seedData(isAuthenticated = false) {
+  if (isAuthenticated) {
+    await api.loadAll();
+    return;
   }
   await api.loadPublic();
   return;
@@ -217,6 +209,7 @@ const api = {
     const response = await fetch(path, {
       ...options,
       headers,
+      credentials: 'same-origin',
     });
 
     if (!response.ok) {
@@ -252,6 +245,10 @@ const api = {
       method: 'POST',
       body: JSON.stringify({ username, password }),
     });
+  },
+
+  async getSession() {
+    return this.request('/api/session');
   },
 
   async changePassword(currentPassword, newPassword) {
@@ -509,11 +506,6 @@ async function handleLogin() {
     const passInput = document.getElementById('loginPass');
     if (passInput) passInput.value = '';
 
-    // Store session exclusively in sessionStorage (destroyed on tab/browser close)
-    sessionStorage.setItem('sah_session', JSON.stringify({ id: user.id, role: user.role }));
-    // Wipe any legacy persistent session from localStorage
-    localStorage.removeItem('sah_session');
-
     await api.loadAll();
     currentUser = db.getOne('users', user.id) || user;
     currentRole = currentUser.role || user.role;
@@ -544,43 +536,14 @@ function showLoginError(msg) {
 }
 
 function restoreSession() {
-  try {
-    // Session is strictly tab/browser-session based (sessionStorage)
-    const raw = sessionStorage.getItem('sah_session');
-    if (!raw) {
-      currentUser = null;
-      currentRole = null;
-      return false;
-    }
-    const sess = JSON.parse(raw);
-    if (!sess || !sess.id) {
-      sessionStorage.removeItem('sah_session');
-      currentUser = null;
-      currentRole = null;
-      return false;
-    }
-    const user = db.getOne('users', sess.id);
-    if (!user) {
-      sessionStorage.removeItem('sah_session');
-      currentUser = null;
-      currentRole = null;
-      return false;
-    }
-    if (user.status === 'inactive' || user.status === 'deactivated') {
-      sessionStorage.removeItem('sah_session');
-      currentUser = null;
-      currentRole = null;
-      return false;
-    }
-    currentUser = user;
-    currentRole = user.role;
-    return true;
-  } catch {
-    try { sessionStorage.removeItem('sah_session'); } catch {}
+  const user = currentUser;
+  if (!user || !user.id || user.status === 'inactive' || user.status === 'deactivated') {
     currentUser = null;
     currentRole = null;
     return false;
   }
+  currentRole = user.role;
+  return true;
 }
 
 
@@ -4039,12 +4002,14 @@ function showLandingPage() {
   setActivePubNav('hero');
 }
 
-function performLogout() {
-  // Clear the server's HttpOnly session as well as the UI's local state.
-  // This is intentionally fire-and-forget so logout still works offline.
-  if (typeof api !== 'undefined' && typeof api.logout === 'function') api.logout().catch(() => {});
+async function performLogout() {
+  // Start invalidating the HttpOnly cookie immediately, then clear protected UI.
+  const logoutRequest = (typeof api !== 'undefined' && typeof api.logout === 'function')
+    ? api.logout()
+    : Promise.resolve();
   closeProfileDropdown();
   try {
+    // Remove only obsolete client-side auth remnants from older releases.
     sessionStorage.removeItem('sah_session');
     localStorage.removeItem('sah_session');
   } catch {}
@@ -4066,6 +4031,7 @@ function performLogout() {
     window.history.replaceState({ auth: false }, '', window.location.pathname + '#login');
   } catch {}
   window.scrollTo({ top: 0, behavior: 'smooth' });
+  await logoutRequest.catch(() => {});
 }
 
 function handleLogout() {
@@ -4082,26 +4048,25 @@ const PUBLIC_LANDING_SECTIONS = new Set(['hero', 'announcements', 'lostfound', '
 const PUBLIC_HASHES = new Set(['hero', 'announcements', 'lostfound', 'board', 'about', 'contact', 'login']);
 
 async function init() {
-  // Always wipe any legacy persistent session from localStorage
+  // Wipe obsolete client-side auth remnants. The HttpOnly cookie is the only
+  // authentication source of truth.
   try {
     localStorage.removeItem('sah_session');
+    sessionStorage.removeItem('sah_session');
   } catch {}
 
-  // Restore UI state provisionally; the server still authenticates exclusively
-  // with its signed HttpOnly session cookie.
   try {
-    const raw = sessionStorage.getItem('sah_session');
-    if (raw) {
-      const sess = JSON.parse(raw);
-      if (sess && sess.id) {
-        currentUser = { id: sess.id, role: sess.role };
-        currentRole = sess.role;
-      }
+    // Check the signed server session before deciding whether to show login.
+    const session = await api.getSession();
+    if (session.authenticated && session.user) {
+      currentUser = session.user;
+      currentRole = session.user.role;
     }
-  } catch {}
-
-  try {
-    await seedData();
+    await seedData(Boolean(currentUser));
+    if (currentUser) {
+      currentUser = db.getOne('users', currentUser.id) || currentUser;
+      currentRole = currentUser.role;
+    }
   } catch (error) {
     document.body.innerHTML = `
       <div style="font-family:Arial,sans-serif;max-width:720px;margin:80px auto;padding:24px;line-height:1.6">
