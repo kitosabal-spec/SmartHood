@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="light" class="auth-pending">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
@@ -25,8 +25,85 @@
     }
     window.scrollTo(0, 0);
   </script>
+  <style>
+    /* Critical bootstrap visibility: do not expose either public or protected UI
+       until the HttpOnly-cookie session check has resolved. */
+    .auth-pending #landingPage,
+    .auth-pending #appShell {
+      display: none !important;
+    }
+
+    .startup-screen {
+      position: fixed;
+      inset: 0;
+      z-index: 20000;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100dvh;
+      padding: 24px;
+      background: #f5fbfb;
+      color: #123f42;
+      font-family: "DM Sans", Arial, sans-serif;
+    }
+
+    .startup-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      text-align: center;
+    }
+
+    .startup-logo {
+      width: 68px;
+      height: 68px;
+      object-fit: contain;
+    }
+
+    .startup-brand {
+      margin: 0;
+      font-family: "Plus Jakarta Sans", "DM Sans", Arial, sans-serif;
+      font-size: 1.35rem;
+      font-weight: 700;
+      letter-spacing: -0.02em;
+    }
+
+    .startup-message {
+      margin: 0;
+      color: #587578;
+      font-size: 0.9rem;
+    }
+
+    .startup-spinner {
+      width: 28px;
+      height: 28px;
+      margin-top: 4px;
+      border: 3px solid rgba(24, 129, 134, 0.2);
+      border-top-color: #188186;
+      border-radius: 50%;
+      animation: startup-spin 0.8s linear infinite;
+    }
+
+    @keyframes startup-spin {
+      to { transform: rotate(360deg); }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .startup-spinner { animation-duration: 1.6s; }
+    }
+  </style>
 </head>
 <body>
+
+<div id="startupScreen" class="startup-screen" role="status" aria-live="polite" aria-label="SmartHood is loading">
+  <div class="startup-card">
+    <img src="public/images/logo sh.png" alt="" class="startup-logo">
+    <p class="startup-brand">SmartHood</p>
+    <p class="startup-message">Loading your community portal…</p>
+    <div class="startup-spinner" aria-hidden="true"></div>
+  </div>
+</div>
 
 <!-- SVG ICON DEFS (reusable inline icons) -->
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
@@ -174,7 +251,7 @@
 
 <!--
      PUBLIC LANDING PAGE -->
-<div id="landingPage" class="landing-page">
+<div id="landingPage" class="landing-page hidden">
 
   <!-- PUBLIC NAVBAR -->
   <nav class="pub-nav" id="pubNav">
@@ -696,7 +773,7 @@
   <div class="spinner"></div>
 </div>
 
-  <script src="public/js/main.js?v=2.2.1"></script>
+  <script src="public/js/main.js?v=2.2.2"></script>
   <script src="public/js/dashboard.js?v=2.2.0"></script>
   <script src="public/js/announcements.js"></script>
   <script src="public/js/residents.js"></script>

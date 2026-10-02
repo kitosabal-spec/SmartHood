@@ -4047,6 +4047,12 @@ function handleLogout() {
 const PUBLIC_LANDING_SECTIONS = new Set(['hero', 'announcements', 'lostfound', 'board', 'about', 'contact']);
 const PUBLIC_HASHES = new Set(['hero', 'announcements', 'lostfound', 'board', 'about', 'contact', 'login']);
 
+function finishStartup() {
+  const startupScreen = document.getElementById('startupScreen');
+  if (startupScreen) startupScreen.classList.add('hidden');
+  document.documentElement.classList.remove('auth-pending');
+}
+
 async function init() {
   // Wipe obsolete client-side auth remnants. The HttpOnly cookie is the only
   // authentication source of truth.
@@ -4086,6 +4092,7 @@ async function init() {
     const targetView = (!isPublicOnlyHash && currentHash && canAccessView(currentHash)) ? currentHash : null;
     document.getElementById('landingPage').classList.add('hidden');
     initApp(targetView);
+    finishStartup();
   } else {
     currentUser = null;
     currentRole = null;
@@ -4124,6 +4131,7 @@ async function init() {
       } catch {}
       openLoginModal();
     }
+    finishStartup();
   }
 }
 
