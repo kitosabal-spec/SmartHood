@@ -1,3 +1,5 @@
+require('dotenv').config();
+
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -5,6 +7,7 @@ const crypto = require('crypto');
 const multer = require('multer');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
+const { isEmailConfigured, sendEmail } = require('./emailService');
 
 function isBcryptHash(str) {
   return typeof str === 'string' && /^\$2[aby]?\$\d{2}\$[./A-Za-z0-9]{53}$/.test(str);
@@ -3118,6 +3121,20 @@ app.post('/api/billings/generate-monthly-dues', asyncHandler(async (req, res) =>
       `Monthly Dues for ${monthName} have been generated and assigned to your account.`,
       { userIds: billedUserIds }
     );
+    const billingsByHomeowner = new Map(createdBillings.map(billing => [billing.assignedTo[0], billing]));
+    await emailHomeowners(billedUserIds, recipient => {
+      const billing = billingsByHomeowner.get(recipient.homeownerId);
+      return {
+        subject: `SmartHood: ${billing.title}`,
+        title: 'New Billing Statement',
+        message: 'A new billing statement has been generated and assigned to your SmartHood account.',
+        details: [
+          { label: 'Billing', value: billing.title },
+          { label: 'Amount due', value: moneyDisplay(billing.amount) },
+          { label: 'Due date', value: billing.dueDate },
+        ],
+      };
+    });
   }
 
   res.json({
@@ -3282,6 +3299,18 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
       `A ${paymentMethod} payment of ₱${amount.toLocaleString()} for "${billingLabel}" was recorded by the HOA office and approved.`,
       { userIds: [homeownerId] }
     );
+    await emailHomeowners([homeownerId], () => ({
+      subject: 'SmartHood: Payment recorded and approved',
+      title: 'Payment Recorded',
+      message: 'The HOA office recorded and approved a payment on your account.',
+      details: [
+        { label: 'Billing', value: billingLabel },
+        { label: 'Amount', value: moneyDisplay(amount) },
+        { label: 'Payment method', value: paymentMethod },
+        { label: 'Payment date', value: paymentDate },
+        refNum ? { label: 'Reference', value: refNum } : null,
+      ].filter(Boolean),
+    }));
 
     res.status(201).json({
       ok: true,
@@ -3739,6 +3768,16 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
     `Your GCash payment of ₱${Number(payment.amount).toLocaleString()} for "${billTitle}" has been verified and approved.`,
     { userIds: [payment.homeownerId] }
   );
+  await emailHomeowners([payment.homeownerId], () => ({
+    subject: 'SmartHood: Payment approved',
+    title: 'Payment Approved',
+    message: 'Your submitted payment has been verified and approved.',
+    details: [
+      { label: 'Billing', value: billTitle },
+      { label: 'Amount', value: moneyDisplay(payment.amount) },
+      payment.refNum ? { label: 'Reference', value: payment.refNum } : null,
+    ].filter(Boolean),
+  }));
 
   res.json({
     ok: true,
@@ -3794,6 +3833,16 @@ app.post('/api/payments/:id/reject', asyncHandler(async (req, res) => {
     `Your payment for "${billTitle}" was rejected. Reason: ${reason}`,
     { userIds: [payment.homeownerId] }
   );
+  await emailHomeowners([payment.homeownerId], () => ({
+    subject: 'SmartHood: Payment rejected',
+    title: 'Payment Rejected',
+    message: 'Your submitted payment was not approved. Review the reason below and submit a corrected payment when ready.',
+    details: [
+      { label: 'Billing', value: billTitle },
+      { label: 'Amount', value: moneyDisplay(payment.amount) },
+      { label: 'Reason', value: reason },
+    ],
+  }));
 
   res.json({
     ok: true,
@@ -3886,6 +3935,15 @@ app.post(['/api/lostfound/:id/approve', '/api/lost-found/:id/approve'], asyncHan
         `Your lost & found report for "${report.itemName}" has been approved and published to the community board.`,
         { userIds: [report.homeownerId] }
       );
+      await emailHomeowners([report.homeownerId], () => ({
+        subject: 'SmartHood: Lost & found report approved',
+        title: 'Lost & Found Report Approved',
+        message: 'Your lost and found report has been approved and published to the community board.',
+        details: [
+          { label: 'Item', value: report.itemName },
+          remarks ? { label: 'Admin remarks', value: remarks } : null,
+        ].filter(Boolean),
+      }));
     } catch (e) {
       console.warn('Notification warning:', e.message);
     }
@@ -3929,6 +3987,15 @@ app.post(['/api/lostfound/:id/reject', '/api/lost-found/:id/reject'], asyncHandl
         `Your lost & found report for "${report.itemName}" was not approved.${reason ? ' Reason: ' + reason : ''}`,
         { userIds: [report.homeownerId] }
       );
+      await emailHomeowners([report.homeownerId], () => ({
+        subject: 'SmartHood: Lost & found report rejected',
+        title: 'Lost & Found Report Rejected',
+        message: 'Your lost and found report was not approved.',
+        details: [
+          { label: 'Item', value: report.itemName },
+          reason ? { label: 'Reason', value: reason } : null,
+        ].filter(Boolean),
+      }));
     } catch (e) {
       console.warn('Notification warning:', e.message);
     }
@@ -4446,6 +4513,103 @@ async function createServerNotification(title, message, options = {}) {
   }
 }
 
+const IMPORTANT_STATUS_FIELDS = {
+  complaints: ['status'],
+  amenityBookings: ['status'],
+  vehicleRegistrations: ['registrationStatus', 'paymentStatus'],
+  lostFound: ['status'],
+};
+
+async function getHomeownerEmailRecipients(homeownerIds) {
+  const ids = [...new Set((homeownerIds || []).map(id => String(id || '').trim()).filter(Boolean))];
+  if (!ids.length) return [];
+  const placeholders = ids.map(() => '?').join(', ');
+  return all(
+    `SELECT u.homeowner_id AS homeownerId, u.email, h.name
+       FROM users u
+       JOIN homeowners h ON h.id = u.homeowner_id
+      WHERE u.role = 'homeowner'
+        AND u.status = 'active'
+        AND u.email IS NOT NULL
+        AND TRIM(u.email) <> ''
+        AND u.homeowner_id IN (${placeholders})`,
+    ids
+  );
+}
+
+// Email is deliberately best-effort after the business write succeeds. A mail
+// provider outage must not roll back or misreport a valid HOA transaction.
+async function emailHomeowners(homeownerIds, buildEmail) {
+  if (!isEmailConfigured()) return { sent: 0, skipped: true, failed: 0 };
+  try {
+    const recipients = await getHomeownerEmailRecipients(homeownerIds);
+    let sent = 0;
+    let failed = 0;
+    const batchSize = 5;
+    for (let index = 0; index < recipients.length; index += batchSize) {
+      const batch = recipients.slice(index, index + batchSize);
+      const results = await Promise.allSettled(batch.map(recipient => {
+        const email = buildEmail(recipient) || {};
+        return sendEmail({ ...email, to: recipient.email, homeownerName: recipient.name });
+      }));
+      results.forEach((result, resultIndex) => {
+        if (result.status === 'fulfilled') {
+          sent += 1;
+        } else {
+          failed += 1;
+          console.error(`Email delivery failed for homeowner ${batch[resultIndex].homeownerId}:`, result.reason?.message || result.reason);
+        }
+      });
+    }
+    return { sent, skipped: false, failed };
+  } catch (error) {
+    console.error('Could not prepare homeowner email notifications:', error.message);
+    return { sent: 0, skipped: false, failed: 1 };
+  }
+}
+
+function moneyDisplay(value) {
+  return `PHP ${Number(value || 0).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function importantStatusEmail(table, before, after) {
+  const changed = (IMPORTANT_STATUS_FIELDS[table] || [])
+    .filter(field => after[field] !== undefined && String(after[field] ?? '') !== String(before[field] ?? ''))
+    .map(field => ({ field, from: before[field] || 'Not set', to: after[field] || 'Not set' }));
+  if (!changed.length || !after.homeownerId) return null;
+
+  const labels = {
+    complaints: 'Complaint Request',
+    amenityBookings: 'Amenity Booking',
+    vehicleRegistrations: 'Vehicle Registration',
+    lostFound: 'Lost & Found Report',
+  };
+  const fieldLabels = { status: 'Status', registrationStatus: 'Registration status', paymentStatus: 'Payment status' };
+  const detail = table === 'complaints'
+    ? after.category
+    : table === 'amenityBookings'
+      ? `${after.amenity || 'Amenity'}${after.bookingDate ? ` on ${after.bookingDate}` : ''}`
+      : table === 'vehicleRegistrations'
+        ? after.plateNumber
+        : after.itemName;
+  const remarks = table === 'complaints' ? after.adminResponse : (after.adminRemarks || after.remarks);
+
+  return {
+    homeownerId: after.homeownerId,
+    email: {
+      subject: `SmartHood: ${labels[table]} updated`,
+      title: `${labels[table]} Updated`,
+      message: `An administrator changed an important status on your ${labels[table].toLowerCase()}.`,
+      details: [
+        detail ? { label: 'Request', value: detail } : null,
+        ...changed.map(change => ({ label: fieldLabels[change.field] || change.field, value: `${change.from} → ${change.to}` })),
+        remarks ? { label: 'Admin remarks', value: remarks } : null,
+      ].filter(Boolean),
+      actionPath: '',
+    },
+  };
+}
+
 app.post('/api/reset', asyncHandler(async (req, res) => {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
@@ -4724,6 +4888,16 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
         `"${body.title || 'A new billing'}" has been assigned to your account.`,
         { userIds: assignedHomeownerIds }
       );
+      await emailHomeowners(assignedHomeownerIds, () => ({
+        subject: `SmartHood: ${body.title || 'New billing statement'}`,
+        title: 'New Billing Statement',
+        message: 'A new billing statement has been created and assigned to your SmartHood account.',
+        details: [
+          { label: 'Billing', value: body.title || 'Billing' },
+          { label: 'Amount due', value: moneyDisplay(body.amount) },
+          body.dueDate ? { label: 'Due date', value: body.dueDate } : null,
+        ].filter(Boolean),
+      }));
     }
   }
   res.status(201).json(presentPrivateFiles(table, sanitizeRecord(table, body), allowed));
@@ -4734,6 +4908,13 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'update');
   if (!allowed) return;
+
+  let previousImportantRecord = null;
+  const importantFields = IMPORTANT_STATUS_FIELDS[table] || [];
+  if (importantFields.some(field => req.body[field] !== undefined)) {
+    const row = await get(`SELECT * FROM ${tableName(table)} WHERE id = ?`, [req.params.id]);
+    if (row) previousImportantRecord = deserializeRow(table, row);
+  }
 
   // Protect Primary Administrator u001 from accidental deactivation or role change
   if (table === 'users' && req.params.id === 'u001') {
@@ -4891,6 +5072,12 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
     for (const filename of complaintFiles.newFilenames) claimStagedPrivateUpload('complaints', filename, allowed);
     deletePrivateFiles('complaints', complaintFiles.oldFilenames.filter(filename => !complaintFiles.newFilenames.includes(filename)));
   }
+  if (previousImportantRecord) {
+    const statusNotification = importantStatusEmail(table, previousImportantRecord, { ...previousImportantRecord, ...item });
+    if (statusNotification) {
+      await emailHomeowners([statusNotification.homeownerId], () => statusNotification.email);
+    }
+  }
   res.json(presentPrivateFiles(table, sanitizeRecord(table, item), allowed));
 }));
 
@@ -4990,6 +5177,9 @@ ensureDatabase()
     app.listen(PORT, () => {
       console.log(`SmartHood is running at http://localhost:${PORT}`);
       console.log(`MySQL database: ${DB_CONFIG.host}:${DB_CONFIG.port}/${DB_CONFIG.database}`);
+      console.log(isEmailConfigured()
+        ? 'Email notifications: configured'
+        : 'Email notifications: disabled (set SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM)');
     });
   })
   .catch((err) => {
