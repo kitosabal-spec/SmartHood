@@ -1032,24 +1032,43 @@ function getBillingTotal(billing) {
   return toMoneyNumber(billing?.amount) * getAssignedHomeownerIds(billing).length;
 }
 
+function getBillingPaymentSummary(billing, homeownerId, payments = db.get('payments')) {
+  const originalAmount = toMoneyNumber(billing?.amount);
+  const related = (payments || []).filter(payment =>
+    payment.billingId === billing?.id && payment.homeownerId === homeownerId
+  );
+  const totalPaid = Math.round(related
+    .filter(payment => payment.status === 'approved')
+    .reduce((sum, payment) => sum + toMoneyNumber(payment.amount), 0) * 100) / 100;
+  const remainingBalance = Math.max(0, Math.round((originalAmount - totalPaid) * 100) / 100);
+  const pendingPayment = related.find(payment => payment.status === 'pending') || null;
+  return {
+    originalAmount,
+    totalPaid,
+    remainingBalance,
+    pendingPayment,
+    status: remainingBalance <= 0 && originalAmount > 0
+      ? 'paid'
+      : (totalPaid > 0 ? 'partially_paid' : 'unpaid'),
+  };
+}
+if (typeof window !== 'undefined') window.getBillingPaymentSummary = getBillingPaymentSummary;
+
 function getBillingCollectionStatus(billing) {
   const assignedIds = getAssignedHomeownerIds(billing);
   if (!assignedIds.length) return 'inactive';
 
   const payments = db.get('payments').filter(payment => payment.billingId === billing.id);
-  const approvedHomeowners = new Set(
-    payments
-      .filter(payment => payment.status === 'approved')
-      .map(payment => payment.homeownerId)
-  );
+  const summaries = assignedIds.map(homeownerId => getBillingPaymentSummary(billing, homeownerId, payments));
   const pendingHomeowners = new Set(
     payments
       .filter(payment => payment.status === 'pending')
       .map(payment => payment.homeownerId)
   );
 
-  if (assignedIds.every(id => approvedHomeowners.has(id))) return 'paid';
+  if (summaries.every(summary => summary.status === 'paid')) return 'paid';
   if (assignedIds.some(id => pendingHomeowners.has(id))) return 'pending';
+  if (summaries.some(summary => summary.totalPaid > 0)) return 'partially_paid';
   if (billing.dueDate && billing.dueDate < getLocalDateValue()) return 'overdue';
   return billing.status === 'inactive' ? 'inactive' : 'active';
 }
@@ -1351,7 +1370,9 @@ function exportReportsFinancialCSV() {
   billings.forEach(b => {
     const assignedIds = getAssignedHomeownerIds(b);
     const billPayments = payments.filter(p => p.billingId === b.id && p.status === 'approved');
-    const paidHomeowners = new Set(billPayments.map(p => p.homeownerId));
+    const paidHomeowners = new Set(assignedIds.filter(homeownerId =>
+      getBillingPaymentSummary(b, homeownerId, billPayments).status === 'paid'
+    ));
 
     const totalBilled = toMoneyNumber(b.amount) * assignedIds.length;
     const totalCollected = billPayments.reduce((sum, p) => sum + toMoneyNumber(p.amount), 0);
@@ -1754,7 +1775,9 @@ function renderBillingCollectionTable() {
   tbody.innerHTML = pageItems.map(b => {
     const assignedIds = getAssignedHomeownerIds(b);
     const billPayments = payments.filter(p => p.billingId === b.id && p.status === 'approved');
-    const paidHomeowners = new Set(billPayments.map(p => p.homeownerId));
+    const paidHomeowners = new Set(assignedIds.filter(homeownerId =>
+      getBillingPaymentSummary(b, homeownerId, billPayments).status === 'paid'
+    ));
     const rate = assignedIds.length > 0 ? Math.round((paidHomeowners.size / assignedIds.length) * 100) : 0;
     return `<tr>
       <td style="max-width:200px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(b.title)}">${escapeHtml(b.title)}</td>
@@ -3678,6 +3701,7 @@ function badgeHtml(status) {
     pending:  '<span class="badge badge-yellow">Pending</span>',
     rejected: '<span class="badge badge-red">Rejected</span>',
     paid:     '<span class="badge badge-green">Paid</span>',
+    partially_paid: '<span class="badge badge-blue">Partially Paid</span>',
     active:   '<span class="badge badge-blue">Active</span>',
     inactive: '<span class="badge badge-gray">Inactive</span>',
     overdue:  '<span class="badge badge-red">Overdue</span>',

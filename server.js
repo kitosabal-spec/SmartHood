@@ -232,7 +232,7 @@ const seed = {
       account_name: 'San Alfonso Homes HOA',
       account_number: '09171234567',
       qr_code_path: null,
-      instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay the exact amount shown in SmartHood.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
+      instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay an amount not exceeding the remaining balance.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
       is_active: 1,
       updated_by: 'u001',
       updated_at: new Date().toISOString(),
@@ -447,13 +447,13 @@ async function findApprovedMonthlyDuesPayment(homeownerId, month) {
       WHERE homeownerId = ?
         AND monthly_dues_month = ?
         AND status = 'approved'
-        AND (payment_type = 'monthly_dues' OR billingId IS NULL OR billingId = '')`,
+        AND (billingId IS NULL OR billingId = '')`,
     [homeownerId, month]
   );
   if (direct) return direct;
 
   const linked = await all(
-    `SELECT p.*
+    `SELECT p.*, b.amount AS billing_amount
       FROM payments p
       JOIN billings b ON p.billingId = b.id
       WHERE p.homeownerId = ?
@@ -462,7 +462,9 @@ async function findApprovedMonthlyDuesPayment(homeownerId, month) {
         AND b.billing_type = ?`,
     [homeownerId, month, BILLING_TYPE_MONTHLY_DUES]
   );
-  return linked[0] || null;
+  if (!linked.length) return null;
+  const totalPaid = roundMoney(linked.reduce((sum, payment) => sum + roundMoney(payment.amount), 0));
+  return totalPaid >= roundMoney(linked[0].billing_amount) ? linked[0] : null;
 }
 
 async function validateAndPrepareBillingPayload(payload, res, excludeBillingId = null) {
@@ -641,6 +643,41 @@ async function getTableData(table) {
   }
   const rows = await all(`SELECT * FROM ${tableName(table)}`);
   return rows.map((row) => deserializeRow(table, row));
+}
+
+function roundMoney(value) {
+  return Math.round((Number(value) || 0) * 100) / 100;
+}
+
+function summarizeBillingPayments(billing, homeownerId, payments) {
+  const originalAmount = roundMoney(billing?.amount);
+  const totalPaid = roundMoney((payments || [])
+    .filter(payment => payment.status === 'approved' && payment.homeownerId === homeownerId)
+    .reduce((sum, payment) => sum + roundMoney(payment.amount), 0));
+  const remainingBalance = roundMoney(Math.max(0, originalAmount - totalPaid));
+  return {
+    originalAmount,
+    totalPaid,
+    remainingBalance,
+    status: remainingBalance <= 0 && originalAmount > 0
+      ? 'paid'
+      : (totalPaid > 0 ? 'partially_paid' : 'unpaid'),
+  };
+}
+
+async function refreshBillingPaymentStatus(connection, billing) {
+  if (!billing || billing.status === 'inactive') return billing?.status;
+  const [rows] = await connection.execute(
+    `SELECT homeownerId, amount, status FROM payments WHERE billingId = ? AND status = 'approved' FOR UPDATE`,
+    [billing.id]
+  );
+  const summaries = getAssignedHomeownerIds(billing)
+    .map(homeownerId => summarizeBillingPayments(billing, homeownerId, rows));
+  const nextStatus = summaries.length && summaries.every(summary => summary.status === 'paid')
+    ? 'paid'
+    : (summaries.some(summary => summary.totalPaid > 0) ? 'partially_paid' : 'active');
+  await connection.execute('UPDATE billings SET status = ? WHERE id = ?', [nextStatus, billing.id]);
+  return nextStatus;
 }
 
 function mergeUserWithHomeowner(user, homeowner) {
@@ -871,6 +908,14 @@ async function createTables() {
   await run('ALTER TABLE payments ADD COLUMN created_at TEXT').catch(() => {});
   await run('ALTER TABLE payments ADD COLUMN updated_at TEXT').catch(() => {});
   await run('ALTER TABLE payments ADD UNIQUE INDEX idx_payments_refNum (refNum)').catch(() => {});
+  await run(`ALTER TABLE payments ADD COLUMN pending_payment_key VARCHAR(191)
+    GENERATED ALWAYS AS (
+      CASE WHEN status = 'pending'
+        THEN CONCAT(homeownerId, ':', COALESCE(NULLIF(billingId, ''), CONCAT('month:', monthly_dues_month)))
+        ELSE NULL
+      END
+    ) STORED`).catch(() => {});
+  await run('ALTER TABLE payments ADD UNIQUE INDEX idx_one_pending_payment (pending_payment_key)').catch(() => {});
 
   // Backfill existing billings where monthly_dues_month IS NULL
   try {
@@ -2809,7 +2854,7 @@ app.get('/api/payment-settings', asyncHandler(async (req, res) => {
       account_name: 'San Alfonso Homes HOA',
       account_number: '09171234567',
       qr_code_path: null,
-      instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay the exact amount shown in SmartHood.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
+      instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay an amount not exceeding the remaining balance.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
       is_active: 1,
       updated_by: 'u001',
       updated_at: new Date().toISOString(),
@@ -3144,28 +3189,42 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
       return res.status(403).json({ error: 'The selected billing does not belong to this resident.' });
     }
 
-    const amount = Number(billing.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
+    const originalAmount = roundMoney(billing.amount);
+    if (!Number.isFinite(originalAmount) || originalAmount <= 0) {
       await connection.rollback();
       return res.status(400).json({ error: 'The selected billing has an invalid amount.' });
     }
-    if (req.body.amount !== undefined && Math.abs(Number(req.body.amount) - amount) > 0.01) {
+
+    const [approvedRows] = await connection.execute(
+      `SELECT amount, status FROM payments
+       WHERE homeownerId = ? AND billingId = ? AND status = 'approved' FOR UPDATE`,
+      [homeownerId, billingId]
+    );
+    const currentSummary = summarizeBillingPayments(billing, homeownerId, approvedRows.map(row => ({ ...row, homeownerId })));
+    if (currentSummary.remainingBalance <= 0) {
       await connection.rollback();
-      return res.status(400).json({ error: `Payment amount must exactly match the billing balance of ₱${amount.toLocaleString()}.` });
+      return res.status(409).json({ error: 'This billing has already been fully paid.' });
+    }
+
+    const amount = roundMoney(req.body.amount === undefined ? currentSummary.remainingBalance : req.body.amount);
+    if (!Number.isFinite(Number(req.body.amount === undefined ? amount : req.body.amount)) || amount <= 0) {
+      await connection.rollback();
+      return res.status(400).json({ error: 'Payment amount must be greater than ₱0.' });
+    }
+    if (amount > currentSummary.remainingBalance) {
+      await connection.rollback();
+      return res.status(400).json({ error: `Payment amount cannot exceed the remaining balance of ₱${currentSummary.remainingBalance.toLocaleString()}.` });
     }
 
     const [existingRows] = await connection.execute(
       `SELECT id, status FROM payments
-       WHERE homeownerId = ? AND billingId = ? AND status IN ('pending', 'approved')
+       WHERE homeownerId = ? AND billingId = ? AND status = 'pending'
        LIMIT 1 FOR UPDATE`,
       [homeownerId, billingId]
     );
     if (existingRows[0]) {
       await connection.rollback();
-      const message = existingRows[0].status === 'approved'
-        ? 'This billing has already been paid.'
-        : 'This billing already has a payment pending verification.';
-      return res.status(409).json({ error: message });
+      return res.status(409).json({ error: 'This billing already has a payment pending verification.' });
     }
 
     if (refNum) {
@@ -3210,6 +3269,7 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
       `INSERT INTO payments (${columns.map(quoteIdentifier).join(', ')}) VALUES (${columns.map(() => '?').join(', ')})`,
       columns.map(column => serializeValue('payments', column, paymentRecord[column]))
     );
+    const billingStatus = await refreshBillingPaymentStatus(connection, billing);
     await connection.commit();
 
     const billingLabel = billing.title || 'Billing';
@@ -3219,14 +3279,20 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
     );
     await createServerNotification(
       'Payment Recorded',
-      `A ${paymentMethod} payment of ₱${amount.toLocaleString()} for "${billingLabel}" was recorded by the HOA office and is marked paid.`,
+      `A ${paymentMethod} payment of ₱${amount.toLocaleString()} for "${billingLabel}" was recorded by the HOA office and approved.`,
       { userIds: [homeownerId] }
     );
 
     res.status(201).json({
       ok: true,
       payment: sanitizeRecord('payments', paymentRecord),
-      message: 'Manual payment recorded and marked as paid.',
+      billingSummary: {
+        originalAmount,
+        totalPaid: roundMoney(currentSummary.totalPaid + amount),
+        remainingBalance: roundMoney(currentSummary.remainingBalance - amount),
+        status: billingStatus,
+      },
+      message: billingStatus === 'paid' ? 'Manual payment recorded and billing paid in full.' : 'Manual partial payment recorded.',
     });
   } catch (err) {
     await connection.rollback().catch(() => {});
@@ -3335,13 +3401,6 @@ app.post('/api/payments/submit', (req, res) => {
           return res.status(403).json({ error: 'Access Denied: You are not assigned to this billing.' });
         }
 
-        // Check if this billing already has an approved payment
-        const alreadyApproved = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "approved"', [homeownerId, billing.id]);
-        if (alreadyApproved) {
-          await cleanUpFile();
-          return res.status(400).json({ error: 'This bill has already been paid and approved.' });
-        }
-
         // Check if there is already a pending verification payment for this billing
         const alreadyPending = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "pending"', [homeownerId, billing.id]);
         if (alreadyPending) {
@@ -3349,10 +3408,31 @@ app.post('/api/payments/submit', (req, res) => {
           return res.status(400).json({ error: 'You already have a payment submission pending admin verification for this bill.' });
         }
 
-        actualAmount = Number(billing.amount) || 0;
-        if (actualAmount <= 0) {
+        const originalAmount = roundMoney(billing.amount);
+        if (originalAmount <= 0) {
           await cleanUpFile();
           return res.status(400).json({ error: 'Invalid billing amount.' });
+        }
+
+        const approvedPayments = await all(
+          'SELECT homeownerId, amount, status FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "approved"',
+          [homeownerId, billing.id]
+        );
+        const billingSummary = summarizeBillingPayments(billing, homeownerId, approvedPayments);
+        if (billingSummary.remainingBalance <= 0) {
+          await cleanUpFile();
+          return res.status(400).json({ error: 'This bill has already been fully paid.' });
+        }
+
+        const submittedAmount = Number(req.body.amount);
+        actualAmount = roundMoney(submittedAmount);
+        if (!Number.isFinite(submittedAmount) || actualAmount <= 0) {
+          await cleanUpFile();
+          return res.status(400).json({ error: 'Payment amount must be greater than ₱0.' });
+        }
+        if (actualAmount > billingSummary.remainingBalance) {
+          await cleanUpFile();
+          return res.status(400).json({ error: `Payment amount cannot exceed the remaining balance of ₱${billingSummary.remainingBalance.toLocaleString()}.` });
         }
 
         finalBillingId = billing.id;
@@ -3362,16 +3442,6 @@ app.post('/api/payments/submit', (req, res) => {
           : null;
         if (finalMonthlyDuesMonth) {
           paymentType = 'monthly_dues';
-
-          // Additional verification: ensure homeowner does not already have an approved payment for this month
-          const alreadyApprovedMonth = await get(
-            'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "approved"',
-            [homeownerId, finalMonthlyDuesMonth]
-          );
-          if (alreadyApprovedMonth) {
-            await cleanUpFile();
-            return res.status(400).json({ error: `You have already paid your monthly dues for this month.` });
-          }
 
           // Ensure homeowner does not already have a pending payment for this month
           const alreadyPendingMonth = await get(
@@ -3445,10 +3515,17 @@ app.post('/api/payments/submit', (req, res) => {
         }
       }
 
-      // Server-side Amount Integrity Check
-      if (req.body.amount && Math.abs(Number(req.body.amount) - actualAmount) > 0.01) {
-        await cleanUpFile();
-        return res.status(400).json({ error: `Payment amount (₱${Number(req.body.amount).toLocaleString()}) must match the required dues amount (₱${actualAmount.toLocaleString()}).` });
+      // Advance monthly dues have no billing ledger yet, so they remain full payments.
+      if (!billingId) {
+        const submittedAmount = Number(req.body.amount);
+        if (!Number.isFinite(submittedAmount) || submittedAmount <= 0) {
+          await cleanUpFile();
+          return res.status(400).json({ error: 'Payment amount must be greater than ₱0.' });
+        }
+        if (Math.abs(roundMoney(submittedAmount) - actualAmount) > 0.01) {
+          await cleanUpFile();
+          return res.status(400).json({ error: `Advance payment amount must match the required dues amount of ₱${actualAmount.toLocaleString()}.` });
+        }
       }
 
       // Payment Date
@@ -3514,6 +3591,9 @@ app.post('/api/payments/submit', (req, res) => {
       await cleanUpFile();
       console.error(err);
       if (err.code === 'ER_DUP_ENTRY') {
+        if (String(err.message || '').includes('idx_one_pending_payment')) {
+          return res.status(409).json({ error: 'You already have a payment submission pending admin verification for this billing.' });
+        }
         return res.status(400).json({ error: 'This GCash reference number has already been submitted. Please check your reference number or contact admin.' });
       }
       res.status(500).json({ error: 'Could not submit payment. Please try again.' });
@@ -3564,45 +3644,79 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
   const requester = await requirePermission(req, res, 'payments');
   if (!requester) return;
 
-  const payment = await get('SELECT * FROM payments WHERE id = ?', [req.params.id]);
-  if (!payment) {
-    return res.status(404).json({ error: 'Payment record not found.' });
-  }
-
-  if (payment.status !== 'pending') {
-    return res.status(400).json({ error: `Cannot approve payment with status "${payment.status}". Only pending payments can be approved.` });
-  }
-
-  const nowIso = new Date().toISOString();
-  const reviewedAt = new Date().toISOString().slice(0, 10);
-
-  // If payment has monthly_dues_month but no billingId, check if a matching billing was created
-  let updatedBillingId = payment.billingId;
-  if (!updatedBillingId && payment.monthly_dues_month) {
-    const matchingBills = await all(
-      `SELECT id, assignedTo, billing_type, title, monthly_dues_month
-        FROM billings
-        WHERE monthly_dues_month = ?
-          AND (billing_type = ? OR (billing_type IS NULL OR billing_type = '') OR LOWER(title) LIKE '%monthly%dues%')`,
-      [payment.monthly_dues_month, BILLING_TYPE_MONTHLY_DUES]
-    );
-    for (const mb of matchingBills) {
-      if (!isMonthlyAssociationDuesBilling(mb)) continue;
-      let assigned = [];
-      try {
-        assigned = typeof mb.assignedTo === 'string' ? JSON.parse(mb.assignedTo) : mb.assignedTo;
-      } catch {}
-      if (Array.isArray(assigned) && assigned.includes(payment.homeownerId)) {
-        updatedBillingId = mb.id;
-        break;
-      }
+  const connection = await db.getConnection();
+  let payment;
+  let updatedBillingId;
+  let billingSummary = null;
+  try {
+    await connection.beginTransaction();
+    const [paymentRows] = await connection.execute('SELECT * FROM payments WHERE id = ? FOR UPDATE', [req.params.id]);
+    payment = paymentRows[0];
+    if (!payment) {
+      await connection.rollback();
+      return res.status(404).json({ error: 'Payment record not found.' });
     }
-  }
+    if (payment.status !== 'pending') {
+      await connection.rollback();
+      return res.status(400).json({ error: `Cannot approve payment with status "${payment.status}". Only pending payments can be approved.` });
+    }
 
-  await run(
-    `UPDATE payments SET status = 'approved', billingId = ?, verified_by = ?, verified_at = ?, reviewedAt = ?, updated_at = ? WHERE id = ?`,
-    [updatedBillingId, requester.id, nowIso, reviewedAt, nowIso, payment.id]
-  );
+    const nowIso = new Date().toISOString();
+    const reviewedAt = nowIso.slice(0, 10);
+    updatedBillingId = payment.billingId;
+
+    if (!updatedBillingId && payment.monthly_dues_month) {
+      const [matchingBills] = await connection.execute(
+        `SELECT * FROM billings
+          WHERE monthly_dues_month = ?
+            AND (billing_type = ? OR (billing_type IS NULL OR billing_type = '') OR LOWER(title) LIKE '%monthly%dues%')
+          FOR UPDATE`,
+        [payment.monthly_dues_month, BILLING_TYPE_MONTHLY_DUES]
+      );
+      const match = matchingBills.find(billing =>
+        isMonthlyAssociationDuesBilling(billing) && getAssignedHomeownerIds(billing).includes(payment.homeownerId)
+      );
+      if (match) updatedBillingId = match.id;
+    }
+
+    let billing = null;
+    if (updatedBillingId) {
+      const [billingRows] = await connection.execute('SELECT * FROM billings WHERE id = ? FOR UPDATE', [updatedBillingId]);
+      billing = billingRows[0];
+      if (!billing || !getAssignedHomeownerIds(billing).includes(payment.homeownerId)) {
+        await connection.rollback();
+        return res.status(400).json({ error: 'The linked billing is invalid for this resident.' });
+      }
+      const [approvedRows] = await connection.execute(
+        `SELECT homeownerId, amount, status FROM payments
+         WHERE homeownerId = ? AND billingId = ? AND status = 'approved' FOR UPDATE`,
+        [payment.homeownerId, updatedBillingId]
+      );
+      const beforeApproval = summarizeBillingPayments(billing, payment.homeownerId, approvedRows);
+      const amount = roundMoney(payment.amount);
+      if (amount <= 0 || amount > beforeApproval.remainingBalance) {
+        await connection.rollback();
+        return res.status(400).json({ error: `Payment cannot be approved because it exceeds the current remaining balance of ₱${beforeApproval.remainingBalance.toLocaleString()}.` });
+      }
+      billingSummary = {
+        originalAmount: beforeApproval.originalAmount,
+        totalPaid: roundMoney(beforeApproval.totalPaid + amount),
+        remainingBalance: roundMoney(beforeApproval.remainingBalance - amount),
+      };
+    }
+
+    await connection.execute(
+      `UPDATE payments SET status = 'approved', billingId = ?, verified_by = ?, verified_at = ?, reviewedAt = ?, updated_at = ? WHERE id = ?`,
+      [updatedBillingId, requester.id, nowIso, reviewedAt, nowIso, payment.id]
+    );
+    if (billing) billingSummary.status = await refreshBillingPaymentStatus(connection, billing);
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback().catch(() => {});
+    throw error;
+  } finally {
+    connection.release();
+  }
 
   const ho = await get('SELECT name FROM homeowners WHERE id = ?', [payment.homeownerId]);
   const bill = updatedBillingId ? await get('SELECT title FROM billings WHERE id = ?', [updatedBillingId]) : null;
@@ -3628,6 +3742,7 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
 
   res.json({
     ok: true,
+    billingSummary,
     message: 'Payment approved successfully. Billing balance updated.',
   });
 }));

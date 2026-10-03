@@ -111,10 +111,11 @@ function evaluateMonthStatus({ selectedYear, m, myBillings, myPayments, defaultM
     b.monthly_dues_month === monthKey || parseMonthFromTitle(b.title) === monthKey
   );
 
-  const paidPayment = myPayments.find(p =>
+  const approvedPayments = myPayments.filter(p =>
     p.status === 'approved' &&
     (p.monthly_dues_month === monthKey || (matchingBill && p.billingId === matchingBill.id))
   );
+  const paidPayment = approvedPayments[approvedPayments.length - 1] || null;
 
   const pendingPayment = myPayments.find(p =>
     p.status === 'pending' &&
@@ -126,20 +127,28 @@ function evaluateMonthStatus({ selectedYear, m, myBillings, myPayments, defaultM
     (p.monthly_dues_month === monthKey || (matchingBill && p.billingId === matchingBill.id))
   );
 
-  if (paidPayment || (matchingBill && matchingBill.status === 'paid')) {
-    return { status: 'paid', matchingBill, paidPayment, amount: Number(paidPayment?.amount || matchingBill?.amount) };
+  const totalPaid = approvedPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+  const originalAmount = Number(matchingBill?.amount || defaultMonthlyDues);
+  const remainingBalance = Math.max(0, Math.round((originalAmount - totalPaid) * 100) / 100);
+
+  if ((matchingBill && remainingBalance === 0 && originalAmount > 0) || (!matchingBill && paidPayment)) {
+    return { status: 'paid', matchingBill, paidPayment, amount: 0, totalPaid, remainingBalance };
   } else if (pendingPayment) {
-    return { status: 'pending', matchingBill, pendingPayment, amount: Number(pendingPayment.amount) };
+    return { status: 'pending', matchingBill, pendingPayment, amount: remainingBalance, totalPaid, remainingBalance };
+  } else if (matchingBill && totalPaid > 0) {
+    return { status: 'partially_paid', matchingBill, paidPayment, rejectedPayment, amount: remainingBalance, totalPaid, remainingBalance };
   } else if (matchingBill) {
-    return { status: 'pay_now', matchingBill, rejectedPayment, amount: Number(matchingBill.amount) };
+    return { status: 'pay_now', matchingBill, rejectedPayment, amount: remainingBalance, totalPaid, remainingBalance };
   } else {
     // Unbilled month: payable if preceding month is paid
     const prevMonthKey = getPreviousMonthKey(selectedYear, m);
-    const prevMonthPaid = myPayments.some(p => p.status === 'approved' && p.monthly_dues_month === prevMonthKey) ||
-      myBillings.some(b =>
-        (b.monthly_dues_month === prevMonthKey || parseMonthFromTitle(b.title) === prevMonthKey) &&
-        myPayments.some(p => p.billingId === b.id && p.status === 'approved')
-      );
+    const previousBill = myBillings.find(b => b.monthly_dues_month === prevMonthKey || parseMonthFromTitle(b.title) === prevMonthKey);
+    const previousApproved = previousBill
+      ? myPayments.filter(p => p.billingId === previousBill.id && p.status === 'approved').reduce((sum, p) => sum + Number(p.amount || 0), 0)
+      : 0;
+    const prevMonthPaid = previousBill
+      ? previousApproved >= Number(previousBill.amount || 0)
+      : myPayments.some(p => p.status === 'approved' && !p.billingId && p.monthly_dues_month === prevMonthKey);
 
     if (prevMonthPaid) {
       return { status: 'pay_now', isAdvanceUnbilled: true, amount: defaultMonthlyDues };
@@ -165,6 +174,32 @@ async function runPayNowTests() {
       failed++;
     }
   }
+
+  console.log('[Unit scenarios] Verifying partial-payment month status calculations...');
+  const partialBill = { id: 'b_partial_unit', title: 'Monthly Dues - October 2026', monthly_dues_month: '2026-10', amount: 1000 };
+  const pendingEval = evaluateMonthStatus({ selectedYear: 2026, m: 10, myBillings: [partialBill], myPayments: [
+    { id: 'p_pending', billingId: partialBill.id, monthly_dues_month: '2026-10', status: 'pending', amount: 500 },
+  ], defaultMonthlyDues: 1000 });
+  assert(pendingEval.status === 'pending' && pendingEval.remainingBalance === 1000, 'Pending ₱500 leaves the approved balance at ₱1,000');
+
+  const partialEval = evaluateMonthStatus({ selectedYear: 2026, m: 10, myBillings: [partialBill], myPayments: [
+    { id: 'p_500', billingId: partialBill.id, monthly_dues_month: '2026-10', status: 'approved', amount: 500 },
+    { id: 'p_rejected', billingId: partialBill.id, monthly_dues_month: '2026-10', status: 'rejected', amount: 400 },
+  ], defaultMonthlyDues: 1000 });
+  assert(partialEval.status === 'partially_paid' && partialEval.totalPaid === 500 && partialEval.remainingBalance === 500, 'Rejected payments are ignored and approved ₱500 shows Partially Paid');
+
+  const almostPaidEval = evaluateMonthStatus({ selectedYear: 2026, m: 10, myBillings: [partialBill], myPayments: [
+    { billingId: partialBill.id, monthly_dues_month: '2026-10', status: 'approved', amount: 500 },
+    { billingId: partialBill.id, monthly_dues_month: '2026-10', status: 'approved', amount: 300 },
+  ], defaultMonthlyDues: 1000 });
+  assert(almostPaidEval.status === 'partially_paid' && almostPaidEval.remainingBalance === 200, 'Approved ₱500 + ₱300 leaves ₱200');
+
+  const paidEval = evaluateMonthStatus({ selectedYear: 2026, m: 10, myBillings: [partialBill], myPayments: [
+    { billingId: partialBill.id, monthly_dues_month: '2026-10', status: 'approved', amount: 500 },
+    { billingId: partialBill.id, monthly_dues_month: '2026-10', status: 'approved', amount: 300 },
+    { billingId: partialBill.id, monthly_dues_month: '2026-10', status: 'approved', amount: 200 },
+  ], defaultMonthlyDues: 1000 });
+  assert(paidEval.status === 'paid' && paidEval.totalPaid === 1000 && paidEval.remainingBalance === 0, 'Approved payments totaling ₱1,000 mark the billing Paid');
 
   const pool = mysql.createPool({ ...dbConfig, waitForConnections: true, connectionLimit: 3 });
 

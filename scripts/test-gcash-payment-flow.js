@@ -161,12 +161,13 @@ async function runTests() {
     const testBill = {
       id: billId,
       title: 'October 2026 Association Dues',
-      amount: 500,
+      amount: 1000,
       dueDate: '2026-10-31',
       description: 'Monthly dues test',
       assignedTo: [residentId],
       status: 'active',
       createdAt: '2026-09-23',
+      billing_type: 'Other Billing',
     };
     const createBillRes = await makeRequest(
       'POST',
@@ -195,14 +196,14 @@ async function runTests() {
     );
     assert(badFileRes.status === 400, 'Server rejects invalid/disguised file with 400 Bad Request');
 
-    // 7. Security Validation: Amount Tampering Rejected
-    console.log('\n[Step 7] Testing Security: Amount tampering rejected...');
+    // 7. Security Validation: Overpayment Rejected
+    console.log('\n[Step 7] Testing Security: Payment above remaining balance rejected...');
     const tamperedAmountMultipart = createMultipartFormData(
       {
         billingId: billId,
         refNum: 'GCASH-12345678902',
         payment_date: '2026-09-23',
-        amount: '1.00', // Actual is 500
+        amount: '1000.01',
       },
       [{ fieldname: 'receipt', filename: 'receipt.png', mimetype: 'image/png', buffer: SAMPLE_PNG_BUFFER }]
     );
@@ -212,7 +213,16 @@ async function runTests() {
       { ...tamperedAmountMultipart.headers, 'X-User-Id': residentId },
       tamperedAmountMultipart.buffer
     );
-    assert(tamperedRes.status === 400, 'Server rejects tampered amount that does not match bill amount');
+    assert(tamperedRes.status === 400, 'Server rejects payment greater than the remaining balance');
+
+    for (const invalidAmount of ['0', '-1']) {
+      const invalidMultipart = createMultipartFormData(
+        { billingId: billId, refNum: `INVALID-${invalidAmount}-${Date.now()}`, payment_date: '2026-09-23', amount: invalidAmount },
+        [{ fieldname: 'receipt', filename: 'receipt.png', mimetype: 'image/png', buffer: SAMPLE_PNG_BUFFER }]
+      );
+      const invalidRes = await makeRequest('POST', '/api/payments/submit', { ...invalidMultipart.headers, 'X-User-Id': residentId }, invalidMultipart.buffer);
+      assert(invalidRes.status === 400, `Server rejects ${invalidAmount} payment amount`);
+    }
 
     // 8. Resident Submits Valid Payment Proof
     console.log('\n[Step 8] Resident Submitting Valid Payment Proof...');
@@ -237,6 +247,11 @@ async function runTests() {
     const paymentId = submitRes.body.payment.id;
     assert(submitRes.body.payment.status === 'pending', 'Payment status is "pending" (not automatically marked paid)');
     assert(submitRes.body.payment.refNum === uniqueRef, 'GCash reference number saved correctly');
+    let balanceData = await makeRequest('GET', '/api/data', { 'X-User-Id': residentId });
+    let approvedTotal = balanceData.body.payments
+      .filter(p => p.billingId === billId && p.status === 'approved')
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    assert(approvedTotal === 0, 'Pending ₱500 payment does not reduce the ₱1,000 remaining balance');
 
     // 9. Security Validation: Duplicate Reference Number Protection
     console.log('\n[Step 9] Testing Duplicate GCash Reference Number Protection...');
@@ -260,6 +275,13 @@ async function runTests() {
       dupRes.body.error && dupRes.body.error.toLowerCase().includes('already been submitted'),
       'Clear error message explaining reference number was already submitted'
     );
+
+    const secondPendingMultipart = createMultipartFormData(
+      { billingId: billId, refNum: `SECOND-PENDING-${Date.now()}`, payment_date: '2026-09-23', amount: '100' },
+      [{ fieldname: 'receipt', filename: 'receipt.png', mimetype: 'image/png', buffer: SAMPLE_PNG_BUFFER }]
+    );
+    const secondPendingRes = await makeRequest('POST', '/api/payments/submit', { ...secondPendingMultipart.headers, 'X-User-Id': residentId }, secondPendingMultipart.buffer);
+    assert([400, 409].includes(secondPendingRes.status), 'Server prevents a second pending submission for the same billing');
 
     // 10. Admin Payment Rejection Validation (Reason Required)
     console.log('\n[Step 10] Testing Admin Rejection Validation...');
@@ -289,6 +311,10 @@ async function runTests() {
       rejectedPayment.rejection_reason && rejectedPayment.rejection_reason.includes('Receipt is unclear'),
       'Rejection reason stored and accessible to resident'
     );
+    approvedTotal = allDataResident.body.payments
+      .filter(p => p.billingId === billId && p.status === 'approved')
+      .reduce((sum, p) => sum + Number(p.amount || 0), 0);
+    assert(approvedTotal === 0, 'Rejected payment does not reduce the remaining balance');
 
     // 12. Resident Resubmits Payment for the Rejected Bill
     console.log('\n[Step 12] Resident Resubmitting Payment for Rejected Bill...');
@@ -321,6 +347,47 @@ async function runTests() {
       {}
     );
     assert(approveRes.status === 200 && approveRes.body.ok, 'Payment approved by admin');
+    assert(approveRes.body.billingSummary?.totalPaid === 500, 'Approved ₱500 produces Total Paid of ₱500');
+    assert(approveRes.body.billingSummary?.remainingBalance === 500, 'Approved ₱500 leaves ₱500 remaining');
+    assert(approveRes.body.billingSummary?.status === 'partially_paid', 'Billing becomes Partially Paid after first approval');
+
+    async function submitAndApprovePartial(amountValue, suffix) {
+      const multipart = createMultipartFormData(
+        { billingId: billId, refNum: `GCH-${Date.now()}-${suffix}`, payment_date: '2026-09-24', amount: String(amountValue) },
+        [{ fieldname: 'receipt', filename: `partial-${suffix}.png`, mimetype: 'image/png', buffer: SAMPLE_PNG_BUFFER }]
+      );
+      const submitted = await makeRequest('POST', '/api/payments/submit', { ...multipart.headers, 'X-User-Id': residentId }, multipart.buffer);
+      assert(submitted.status === 201, `Homeowner submits another ₱${amountValue} partial payment`);
+      const approved = await makeRequest('POST', `/api/payments/${submitted.body.payment.id}/approve`, { 'Content-Type': 'application/json', 'X-User-Id': adminId }, {});
+      assert(approved.status === 200, `Admin approves ₱${amountValue} partial payment`);
+      return approved.body.billingSummary;
+    }
+
+    const after300 = await submitAndApprovePartial(300, 'PARTIAL-300');
+    assert(after300?.totalPaid === 800 && after300?.remainingBalance === 200 && after300?.status === 'partially_paid', '₱500 + ₱300 leaves ₱200 and remains Partially Paid');
+    const after200 = await submitAndApprovePartial(200, 'PARTIAL-200');
+    assert(after200?.totalPaid === 1000 && after200?.remainingBalance === 0 && after200?.status === 'paid', 'Final ₱200 settles the bill and marks it Paid');
+
+    const legacyBillId = `b_full_${Date.now().toString(36)}`;
+    const legacyBillRes = await makeRequest('POST', '/api/billings', { 'Content-Type': 'application/json', 'X-User-Id': adminId }, {
+      id: legacyBillId,
+      title: 'Legacy Full Payment Compatibility Test',
+      amount: 400,
+      dueDate: '2026-10-31',
+      description: 'Full-payment compatibility test',
+      assignedTo: [residentId],
+      status: 'active',
+      createdAt: '2026-09-23',
+      billing_type: 'Other Billing',
+    });
+    assert(legacyBillRes.status === 201, 'Compatibility billing created');
+    const legacyMultipart = createMultipartFormData(
+      { billingId: legacyBillId, refNum: `GCH-${Date.now()}-FULL`, payment_date: '2026-09-25', amount: '400' },
+      [{ fieldname: 'receipt', filename: 'full.png', mimetype: 'image/png', buffer: SAMPLE_PNG_BUFFER }]
+    );
+    const legacySubmit = await makeRequest('POST', '/api/payments/submit', { ...legacyMultipart.headers, 'X-User-Id': residentId }, legacyMultipart.buffer);
+    const legacyApprove = await makeRequest('POST', `/api/payments/${legacySubmit.body.payment.id}/approve`, { 'Content-Type': 'application/json', 'X-User-Id': adminId }, {});
+    assert(legacyApprove.body.billingSummary?.status === 'paid' && legacyApprove.body.billingSummary?.remainingBalance === 0, 'Existing one-shot full-payment behavior remains compatible');
 
     // 14. Verification of Audit Log and Notifications
     console.log('\n[Step 14] Verifying Audit Logs & Notifications...');

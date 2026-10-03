@@ -208,6 +208,8 @@ function filterBillings(resetPage = true) {
 
       if (statusFilter === 'paid') {
         if (!isPaid) return false;
+      } else if (statusFilter === 'partially_paid') {
+        if (colStatus !== 'partially_paid') return false;
       } else if (statusFilter === 'overdue') {
         if (!isOverdue) return false;
       } else if (statusFilter === 'unpaid') {
@@ -313,6 +315,7 @@ function renderBilling() {
         <select class="filter-select" id="billStatusFilter" onchange="filterBillings()">
           <option value="all">All Statuses</option>
           <option value="paid">Paid</option>
+          <option value="partially_paid">Partially Paid</option>
           <option value="unpaid">Unpaid</option>
           <option value="overdue">Overdue</option>
         </select>
@@ -524,7 +527,7 @@ function openProfessionalBillingModal() {
         </div>
         <div class="billing-homeowner-list" id="bf_homeownerList">
           ${homeowners.map(u => {
-            const alreadyPaid = payments.some(p => p.homeownerId === u.id && p.monthly_dues_month === currentMonthValue && p.status === 'approved');
+            const alreadyPaid = isMonthlyDuesFullyPaid(u.id, currentMonthValue, payments, db.get('billings'));
             return `
             <label class="billing-homeowner-row ${alreadyPaid ? 'is-paid-advance' : ''}" data-search="${`${u.name} ${u.block || ''} ${u.lot || ''} ${u.username || ''}`.toLowerCase()}">
               <input type="checkbox" class="ho-cb" value="${u.id}" onchange="updateProfessionalBillingSummary()">
@@ -574,7 +577,7 @@ function refreshHomeownerPaymentBadges() {
     if (!cb) return;
     const uid = cb.value;
     const paidBadge = row.querySelector('.paid-advance-badge');
-    const alreadyPaid = Boolean(isMonthly && selectedMonth && payments.some(p => p.homeownerId === uid && p.monthly_dues_month === selectedMonth && p.status === 'approved'));
+    const alreadyPaid = Boolean(isMonthly && selectedMonth && isMonthlyDuesFullyPaid(uid, selectedMonth, payments, db.get('billings')));
     if (alreadyPaid) {
       if (!paidBadge) {
         const nameEl = row.querySelector('.billing-homeowner-name');
@@ -633,6 +636,18 @@ function isMonthlyAssociationDuesBillingRecord(billing) {
   if (billing.billing_type === BILLING_TYPE_MONTHLY_DUES) return true;
   if (billing.billing_type === BILLING_TYPE_OTHER) return false;
   return Boolean(billing.monthly_dues_month && isMonthlyDuesTitle(billing.title));
+}
+
+function isMonthlyDuesFullyPaid(homeownerId, month, payments = db.get('payments'), billings = db.get('billings')) {
+  const billing = (billings || []).find(item =>
+    getAssignedHomeownerIds(item).includes(homeownerId) &&
+    (item.monthly_dues_month === month || parseMonthFromTitle(item.title) === month)
+  );
+  if (billing) return getBillingPaymentSummary(billing, homeownerId, payments).status === 'paid';
+  return (payments || []).some(payment =>
+    payment.homeownerId === homeownerId && payment.monthly_dues_month === month &&
+    !payment.billingId && payment.status === 'approved'
+  );
 }
 
 function setupBillingTypeSwitcher() {
@@ -768,7 +783,7 @@ async function saveAddBilling() {
       const billings = db.get('billings');
       const payments = db.get('payments');
       const paidResident = checked.map(uid => getHomeownerById(uid)).find(u =>
-        payments.some(p => p.homeownerId === u?.id && p.monthly_dues_month === rawMonthInput && p.status === 'approved')
+        isMonthlyDuesFullyPaid(u?.id, rawMonthInput, payments, db.get('billings'))
       );
       if (paidResident) {
         showToast('error', 'Already Paid', 'This homeowner has already paid the Monthly Association Dues for this month.');
@@ -1297,10 +1312,11 @@ function getEligibleManualBillings(homeownerId) {
   const payments = db.get('payments');
   return db.get('billings').filter(billing => {
     if (!getAssignedHomeownerIds(billing).includes(homeownerId) || billing.status === 'inactive') return false;
-    return !payments.some(payment =>
+    const summary = getBillingPaymentSummary(billing, homeownerId, payments);
+    return summary.remainingBalance > 0 && !payments.some(payment =>
       payment.homeownerId === homeownerId &&
       payment.billingId === billing.id &&
-      ['pending', 'approved'].includes(payment.status)
+      payment.status === 'pending'
     );
   });
 }
@@ -1308,8 +1324,10 @@ function getEligibleManualBillings(homeownerId) {
 function manualBillingOptionLabel(billing) {
   const type = billing.billing_type || (billing.monthly_dues_month ? 'Monthly Association Dues' : 'Other Billing');
   const period = billing.monthly_dues_month ? formatBillingMonth(billing.monthly_dues_month) : billing.title;
-  const amount = Number(billing.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${type} — ${period} — ₱${amount} — Due ${billing.dueDate || '—'}`;
+  const homeownerId = document.getElementById('manual_payment_homeowner')?.value;
+  const remaining = getBillingPaymentSummary(billing, homeownerId, db.get('payments')).remainingBalance;
+  const amount = remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return `${type} — ${period} — ₱${amount} remaining — Due ${billing.dueDate || '—'}`;
 }
 
 function openCreateManualPaymentModal() {
@@ -1354,9 +1372,9 @@ function openCreateManualPaymentModal() {
       </div>
       <div class="grid-2">
         <div class="form-group">
-          <label for="manual_payment_amount">Payment Amount</label>
-          <input id="manual_payment_amount" type="text" readonly placeholder="Select a billing"/>
-          <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px">Uses the exact billing amount; partial payments are not supported.</div>
+          <label for="manual_payment_amount">Payment Amount *</label>
+          <input id="manual_payment_amount" type="number" min="0.01" step="0.01" placeholder="Select a billing" oninput="updateManualPaymentSummary()"/>
+          <div style="font-size:0.75rem;color:var(--text-3);margin-top:4px">May be any amount up to the remaining balance.</div>
         </div>
         <div class="form-group">
           <label for="manual_payment_method">Payment Method *</label>
@@ -1659,14 +1677,21 @@ function updateManualPaymentSummary() {
     if (summary) summary.textContent = 'Select a resident and billing to review this payment before creating it.';
     return;
   }
-  const amount = Number(billing.amount || 0);
+  const paymentSummary = getBillingPaymentSummary(billing, homeownerId, db.get('payments'));
+  if (amountInput && amountInput.dataset.billingId !== billing.id) {
+    amountInput.value = paymentSummary.remainingBalance.toFixed(2);
+    amountInput.dataset.billingId = billing.id;
+  }
+  const currentAmount = Number(amountInput?.value);
+  const amount = Number.isFinite(currentAmount) && currentAmount > 0 ? currentAmount : paymentSummary.remainingBalance;
   const paymentDate = document.getElementById('manual_payment_date')?.value || '—';
   const method = document.getElementById('manual_payment_method')?.value || '—';
   const type = billing.billing_type || (billing.monthly_dues_month ? 'Monthly Association Dues' : 'Other Billing');
   const period = billing.monthly_dues_month ? formatBillingMonth(billing.monthly_dues_month) : billing.title;
-  if (amountInput) amountInput.value = `₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-  if (info) info.innerHTML = `<strong>${escapeHtml(type)}</strong> · ${escapeHtml(period)} · Due ${escapeHtml(billing.dueDate || '—')} · Current status: <strong>${billing.dueDate && billing.dueDate < getLocalDateValue() ? 'Overdue' : 'Unpaid'}</strong>`;
-  if (summary) summary.innerHTML = `<strong>Review payment</strong><br>Resident: ${escapeHtml(homeowner.name)}<br>Billing: ${escapeHtml(period)} - ${escapeHtml(type)}<br>Amount: <strong>₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><br>Payment Method: ${escapeHtml(method)}<br>Payment Date: ${escapeHtml(paymentDate)}`;
+  if (amountInput && !amountInput.value) amountInput.value = paymentSummary.remainingBalance.toFixed(2);
+  if (amountInput) amountInput.max = paymentSummary.remainingBalance.toFixed(2);
+  if (info) info.innerHTML = `<strong>${escapeHtml(type)}</strong> · ${escapeHtml(period)} · Original: <strong>₱${paymentSummary.originalAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> · Paid: <strong>₱${paymentSummary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong> · Remaining: <strong>₱${paymentSummary.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</strong>`;
+  if (summary) summary.innerHTML = `<strong>Review payment</strong><br>Resident: ${escapeHtml(homeowner.name)}<br>Billing: ${escapeHtml(period)} - ${escapeHtml(type)}<br>Amount: <strong>₱${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><br>Remaining after approval: <strong>₱${Math.max(0, paymentSummary.remainingBalance - amount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong><br>Payment Method: ${escapeHtml(method)}<br>Payment Date: ${escapeHtml(paymentDate)}`;
 }
 
 async function executeCreateManualPayment() {
@@ -1676,6 +1701,10 @@ async function executeCreateManualPayment() {
   const billing = db.getOne('billings', billingId);
   if (!homeownerId) { showToast('error', 'Resident Required', 'Select the resident who made this payment.'); return; }
   if (!billing) { showToast('error', 'Billing Required', 'Select an existing eligible billing.'); return; }
+  const paymentSummary = getBillingPaymentSummary(billing, homeownerId, db.get('payments'));
+  const amount = Number(document.getElementById('manual_payment_amount')?.value);
+  if (!Number.isFinite(amount) || amount <= 0) { showToast('error', 'Invalid Amount', 'Payment amount must be greater than ₱0.'); return; }
+  if (amount > paymentSummary.remainingBalance) { showToast('error', 'Invalid Amount', `Payment amount cannot exceed the remaining balance of ₱${paymentSummary.remainingBalance.toLocaleString()}.`); return; }
 
   manualPaymentSubmitting = true;
   showLoading();
@@ -1683,7 +1712,7 @@ async function executeCreateManualPayment() {
     await api.createManualPayment({
       homeownerId,
       billingId,
-      amount: Number(billing.amount),
+      amount,
       payment_method: document.getElementById('manual_payment_method')?.value,
       payment_date: document.getElementById('manual_payment_date')?.value,
       refNum: document.getElementById('manual_payment_reference')?.value?.trim(),
@@ -1693,7 +1722,7 @@ async function executeCreateManualPayment() {
     await syncHomeownerBalances();
     hideLoading();
     closeModal();
-    showToast('success', 'Payment Created', 'The manual payment was recorded and the billing is now paid for this resident.');
+    showToast('success', 'Payment Created', 'The manual payment was recorded and the billing balance was updated.');
     renderPayments();
   } catch (error) {
     hideLoading();
@@ -1711,11 +1740,12 @@ function viewPaymentDetail(id) {
   const bill = db.getOne('billings', p.billingId);
   const recordedBy = db.getOne('users', p.recorded_by);
   const isManual = p.payment_source === 'manual_admin';
+  const paymentSummary = bill ? getBillingPaymentSummary(bill, p.homeownerId, db.get('payments')) : null;
   const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const blockLot = [ho?.block, ho?.lot].filter(Boolean).join(' ') || 'Not specified';
   const statusBadge = p.status === 'pending'
     ? '<span class="badge badge-yellow">Pending Verification</span>'
-    : (p.status === 'approved' ? '<span class="badge badge-green">Approved / Paid</span>' : '<span class="badge badge-red">Rejected</span>');
+    : (p.status === 'approved' ? '<span class="badge badge-green">Approved</span>' : '<span class="badge badge-red">Rejected</span>');
 
   const buttons = [];
   buttons.push({ label: 'Close', cls: 'btn-secondary', action: closeModal });
@@ -1745,6 +1775,12 @@ function viewPaymentDetail(id) {
           <div class="r-lbl">Current Status</div>
         </div>
       </div>
+
+      ${paymentSummary ? `<div class="grid-3 mb-16">
+        <div class="report-summary-item"><div class="r-val">₱${paymentSummary.originalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Original Amount</div></div>
+        <div class="report-summary-item"><div class="r-val">₱${paymentSummary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Approved Total</div></div>
+        <div class="report-summary-item"><div class="r-val">₱${paymentSummary.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Remaining Balance</div></div>
+      </div>` : ''}
 
       <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:14px">
         <h4 style="margin:0 0 10px 0;font-size:0.86rem;text-transform:uppercase;letter-spacing:0.06em;color:var(--text-3)">Resident &amp; Billing Details</h4>
@@ -1818,11 +1854,12 @@ function confirmApprovePayment(id) {
   if (!p) return;
   const ho = getHomeownerById(p.homeownerId);
   const bill = db.getOne('billings', p.billingId);
+  const summary = bill ? getBillingPaymentSummary(bill, p.homeownerId, db.get('payments')) : null;
   const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString();
 
   openConfirm(
     'Approve GCash Payment',
-    `Are you sure you want to approve the payment of <strong>${formattedAmount}</strong> from <strong>${escapeHtml(ho ? ho.name : 'Unknown')}</strong> for <strong>${escapeHtml(bill ? bill.title : 'N/A')}</strong>?<br><br><span style="font-size:0.82rem;color:var(--text-3)">This will officially mark the resident's bill as Paid, update their outstanding balance, and notify the resident.</span>`,
+    `Are you sure you want to approve the payment of <strong>${formattedAmount}</strong> from <strong>${escapeHtml(ho ? ho.name : 'Unknown')}</strong> for <strong>${escapeHtml(bill ? bill.title : 'N/A')}</strong>?<br><br><span style="font-size:0.82rem;color:var(--text-3)">This will update the approved total${summary ? ` from ₱${summary.totalPaid.toLocaleString()} to ₱${(summary.totalPaid + Number(p.amount || 0)).toLocaleString()} and leave ₱${Math.max(0, summary.remainingBalance - Number(p.amount || 0)).toLocaleString()} remaining` : ''}.</span>`,
     () => executeApprovePayment(id)
   );
 }
@@ -1942,7 +1979,7 @@ async function openPaymentSettingsModal() {
     setting = db.get('payment_settings').find(s => s.payment_method === 'gcash') || {
       account_name: 'San Alfonso Homes HOA',
       account_number: '09171234567',
-      instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay the exact amount shown in SmartHood.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
+      instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay an amount not exceeding the remaining balance.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
       is_active: 1,
       qr_code_path: null,
     };
@@ -2128,7 +2165,9 @@ function renderHOBilling() {
           <thead>
             <tr>
               <th>Billing</th>
-              <th>Amount Due</th>
+              <th>Original Amount</th>
+              <th>Total Paid</th>
+              <th>Remaining Balance</th>
               <th>Due Date</th>
               <th>Payment Status</th>
               <th>Action</th>
@@ -2136,16 +2175,20 @@ function renderHOBilling() {
           </thead>
           <tbody>
             ${myBillings.map(b => {
-              const paid = myPayments.find(p => p.billingId === b.id && p.status === 'approved');
-              const pend = myPayments.find(p => p.billingId === b.id && p.status === 'pending');
+              const summary = getBillingPaymentSummary(b, getCurrentHomeownerId(), myPayments);
+              const approvedPayments = myPayments.filter(p => p.billingId === b.id && p.status === 'approved');
+              const paid = approvedPayments[approvedPayments.length - 1];
+              const pend = summary.pendingPayment;
               const rej = myPayments.find(p => p.billingId === b.id && p.status === 'rejected');
-              const overdue = b.dueDate && b.dueDate < today && !paid;
+              const overdue = b.dueDate && b.dueDate < today && summary.remainingBalance > 0;
 
               let statusBadge = '<span class="badge badge-gray">Unpaid</span>';
-              if (paid) {
+              if (summary.status === 'paid') {
                 statusBadge = '<span class="badge badge-green">Paid</span>';
               } else if (pend) {
                 statusBadge = '<span class="badge badge-yellow">Pending Verification</span>';
+              } else if (summary.status === 'partially_paid') {
+                statusBadge = '<span class="badge badge-blue">Partially Paid</span>';
               } else if (rej) {
                 statusBadge = `<span class="badge badge-red" title="Rejection Reason: ${escapeHtml(rej.rejection_reason || rej.remarks || '')}">Rejected</span>`;
               } else if (overdue) {
@@ -2153,11 +2196,11 @@ function renderHOBilling() {
               }
 
               let actionBtn = '—';
-              if (!paid && !pend) {
+              if (summary.remainingBalance > 0 && !pend) {
                 actionBtn = `<button class="btn btn-primary btn-sm" onclick="openPayNowModal('${b.id}')">Pay Now</button>`;
               } else if (pend) {
                 actionBtn = `<button class="btn btn-secondary btn-sm" onclick="viewPaymentDetail('${pend.id}')">View Details</button>`;
-              } else if (paid) {
+              } else if (summary.status === 'paid' && paid) {
                 actionBtn = `<button class="btn btn-secondary btn-sm" onclick="viewPaymentDetail('${paid.id}')">Receipt</button>`;
               }
 
@@ -2165,14 +2208,16 @@ function renderHOBilling() {
                 <td>
                   <strong>${escapeHtml(b.title)}</strong>
                   ${b.description ? `<div style="font-size:0.78rem;color:var(--text-3);margin-top:3px">${escapeHtml(b.description)}</div>` : ''}
-                  ${rej && !paid && !pend ? `<div style="font-size:0.76rem;color:var(--red-600);margin-top:4px">⚠️ Previous submission was rejected: ${escapeHtml(rej.rejection_reason || rej.remarks || 'Check history')}</div>` : ''}
+                  ${rej && !pend && summary.remainingBalance > 0 ? `<div style="font-size:0.76rem;color:var(--red-600);margin-top:4px">⚠️ Previous submission was rejected: ${escapeHtml(rej.rejection_reason || rej.remarks || 'Check history')}</div>` : ''}
                 </td>
-                <td class="amount-due">₱${Number(b.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td class="amount-due">₱${summary.originalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td class="amount-paid">₱${summary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+                <td class="amount-due">₱${summary.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td>${escapeHtml(b.dueDate || '—')}${overdue ? ' <span style="color:var(--red-600);font-weight:700">— Overdue</span>' : ''}</td>
                 <td>${statusBadge}</td>
                 <td>${actionBtn}</td>
               </tr>`;
-            }).join('') || '<tr><td colspan="5"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No bills assigned.</div></td></tr>'}
+            }).join('') || '<tr><td colspan="7"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No bills assigned.</div></td></tr>'}
           </tbody>
         </table>
       </div>
@@ -2220,16 +2265,31 @@ function openPayNowModal(billingIdOrOpts) {
     return;
   }
 
+  const paymentSummary = bill
+    ? getBillingPaymentSummary(bill, getCurrentHomeownerId(), db.get('payments'))
+    : { originalAmount: amount, totalPaid: 0, remainingBalance: amount, pendingPayment: null };
+  if (paymentSummary.pendingPayment) {
+    showToast('warning', 'Payment Pending', 'A payment for this billing is already pending admin verification.');
+    return;
+  }
+  if (paymentSummary.remainingBalance <= 0) {
+    showToast('info', 'Billing Paid', 'This billing has already been paid in full.');
+    return;
+  }
+  amount = paymentSummary.remainingBalance;
+
   const gcash = db.get('payment_settings').find(s => s.payment_method === 'gcash') || {
     account_name: 'San Alfonso Homes HOA',
     account_number: '09171234567',
-    instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay the exact amount shown in SmartHood.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
+    instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay an amount not exceeding the remaining balance.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
     is_active: 1,
     qr_code_path: null,
   };
 
   const formattedAmount = '₱' + Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  const rawInstructions = gcash.instructions || '1. Open GCash.\n2. Scan the QR code.\n3. Pay the exact amount shown in SmartHood.\n4. Save your receipt.\n5. Submit your reference number and receipt screenshot.';
+  const formattedOriginal = '₱' + paymentSummary.originalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formattedPaid = '₱' + paymentSummary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const rawInstructions = gcash.instructions || '1. Open GCash.\n2. Scan the QR code.\n3. Pay an amount not exceeding the remaining balance.\n4. Save your receipt.\n5. Submit your reference number and receipt screenshot.';
   const instructionItems = rawInstructions.split('\n').filter(line => line.trim().length > 0);
 
   if (!gcash.is_active) {
@@ -2269,6 +2329,12 @@ function openPayNowModal(billingIdOrOpts) {
           <div class="pay-label">Amount Due</div>
           <div class="pay-val">${formattedAmount}</div>
         </div>
+      </div>
+
+      <div class="grid-3 mb-16">
+        <div class="report-summary-item"><div class="r-val">${formattedOriginal}</div><div class="r-lbl">Original Amount</div></div>
+        <div class="report-summary-item"><div class="r-val">${formattedPaid}</div><div class="r-lbl">Total Paid</div></div>
+        <div class="report-summary-item"><div class="r-val">${formattedAmount}</div><div class="r-lbl">Remaining Balance</div></div>
       </div>
 
       <div class="gcash-info-card">
@@ -2322,7 +2388,7 @@ function openPayNowModal(billingIdOrOpts) {
         </div>
 
         <div style="margin-top:12px;text-align:center;font-size:0.82rem;font-weight:700;color:var(--teal-700)">
-          Please pay the exact amount shown above (${formattedAmount}).
+          You may pay the full remaining balance or a smaller partial amount on the next step.
         </div>
       </div>
     </div>
@@ -2411,6 +2477,16 @@ function openSubmitPaymentForm(billingIdOrOpts) {
     month = bill.monthly_dues_month || parseMonthFromTitle(bill.title);
   }
 
+
+  const paymentSummary = bill
+    ? getBillingPaymentSummary(bill, getCurrentHomeownerId(), db.get('payments'))
+    : { originalAmount: amount, totalPaid: 0, remainingBalance: amount, pendingPayment: null };
+  if (paymentSummary.pendingPayment) {
+    showToast('warning', 'Payment Pending', 'A payment for this billing is already pending admin verification.');
+    return;
+  }
+  amount = paymentSummary.remainingBalance;
+
   selectedPaymentReceiptFile = null;
   const formattedAmount = '₱' + Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const today = getLocalDateValue();
@@ -2429,15 +2505,21 @@ function openSubmitPaymentForm(billingIdOrOpts) {
         </div>
       </div>
 
+      <div class="grid-3 mb-16">
+        <div class="report-summary-item"><div class="r-val">₱${paymentSummary.originalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Original Amount</div></div>
+        <div class="report-summary-item"><div class="r-val">₱${paymentSummary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Total Paid</div></div>
+        <div class="report-summary-item"><div class="r-val">₱${paymentSummary.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Remaining Balance</div></div>
+      </div>
+
       <div class="grid-2">
         <div class="form-group">
           <label>Payment Method</label>
           <input value="GCash" readonly style="background:var(--surface-2);cursor:not-allowed;font-weight:700;color:var(--gcash-blue)"/>
         </div>
         <div class="form-group">
-          <label>Payment Amount</label>
-          <input value="${formattedAmount}" readonly style="background:var(--surface-2);cursor:not-allowed;font-weight:800;color:var(--teal-700)"/>
-          <small style="font-size:0.72rem;color:var(--text-3);display:block;margin-top:3px">Locked to official billing dues.</small>
+          <label for="sub_pay_amount">Amount to Pay *</label>
+          <input id="sub_pay_amount" type="number" min="0.01" max="${paymentSummary.remainingBalance.toFixed(2)}" step="0.01" value="${paymentSummary.remainingBalance.toFixed(2)}" required style="font-weight:800;color:var(--teal-700)"/>
+          <small style="font-size:0.72rem;color:var(--text-3);display:block;margin-top:3px">Enter any amount up to the remaining balance.</small>
         </div>
       </div>
 
@@ -2562,6 +2644,7 @@ async function executeSubmitPaymentProof(billingIdOrOpts) {
   }
 
   const refNum = (document.getElementById('sub_ref_num')?.value || '').trim();
+  const enteredAmount = Number(document.getElementById('sub_pay_amount')?.value);
   const paymentDate = (document.getElementById('sub_pay_date')?.value || '').trim();
   const remarks = (document.getElementById('sub_remarks')?.value || '').trim();
 
@@ -2574,6 +2657,20 @@ async function executeSubmitPaymentProof(billingIdOrOpts) {
     showToast('error', 'Invalid Reference', 'Please enter a valid GCash reference number (at least 5 characters).');
     return;
   }
+  const currentBill = billingId ? db.getOne('billings', billingId) : null;
+  const currentSummary = currentBill
+    ? getBillingPaymentSummary(currentBill, getCurrentHomeownerId(), db.get('payments'))
+    : { remainingBalance: amount };
+  if (!Number.isFinite(enteredAmount) || enteredAmount <= 0) {
+    showToast('error', 'Invalid Amount', 'Payment amount must be greater than ₱0.');
+    document.getElementById('sub_pay_amount')?.focus();
+    return;
+  }
+  if (enteredAmount > currentSummary.remainingBalance) {
+    showToast('error', 'Invalid Amount', `Payment amount cannot exceed the remaining balance of ₱${currentSummary.remainingBalance.toLocaleString()}.`);
+    document.getElementById('sub_pay_amount')?.focus();
+    return;
+  }
   if (!selectedPaymentReceiptFile) {
     showToast('error', 'Receipt Required', 'Please upload a screenshot or photo of your GCash receipt.');
     return;
@@ -2582,7 +2679,7 @@ async function executeSubmitPaymentProof(billingIdOrOpts) {
   const formData = new FormData();
   if (billingId) formData.append('billingId', billingId);
   if (month) formData.append('monthly_dues_month', month);
-  formData.append('amount', amount);
+  formData.append('amount', enteredAmount);
   formData.append('refNum', refNum);
   formData.append('payment_date', paymentDate || getLocalDateValue());
   formData.append('payment_method', 'GCash');
@@ -2817,10 +2914,11 @@ function renderHOPayNow() {
     );
 
     // 2. Check for payments associated with this month
-    const paidPayment = myPayments.find(p =>
+    const approvedMonthPayments = myPayments.filter(p =>
       p.status === 'approved' &&
       (p.monthly_dues_month === monthKey || (matchingBill && p.billingId === matchingBill.id))
     );
+    const paidPayment = approvedMonthPayments[approvedMonthPayments.length - 1] || null;
 
     const pendingPayment = myPayments.find(p =>
       p.status === 'pending' &&
@@ -2838,32 +2936,45 @@ function renderHOPayNow() {
     let dueDateDisplay = '—';
     let isAdvanceUnbilled = false;
 
-    if (paidPayment || (matchingBill && matchingBill.status === 'paid')) {
+    const billingSummary = matchingBill
+      ? getBillingPaymentSummary(matchingBill, currentUserId, myPayments)
+      : null;
+    const approvedAmount = billingSummary
+      ? billingSummary.totalPaid
+      : approvedMonthPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
+    totalPaidYear += approvedAmount;
+
+    if ((billingSummary && billingSummary.status === 'paid') || (!matchingBill && paidPayment)) {
       status = 'paid';
       paidMonthsCount++;
-      const paidAmt = Number(paidPayment?.amount || matchingBill?.amount || 0);
-      totalPaidYear += paidAmt;
-      amountDue = paidAmt;
+      amountDue = 0;
       dueDateDisplay = matchingBill?.dueDate || (paidPayment?.payment_date ? `Paid ${paidPayment.payment_date}` : 'Paid');
     } else if (pendingPayment) {
       status = 'pending';
       pendingCount++;
-      amountDue = Number(pendingPayment.amount || matchingBill?.amount || defaultMonthlyDues);
+      amountDue = billingSummary ? billingSummary.remainingBalance : Number(pendingPayment.amount || defaultMonthlyDues);
       dueDateDisplay = matchingBill?.dueDate || (pendingPayment.submittedAt ? `Submitted ${pendingPayment.submittedAt}` : 'Under Review');
+      if (billingSummary) totalBilledOutstanding += billingSummary.remainingBalance;
+    } else if (billingSummary && billingSummary.status === 'partially_paid') {
+      status = 'partially_paid';
+      amountDue = billingSummary.remainingBalance;
+      dueDateDisplay = matchingBill.dueDate || '—';
+      totalBilledOutstanding += billingSummary.remainingBalance;
     } else if (matchingBill) {
       status = 'pay_now';
-      amountDue = Number(matchingBill.amount || 0);
+      amountDue = billingSummary ? billingSummary.remainingBalance : Number(matchingBill.amount || 0);
       dueDateDisplay = matchingBill.dueDate || '—';
       totalBilledOutstanding += amountDue;
     } else {
       // Month is not billed yet by administrator
       // Rule: If the preceding month is already paid, the resident is permitted to pay the next month in advance
       const prevMonthKey = getPreviousMonthKey(selectedYear, m);
-      const prevMonthPaid = myPayments.some(p => p.status === 'approved' && p.monthly_dues_month === prevMonthKey) ||
-        myBillings.some(b =>
-          (b.monthly_dues_month === prevMonthKey || (typeof parseMonthFromTitle === 'function' && parseMonthFromTitle(b.title) === prevMonthKey)) &&
-          (b.status === 'paid' || myPayments.some(p => p.billingId === b.id && p.status === 'approved'))
-        );
+      const previousBill = myBillings.find(b =>
+        b.monthly_dues_month === prevMonthKey || (typeof parseMonthFromTitle === 'function' && parseMonthFromTitle(b.title) === prevMonthKey)
+      );
+      const prevMonthPaid = previousBill
+        ? getBillingPaymentSummary(previousBill, currentUserId, myPayments).status === 'paid'
+        : myPayments.some(p => p.status === 'approved' && !p.billingId && p.monthly_dues_month === prevMonthKey);
 
       if (prevMonthPaid) {
         status = 'pay_now';
@@ -2889,6 +3000,7 @@ function renderHOPayNow() {
       paidPayment,
       pendingPayment,
       rejectedPayment,
+      billingSummary,
       isAdvanceUnbilled,
     });
   }
@@ -3009,6 +3121,9 @@ function renderHOPayNow() {
               if (m.pendingPayment) {
                 actionBtn = `<button class="btn btn-secondary btn-sm" onclick="viewPaymentDetail('${m.pendingPayment.id}')">View Details</button>`;
               }
+            } else if (m.status === 'partially_paid') {
+              statusBadge = '<span class="badge badge-blue">Partially Paid</span>';
+              actionBtn = `<button class="btn btn-primary btn-sm btn-pay-now" onclick="openPayNowModal('${m.matchingBill.id}')">Pay Remaining</button>`;
             } else if (m.status === 'pay_now') {
               statusBadge = '<span class="badge-pay-now"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 14 14"/></svg> Pay Now</span>';
               if (m.matchingBill) {

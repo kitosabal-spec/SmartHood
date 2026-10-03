@@ -2,7 +2,8 @@ const fs = require('fs');
 const path = require('path');
 
 // Simulate browser global environment
-const mainJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'main.js'), 'utf8');
+const mainJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'main.js'), 'utf8')
+  .replace('let currentUser = null;', 'var currentUser = global.currentUser;');
 const billingJs = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'billing.js'), 'utf8');
 
 // Mock DOM
@@ -60,6 +61,7 @@ const mockBillings = [
 const mockPayments = [
   { id: 'p0', homeownerId: 'u002', billingId: 'b0', amount: 500, refNum: 'REF000', status: 'approved', monthly_dues_month: '2025-12', payment_date: '2025-12-05' },
   { id: 'p1', homeownerId: 'u002', billingId: 'b1', amount: 500, refNum: 'REF123', status: 'approved', monthly_dues_month: '2026-10', payment_date: '2026-10-02' },
+  { id: 'p2', homeownerId: 'u002', billingId: 'b2', amount: 200, refNum: 'REFPARTIAL', status: 'approved', monthly_dues_month: '2026-11', payment_date: '2026-11-02' },
 ];
 
 const mockPaymentSettings = [
@@ -102,6 +104,16 @@ try {
 
   eval(mainJs);
   eval(billingJs);
+  currentUser = {
+    id: 'u002',
+    homeowner_id: 'u002',
+    role: 'homeowner',
+    name: 'Juan Dela Cruz',
+    lotArea: 40,
+  };
+  if (getCurrentHomeownerId() !== 'u002') throw new Error(`Mock homeowner identity failed: ${getCurrentHomeownerId()}`);
+  const partialSummary = getBillingPaymentSummary(mockBillings[2], 'u002', mockPayments);
+  if (partialSummary.remainingBalance !== 300) throw new Error(`Partial summary expected ₱300, got ₱${partialSummary.remainingBalance}`);
   console.log('✓ Successfully loaded main.js and billing.js');
 
   // Test executing renderHOPayNow
@@ -112,6 +124,9 @@ try {
   }
   if (!lastRenderedHtml.includes('October')) {
     throw new Error('Rendered HTML missing October!');
+  }
+  if (!lastRenderedHtml.includes('Partially Paid') || !lastRenderedHtml.includes('Pay Remaining')) {
+    throw new Error('Rendered HTML missing partial-payment status or follow-up action');
   }
   console.log('✓ renderHOPayNow() output verified: contains schedule header and months!');
 
@@ -141,15 +156,24 @@ try {
   if (!modalTitleOpened.includes('GCash')) throw new Error('Expected GCash payment modal');
 
   // Test opening submit payment form
+  if (getCurrentHomeownerId() !== 'u002') throw new Error(`Homeowner changed before payment form: ${getCurrentHomeownerId()}`);
   window.openSubmitPaymentForm({ billingId: 'b2', month: '2026-11', amount: 500, title: 'Monthly Dues - November 2026' });
   if (!modalTitleOpened.includes('Submit Payment Proof')) throw new Error('Expected Submit Payment Proof modal');
+  if (!modalHtmlOpened.includes('Amount to Pay') || !modalHtmlOpened.includes('Original Amount') || !modalHtmlOpened.includes('Remaining Balance')) {
+    throw new Error('Partial-payment form is missing amount or balance fields');
+  }
+  const amountInputMatch = modalHtmlOpened.match(/id="sub_pay_amount"[^>]*value="([^"]+)"/);
+  if (!amountInputMatch || amountInputMatch[1] !== '300.00') {
+    throw new Error(`Amount to Pay did not default to the ₱300 remaining balance (received ${amountInputMatch?.[1] || 'missing'})`);
+  }
+  console.log('✓ Partial-payment form shows original, paid, remaining, and editable payment amount');
 
   // Test copy GCash number
   window.copyGcashNumber('09171234567');
   console.log('✓ copyGcashNumber executed cleanly');
 
   // Test with user with 0 bills & 0 payments
-  global.currentUser = { id: 'u_new', role: 'homeowner', name: 'New Resident', lotArea: 40 };
+  currentUser = { id: 'u_new', homeowner_id: 'u_new', role: 'homeowner', name: 'New Resident', lotArea: 40 };
   window.renderHOPayNow();
   console.log('✓ renderHOPayNow() with brand new resident (0 bills, 0 payments) rendered cleanly!');
 
