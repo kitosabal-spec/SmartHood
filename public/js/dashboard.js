@@ -180,7 +180,7 @@ if (typeof window !== 'undefined') {
 
 function renderAdminDashboard() {
   syncHomeownerBalances();
-  const homeowners = db.get('users').filter(u => u.role === 'homeowner');
+  const homeowners = getHomeowners();
   const payments = db.get('payments');
   const approved = payments.filter(p => p.status === 'approved');
   const pending  = payments.filter(p => p.status === 'pending');
@@ -367,7 +367,7 @@ function renderAdminDashboard() {
   const tbody = document.getElementById('recentPaymentsTable');
   const recentP = [...payments].sort((a,b) => (b.submittedAt || '').localeCompare(a.submittedAt || '')).slice(0, 5);
   recentP.forEach(p => {
-    const ho = db.getOne('users', p.homeownerId);
+    const ho = getHomeownerById(p.homeownerId);
     tbody.innerHTML += `
       <tr>
         <td>${ho ? ho.name : 'Unknown'}</td>
@@ -383,7 +383,7 @@ function renderAdminDashboard() {
     cmpPanel.innerHTML = '<p class="empty-note">No complaints filed.</p>';
   } else {
     recentC.forEach(c => {
-      const ho = db.getOne('users', c.homeownerId);
+      const ho = getHomeownerById(c.homeownerId);
       cmpPanel.innerHTML += `
         <div style="padding:12px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:10px">
           <div>
@@ -558,9 +558,10 @@ function renderPaginationComponent(config) {
 
 function renderHODashboard() {
   syncHomeownerBalances();
-  const myBillings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(currentUser?.id));
-  const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser.id);
-  const myComplaints = db.get('complaints').filter(c => c.homeownerId === currentUser.id);
+  const myBillings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(getCurrentHomeownerId()));
+  const homeownerId = getCurrentHomeownerId();
+  const myPayments = db.get('payments').filter(p => p.homeownerId === homeownerId);
+  const myComplaints = db.get('complaints').filter(c => c.homeownerId === homeownerId);
   const approved = myPayments.filter(p => p.status === 'approved');
   const pending  = myPayments.filter(p => p.status === 'pending');
   const today = getLocalDateValue();

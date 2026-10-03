@@ -111,7 +111,7 @@ function renderAdminComplaintTable(filtered = null) {
     const order = { 'Reviewed': 0, 'Open': 0, 'In Progress': 1, 'Resolved': 2, 'Rejected': 3 };
     return (order[normalizeComplaintStatus(a.status)] ?? 4) - (order[normalizeComplaintStatus(b.status)] ?? 4);
   }).map((c, i) => {
-    const ho = db.getOne('users', c.homeownerId);
+    const ho = getHomeownerById(c.homeownerId);
     const shortDesc = c.description.length > 60 ? c.description.substring(0, 60) + '…' : c.description;
     const totalAttachments = (Array.isArray(c.attachments) && c.attachments.length)
       ? c.attachments.length
@@ -147,7 +147,7 @@ function filterAdminComplaints() {
   }
   if (q) {
     complaints = complaints.filter(c => {
-      const ho = db.getOne('users', c.homeownerId);
+      const ho = getHomeownerById(c.homeownerId);
       return (c.description && c.description.toLowerCase().includes(q))
         || (c.category && c.category.toLowerCase().includes(q))
         || (c.otherCategory && c.otherCategory.toLowerCase().includes(q))
@@ -160,7 +160,7 @@ function filterAdminComplaints() {
 function openManageComplaint(id) {
   const c = db.getOne('complaints', id);
   if (!c) return;
-  const ho = db.getOne('users', c.homeownerId);
+  const ho = getHomeownerById(c.homeownerId);
   if (!canManageComplaints()) {
     openModal(`Complaint - ${ho ? ho.name : 'Unknown'}`, `
       <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:18px">
@@ -258,7 +258,7 @@ function saveComplaintManagement(id) {
 
   db.save('complaints', c);
 
-  const ho = db.getOne('users', c.homeownerId);
+  const ho = getHomeownerById(c.homeownerId);
   logAction(`Updated complaint from ${ho ? ho.name : 'Unknown'}: ${oldStatus} -> ${newStatus}`);
   addNotification('Complaint Updated', `Your complaint status changed from "${oldStatus}" to "${newStatus}".`, { userIds: [c.homeownerId] });
 
@@ -271,7 +271,7 @@ function saveComplaintManagement(id) {
 
 // SECTION 16: HOMEOWNER — COMPLAINTS
 function renderHOComplaints() {
-  const myComplaints = db.get('complaints').filter(c => c.homeownerId === currentUser.id);
+  const myComplaints = db.get('complaints').filter(c => c.homeownerId === getCurrentHomeownerId());
   const area = document.getElementById('contentArea');
 
   const reviewed   = myComplaints.filter(c => normalizeComplaintStatus(c.status) === 'Reviewed').length;
@@ -804,7 +804,7 @@ async function submitHOComplaint(category, description, otherText = '', mediaFil
     const occDate = dateOfOccurrence || getLocalDateValue();
     const complaint = {
       id:            db.newId('c'),
-      homeownerId:   currentUser.id,
+      homeownerId:   getCurrentHomeownerId(),
       category,
       dateOfOccurrence: occDate,
       otherCategory: derivedOther || null,

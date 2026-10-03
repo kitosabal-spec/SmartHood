@@ -165,7 +165,7 @@ function filterBillings(resetPage = true) {
   }
 
   const allBillings = db.get('billings') || [];
-  const users = db.get('users') || [];
+  const users = getHomeowners();
   const userMap = new Map(users.map(u => [u.id, u]));
 
   const filtered = allBillings.filter(b => {
@@ -427,7 +427,7 @@ function renderBillingTable(billings = null, resetPage = false) {
 if (typeof window !== 'undefined') window.renderBillingTable = renderBillingTable;
 
 function openAddBillingModal() {
-  const homeowners = db.get('users').filter(u => u.role === 'homeowner');
+  const homeowners = getHomeowners();
   const currentMonthValue = getLocalMonthValue();
   const defaultDueDate = getLocalDateValue(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0));
   openModal('Create Billing', `
@@ -463,7 +463,7 @@ function toggleSelectAll(cb) {
 
 function openProfessionalBillingModal() {
   if (!canManageBilling()) { showToast('error', 'Access Denied', 'Only the admin can create billings.'); return; }
-  const homeowners = db.get('users').filter(u => u.role === 'homeowner');
+  const homeowners = getHomeowners();
   const currentMonthValue = getLocalMonthValue();
   const defaultDueDate = getLocalDateValue(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0));
   const payments = db.get('payments');
@@ -700,7 +700,7 @@ function updateBillingAmountForMonthlyDues() {
   if (!monthlyDues) return;
 
   if (selectedIds.length === 1) {
-    const user = db.getOne('users', selectedIds[0]);
+    const user = getHomeownerById(selectedIds[0]);
     const rate = getDuesRatePerSqm();
     const amount = calculateMonthlyDues(user, rate);
     if (!amountInput.value || amountInput.dataset.autofilled === 'true') {
@@ -767,7 +767,7 @@ async function saveAddBilling() {
     if (isMonthlyDues) {
       const billings = db.get('billings');
       const payments = db.get('payments');
-      const paidResident = checked.map(uid => db.getOne('users', uid)).find(u =>
+      const paidResident = checked.map(uid => getHomeownerById(uid)).find(u =>
         payments.some(p => p.homeownerId === u?.id && p.monthly_dues_month === rawMonthInput && p.status === 'approved')
       );
       if (paidResident) {
@@ -775,7 +775,7 @@ async function saveAddBilling() {
         return;
       }
 
-      const duplicateResident = checked.map(uid => db.getOne('users', uid)).find(u =>
+      const duplicateResident = checked.map(uid => getHomeownerById(uid)).find(u =>
         billings.some(b =>
           isMonthlyAssociationDuesBillingRecord(b) &&
           b.monthly_dues_month === rawMonthInput &&
@@ -842,7 +842,7 @@ async function saveAddBilling() {
 function viewBillingDetail(id) {
   const b = db.getOne('billings', id);
   if (!b) return;
-  const users = db.get('users');
+  const users = getHomeowners();
   const assignedIds = getAssignedHomeownerIds(b);
   const assignedNames = assignedIds.map(uid => { const u = users.find(x => x.id === uid); return u ? u.name : uid; });
   const amountStr = Number(b.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -894,7 +894,7 @@ async function autoGenerateMonthlyDues() {
   const month = new Date().toLocaleString('default', { month: 'long' });
   const year = new Date().getFullYear();
   const title = `Monthly Dues – ${month} ${year}`;
-  const homeowners = db.get('users').filter(u => u.role === 'homeowner');
+  const homeowners = getHomeowners();
   const existing = db.get('billings').find(b => b.title === title);
   if (existing) { showToast('warning', 'Already Exists', `Dues for ${month} already created.`); return; }
   const lastDay = getLocalDateValue(new Date(year, new Date().getMonth() + 1, 0));
@@ -1091,7 +1091,7 @@ function renderPaymentTable(filtered = null) {
   tbody.innerHTML = [...payments]
     .sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '') || (b.id || '').localeCompare(a.id || ''))
     .map(p => {
-      const ho = db.getOne('users', p.homeownerId);
+      const ho = getHomeownerById(p.homeownerId);
       const bill = db.getOne('billings', p.billingId);
       let billTitleDisplay = bill ? bill.title : '';
       if (!billTitleDisplay && p.monthly_dues_month) {
@@ -1253,7 +1253,7 @@ function filterPayments() {
   let payments = db.get('payments') || [];
   if (status) payments = payments.filter(p => p.status === status);
   if (q) {
-    const users = db.get('users') || [];
+    const users = getHomeowners();
     const billings = db.get('billings') || [];
     payments = payments.filter(p => {
       const ho = users.find(u => u.id === p.homeownerId);
@@ -1315,8 +1315,7 @@ function manualBillingOptionLabel(billing) {
 function openCreateManualPaymentModal() {
   if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only authorized managers can create payments.'); return; }
   manualPaymentSubmitting = false;
-  const homeowners = db.get('users')
-    .filter(user => user.role === 'homeowner' && !['inactive', 'deactivated'].includes(user.status))
+  const homeowners = getHomeowners()
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
   openModal('Create Payment', `
@@ -1653,7 +1652,7 @@ function updateManualPaymentSummary() {
   const amountInput = document.getElementById('manual_payment_amount');
   const info = document.getElementById('manual_payment_billing_info');
   const summary = document.getElementById('manual_payment_summary');
-  const homeowner = db.getOne('users', homeownerId);
+  const homeowner = getHomeownerById(homeownerId);
   const billing = db.getOne('billings', billingId);
   if (!homeowner || !billing) {
     if (amountInput) amountInput.value = '';
@@ -1708,7 +1707,7 @@ async function executeCreateManualPayment() {
 function viewPaymentDetail(id) {
   const p = db.getOne('payments', id);
   if (!p) { showToast('error', 'Error', 'Payment record not found.'); return; }
-  const ho = db.getOne('users', p.homeownerId);
+  const ho = getHomeownerById(p.homeownerId);
   const bill = db.getOne('billings', p.billingId);
   const recordedBy = db.getOne('users', p.recorded_by);
   const isManual = p.payment_source === 'manual_admin';
@@ -1817,7 +1816,7 @@ function confirmApprovePayment(id) {
   if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only authorized managers can approve payments.'); return; }
   const p = db.getOne('payments', id);
   if (!p) return;
-  const ho = db.getOne('users', p.homeownerId);
+  const ho = getHomeownerById(p.homeownerId);
   const bill = db.getOne('billings', p.billingId);
   const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString();
 
@@ -1848,7 +1847,7 @@ function openRejectPaymentModal(id) {
   if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only authorized managers can reject payments.'); return; }
   const p = db.getOne('payments', id);
   if (!p) return;
-  const ho = db.getOne('users', p.homeownerId);
+  const ho = getHomeownerById(p.homeownerId);
   const bill = db.getOne('billings', p.billingId);
 
   const predefinedReasons = [
@@ -2093,8 +2092,8 @@ function renderHOBilling() {
   if (canManageBilling()) {
     syncHomeownerBalances();
   }
-  const myBillings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(currentUser?.id));
-  const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser?.id);
+  const myBillings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(getCurrentHomeownerId()));
+  const myPayments = db.get('payments').filter(p => p.homeownerId === getCurrentHomeownerId());
   const today = getLocalDateValue();
   const area = document.getElementById('contentArea');
 
@@ -2618,7 +2617,7 @@ async function executeSubmitPaymentProof(billingIdOrOpts) {
 // ── RESIDENT PAYMENT HISTORY ──
 
 function renderHOHistory() {
-  const myPayments = db.get('payments').filter(p => p.homeownerId === currentUser.id);
+  const myPayments = db.get('payments').filter(p => p.homeownerId === getCurrentHomeownerId());
   const area = document.getElementById('contentArea');
 
   area.innerHTML = `
@@ -2776,7 +2775,7 @@ function renderHOPayNow() {
   const area = document.getElementById('contentArea');
   if (!area) return;
 
-  const currentUserId = currentUser?.id || currentUser?.user_id || '';
+  const currentUserId = getCurrentHomeownerId() || '';
   const myPayments = (db.get('payments') || []).filter(p => p.homeownerId === currentUserId);
   const myBillings = (db.get('billings') || []).filter(b => {
     const ids = typeof getAssignedHomeownerIds === 'function' ? getAssignedHomeownerIds(b) : [];

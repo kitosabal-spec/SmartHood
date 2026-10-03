@@ -373,7 +373,7 @@ async function submitLostFoundReport() {
     }
 
     const nowIso = new Date().toISOString();
-    const homeownerId = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : null;
+    const homeownerId = (typeof currentUser !== 'undefined' && currentUser) ? getCurrentHomeownerId() : null;
 
     const newReport = {
       id: 'lf_' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
@@ -436,7 +436,7 @@ function renderHOLostFound(tab = null) {
   if (!area) return;
 
   const allReports = db.get('lostFound') || [];
-  const currentUserId = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : null;
+  const currentUserId = (typeof currentUser !== 'undefined' && currentUser) ? getCurrentHomeownerId() : null;
   const myReports = allReports
     .filter(r => currentUserId && r.homeownerId === currentUserId)
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -625,7 +625,7 @@ function renderHOCommunityCards(posts) {
 
 function renderHOMyReports(container) {
   const allReports = db.get('lostFound') || [];
-  const currentUserId = (typeof currentUser !== 'undefined' && currentUser) ? currentUser.id : null;
+  const currentUserId = (typeof currentUser !== 'undefined' && currentUser) ? getCurrentHomeownerId() : null;
   const myReports = allReports
     .filter(r => currentUserId && r.homeownerId === currentUserId)
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -931,7 +931,7 @@ function renderLostFoundManagement(filtered = null) {
                 const safeContact = typeof escapeHtml === 'function' ? escapeHtml(report.contactName || '') : (report.contactName || '');
                 const safePhone = typeof escapeHtml === 'function' ? escapeHtml(report.contactNumber || '') : (report.contactNumber || '');
                 const isVideo = isLostFoundMediaVideo(report.image || '') || report.media_type === 'video';
-                const submitterUser = report.homeownerId ? db.getOne('users', report.homeownerId) : null;
+                const submitterUser = report.homeownerId ? getHomeownerById(report.homeownerId) : null;
                 const submitterDisplay = submitterUser ? `${escapeHtml(submitterUser.name)} (Resident)` : safeContact;
 
                 return `
@@ -1245,7 +1245,7 @@ function openLostFoundAdminModal(id) {
   if (!report) return;
   const isVideo = isLostFoundMediaVideo(report.image || '') || report.media_type === 'video';
   const safeName = typeof escapeHtml === 'function' ? escapeHtml(report.itemName || '') : (report.itemName || '');
-  const submitterUser = report.homeownerId ? db.getOne('users', report.homeownerId) : null;
+  const submitterUser = report.homeownerId ? getHomeownerById(report.homeownerId) : null;
 
   const modalButtons = [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },

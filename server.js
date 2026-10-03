@@ -94,8 +94,13 @@ moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'qrcodes'), PRIVATE_QRCODE
 
 const tableConfig = {
   users: {
-    columns: ['id', 'username', 'password', 'role', 'name', 'email', 'block', 'lot', 'lotArea', 'contact', 'balance', 'profile_photo', 'permissions', 'status'],
+    columns: ['id', 'username', 'password', 'role', 'name', 'email', 'mobile', 'homeowner_id', 'block', 'lot', 'lotArea', 'contact', 'balance', 'profile_photo', 'permissions', 'status'],
     jsonColumns: ['permissions'],
+    booleanColumns: [],
+  },
+  homeowners: {
+    columns: ['id', 'name', 'block', 'lot', 'lotArea', 'contact', 'balance', 'profile_photo', 'created_at', 'updated_at'],
+    jsonColumns: [],
     booleanColumns: [],
   },
   billings: {
@@ -194,20 +199,16 @@ function loadHomeownerSeed() {
   const seedPath = path.join(__dirname, 'data', 'homeowners.seed.json');
   try {
     const raw = fs.readFileSync(seedPath, 'utf8').replace(/^\uFEFF/, '');
-    // Seed records are directory data, not credentials. Accounts start disabled
-    // and must be provisioned with a password by an administrator.
-    return JSON.parse(raw).map(({ password, ...homeowner }) => ({
-      ...homeowner,
-      status: 'inactive',
-    }));
+    // Seed records are directory data, never credentials.
+    return JSON.parse(raw).map(({ password, username, email, role, status, permissions, ...homeowner }) => homeowner);
   } catch (error) {
     console.warn(`Could not load homeowner seed from ${seedPath}. Falling back to demo homeowners.`);
     return [
-      { id: 'u002', username: 'juandelacruz', role: 'homeowner', name: 'Juan Dela Cruz', email: 'juan@email.com', block: 'Block 3', lot: 'Lot 7', lotArea: 0, contact: '09171234567', balance: 3500, profile_photo: null, status: 'inactive' },
-      { id: 'u003', username: 'annamaria', role: 'homeowner', name: 'Anna Maria Reyes', email: 'anna@email.com', block: 'Block 1', lot: 'Lot 2', lotArea: 0, contact: '09281234567', balance: 0, profile_photo: null, status: 'inactive' },
-      { id: 'u004', username: 'carlosmagno', role: 'homeowner', name: 'Carlos Magno', email: 'carlos@email.com', block: 'Block 2', lot: 'Lot 5', lotArea: 0, contact: '09351234567', balance: 7000, profile_photo: null, status: 'inactive' },
-      { id: 'u005', username: 'ritaflores', role: 'homeowner', name: 'Rita Flores', email: 'rita@email.com', block: 'Block 4', lot: 'Lot 1', lotArea: 0, contact: '09461234567', balance: 1500, profile_photo: null, status: 'inactive' },
-      { id: 'u006', username: 'pedroparcero', role: 'homeowner', name: 'Pedro Parcero', email: 'pedro@email.com', block: 'Block 1', lot: 'Lot 8', lotArea: 0, contact: '09571234567', balance: 0, profile_photo: null, status: 'inactive' },
+      { id: 'u002', name: 'Juan Dela Cruz', block: 'Block 3', lot: 'Lot 7', lotArea: 0, contact: '09171234567', balance: 3500, profile_photo: null },
+      { id: 'u003', name: 'Anna Maria Reyes', block: 'Block 1', lot: 'Lot 2', lotArea: 0, contact: '09281234567', balance: 0, profile_photo: null },
+      { id: 'u004', name: 'Carlos Magno', block: 'Block 2', lot: 'Lot 5', lotArea: 0, contact: '09351234567', balance: 7000, profile_photo: null },
+      { id: 'u005', name: 'Rita Flores', block: 'Block 4', lot: 'Lot 1', lotArea: 0, contact: '09461234567', balance: 1500, profile_photo: null },
+      { id: 'u006', name: 'Pedro Parcero', block: 'Block 1', lot: 'Lot 8', lotArea: 0, contact: '09571234567', balance: 0, profile_photo: null },
     ];
   }
 }
@@ -485,7 +486,7 @@ async function validateAndPrepareBillingPayload(payload, res, excludeBillingId =
   for (const hid of assigned) {
     const approvedPayment = await findApprovedMonthlyDuesPayment(hid, rawMonth);
     if (approvedPayment && (!excludeBillingId || approvedPayment.billingId !== excludeBillingId)) {
-      const ho = await get('SELECT name FROM users WHERE id = ?', [hid]);
+      const ho = await get('SELECT name FROM homeowners WHERE id = ?', [hid]);
       const hoName = ho ? ho.name : 'Resident';
       const monthDisplay = formatMonthYearDisplay(rawMonth);
       res.status(400).json({
@@ -496,7 +497,7 @@ async function validateAndPrepareBillingPayload(payload, res, excludeBillingId =
 
     const existingBilling = await findMonthlyDuesBillingForHomeowner(hid, rawMonth, excludeBillingId);
     if (existingBilling) {
-      const ho = await get('SELECT name FROM users WHERE id = ?', [hid]);
+      const ho = await get('SELECT name FROM homeowners WHERE id = ?', [hid]);
       const hoName = ho ? ho.name : 'Resident';
       const monthDisplay = formatMonthYearDisplay(rawMonth);
       res.status(400).json({
@@ -622,8 +623,55 @@ async function getTableData(table) {
     const rows = await all('SELECT * FROM notifications ORDER BY id DESC');
     return rows.map((row) => deserializeRow(table, row));
   }
+  if (table === 'users') {
+    const [userRows, homeownerRows] = await Promise.all([
+      all('SELECT * FROM users'),
+      all('SELECT * FROM homeowners'),
+    ]);
+    const homeownersById = new Map(homeownerRows.map(homeowner => [homeowner.id, homeowner]));
+    return userRows.map((row) => mergeUserWithHomeowner(deserializeRow('users', row), homeownersById.get(row.homeowner_id)));
+  }
+  if (table === 'homeowners') {
+    const [homeownerRows, accountRows] = await Promise.all([
+      all('SELECT * FROM homeowners'),
+      all("SELECT id, homeowner_id, email, mobile, status FROM users WHERE role = 'homeowner' AND homeowner_id IS NOT NULL"),
+    ]);
+    const accountsByHomeownerId = new Map(accountRows.map(account => [account.homeowner_id, account]));
+    return homeownerRows.map((row) => presentHomeownerAccountStatus(deserializeRow('homeowners', row), accountsByHomeownerId.get(row.id)));
+  }
   const rows = await all(`SELECT * FROM ${tableName(table)}`);
   return rows.map((row) => deserializeRow(table, row));
+}
+
+function mergeUserWithHomeowner(user, homeowner) {
+  if (!user || !homeowner) return user;
+  return {
+    ...user,
+    homeowner_id: homeowner.id,
+    homeownerId: homeowner.id,
+    name: homeowner.name,
+    block: homeowner.block,
+    lot: homeowner.lot,
+    lotArea: homeowner.lotArea,
+    contact: homeowner.contact || user.mobile || null,
+    balance: Number(homeowner.balance) || 0,
+    profile_photo: homeowner.profile_photo || null,
+  };
+}
+
+function presentHomeownerAccountStatus(homeowner, account) {
+  return {
+    ...homeowner,
+    accountStatus: account ? 'Registered' : 'No Account',
+    account_id: account?.id || null,
+    email: account?.email || null,
+    mobile: account?.mobile || null,
+    account_active: account ? account.status === 'active' : false,
+  };
+}
+
+function requesterHomeownerId(user) {
+  return user?.homeowner_id || user?.homeownerId || null;
 }
 
 async function loadAllData(requester = null) {
@@ -633,11 +681,13 @@ async function loadAllData(requester = null) {
   }
   // Filter table data for non-admins based on permissions
   if (!requester || requester.role !== 'admin') {
+    const homeownerId = requesterHomeownerId(requester);
     const canViewResidentDirectory = requester && [
       'billing', 'payments', 'complaints', 'vehicles', 'amenities', 'lostfound',
     ].some(permission => userHasPermission(requester, permission));
     if (!canViewResidentDirectory) {
       data.users = requester ? (data.users || []).filter(user => user.id === requester.id) : [];
+      data.homeowners = homeownerId ? (data.homeowners || []).filter(homeowner => homeowner.id === homeownerId) : [];
     }
     if (!requester || !userHasPermission(requester, 'auditlog')) {
       data.auditLog = [];
@@ -646,12 +696,12 @@ async function loadAllData(requester = null) {
       ? (data.notifications || []).filter(notification => canUserSeeNotification(notification, requester))
       : [];
     if (requester && (userHasPermission(requester, 'resident') || requester.role === 'homeowner') && !userHasPermission(requester, 'billing')) {
-      data.billings = (data.billings || []).filter(b => getAssignedHomeownerIds(b).includes(requester.id));
+      data.billings = (data.billings || []).filter(b => getAssignedHomeownerIds(b).includes(homeownerId));
     } else if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'billing') && requester.role !== 'homeowner')) {
       data.billings = [];
     }
     if (requester && userHasPermission(requester, 'resident') && !userHasPermission(requester, 'payments')) {
-      data.payments = (data.payments || []).filter(p => p.homeownerId === requester.id);
+      data.payments = (data.payments || []).filter(p => p.homeownerId === homeownerId);
     } else if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'payments'))) {
       data.payments = [];
     }
@@ -662,17 +712,16 @@ async function loadAllData(requester = null) {
       data.complaints = [];
     } else if (!userHasPermission(requester, 'complaints')) {
       // Residents can see their own cases, while complaint staff can see all.
-      data.complaints = (data.complaints || []).filter(c => c.homeownerId === requester.id);
+      data.complaints = (data.complaints || []).filter(c => c.homeownerId === homeownerId);
     }
     if (!requester || (!userHasPermission(requester, 'resident') && !userHasPermission(requester, 'vehicles'))) {
       data.vehicleRegistrations = [];
     }
     const canManageLf = requester && (requester.role === 'admin' || userHasPermission(requester, 'lostfound'));
     if (!canManageLf) {
-      const requesterId = requester?.id;
-      data.lostFound = (data.lostFound || []).filter(item => {
-        const isPublic = ['Approved', 'Posted', 'Claimed'].includes(item.status);
-        const isOwn = Boolean(requesterId && item.homeownerId === requesterId);
+        data.lostFound = (data.lostFound || []).filter(item => {
+          const isPublic = ['Approved', 'Posted', 'Claimed'].includes(item.status);
+          const isOwn = Boolean(homeownerId && item.homeownerId === homeownerId);
         return isPublic || isOwn;
       });
     }
@@ -681,6 +730,7 @@ async function loadAllData(requester = null) {
   // after permission filtering. Raw private filenames never leave the server.
   if (requester) {
     data.users = (data.users || []).map(record => presentPrivateFiles('users', record, requester));
+    data.homeowners = (data.homeowners || []).map(record => presentPrivateFiles('homeowners', record, requester));
     data.payments = (data.payments || []).map(record => presentPrivateFiles('payments', record, requester));
     data.complaints = (data.complaints || []).map(record => presentPrivateFiles('complaints', record, requester));
     data.payment_settings = (data.payment_settings || []).map(record => presentPrivateFiles('payment_settings', record, requester));
@@ -709,10 +759,53 @@ async function createTables() {
   await run('ALTER TABLE users ADD COLUMN profile_photo TEXT').catch(() => {});
   await run('ALTER TABLE users ADD COLUMN permissions LONGTEXT').catch(() => {});
   await run("ALTER TABLE users ADD COLUMN status VARCHAR(32) DEFAULT 'active'").catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN mobile VARCHAR(64)').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN homeowner_id VARCHAR(64) NULL').catch(() => {});
+  await run('ALTER TABLE users MODIFY email VARCHAR(255) NULL').catch(() => {});
   await run("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''").catch(() => {});
   await run("UPDATE users SET permissions = '[\"*\"]' WHERE role = 'admin' AND (permissions IS NULL OR permissions = '' OR permissions = '[]')").catch(() => {});
   await run("UPDATE users SET permissions = '[\"resident\"]' WHERE role = 'homeowner' AND (permissions IS NULL OR permissions = '' OR permissions = '[]' OR permissions LIKE '%ho-%')").catch(() => {});
   await run("UPDATE users SET permissions = '[]' WHERE role NOT IN ('admin', 'homeowner') AND (permissions IS NULL OR permissions = '')").catch(() => {});
+
+  await run(`CREATE TABLE IF NOT EXISTS homeowners (
+    id VARCHAR(64) PRIMARY KEY,
+    name TEXT NOT NULL,
+    block TEXT,
+    lot TEXT,
+    lotArea DOUBLE DEFAULT 0,
+    contact TEXT,
+    balance DOUBLE DEFAULT 0,
+    profile_photo TEXT,
+    created_at TEXT,
+    updated_at TEXT
+  )`);
+
+  // Preserve canonical homeowner IDs so every existing billing/payment/module
+  // relationship keeps pointing at the same record after the split.
+  await run(`
+    INSERT INTO homeowners (id, name, block, lot, lotArea, contact, balance, profile_photo, created_at, updated_at)
+    SELECT id, name, block, lot, COALESCE(lotArea, 0), contact, COALESCE(balance, 0), profile_photo, NOW(), NOW()
+    FROM users
+    WHERE role = 'homeowner'
+    ON DUPLICATE KEY UPDATE
+      name = COALESCE(NULLIF(homeowners.name, ''), VALUES(name)),
+      block = COALESCE(homeowners.block, VALUES(block)),
+      lot = COALESCE(homeowners.lot, VALUES(lot)),
+      lotArea = COALESCE(homeowners.lotArea, VALUES(lotArea)),
+      contact = COALESCE(homeowners.contact, VALUES(contact)),
+      balance = COALESCE(homeowners.balance, VALUES(balance)),
+      profile_photo = COALESCE(homeowners.profile_photo, VALUES(profile_photo))
+  `).catch((error) => console.error('Homeowner profile migration failed:', error.message));
+
+  await run("UPDATE users SET homeowner_id = id, mobile = COALESCE(mobile, contact) WHERE role = 'homeowner' AND homeowner_id IS NULL").catch(() => {});
+  // Legacy seed rows marked inactive represented directory-only homeowners and
+  // had random, unusable passwords. They become zero-account homeowner records.
+  await run("DELETE FROM users WHERE role = 'homeowner' AND status = 'inactive' AND email LIKE '%@sanalfonsohomes.local'").catch(() => {});
+  await run("UPDATE users SET username = NULL, name = NULL, block = NULL, lot = NULL, lotArea = NULL, contact = NULL, balance = NULL, profile_photo = NULL WHERE role = 'homeowner'").catch(() => {});
+  await run('ALTER TABLE users ADD UNIQUE INDEX idx_users_homeowner_id (homeowner_id)').catch(() => {});
+  await run("ALTER TABLE users ADD COLUMN homeowner_email_key VARCHAR(255) GENERATED ALWAYS AS (CASE WHEN role = 'homeowner' THEN LOWER(email) ELSE NULL END) STORED").catch(() => {});
+  await run('ALTER TABLE users ADD UNIQUE INDEX idx_users_homeowner_email (homeowner_email_key)').catch(() => {});
+  await run('ALTER TABLE users ADD UNIQUE INDEX idx_users_email_unique (email)').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS billings (
     id VARCHAR(64) PRIMARY KEY,
@@ -976,15 +1069,17 @@ async function createTables() {
 async function seedIfEmpty() {
   const row = await get('SELECT COUNT(*) AS count FROM users');
   if (Number(row.count) === 0) {
-    const initialSeed = { ...seed, users: [initialAdminUser(), ...loadHomeownerSeed()] };
+    const now = new Date().toISOString();
+    const initialSeed = {
+      ...seed,
+      users: [initialAdminUser()],
+      homeowners: loadHomeownerSeed().map(homeowner => ({ ...homeowner, created_at: now, updated_at: now })),
+    };
     for (const [table, records] of Object.entries(initialSeed)) {
       for (const record of records) {
         const seedRecord = { ...record };
         if (table === 'users' && !isBcryptHash(seedRecord.password)) {
-          // Directory-only homeowners do not have a reusable default password.
-          // The random value is hashed before it is ever stored.
-          const plaintext = seedRecord.password || crypto.randomBytes(32).toString('base64url');
-          seedRecord.password = await bcrypt.hash(plaintext, 10);
+          seedRecord.password = await bcrypt.hash(seedRecord.password, 10);
         }
         await saveRecord(table, seedRecord);
       }
@@ -1042,7 +1137,12 @@ async function migrateLegacyPasswords() {
 async function resetDatabase() {
   // Validate before deleting anything so a missing deployment secret cannot
   // leave the system without an administrator account.
-  const resetSeed = { ...seed, users: [initialAdminUser(), ...loadHomeownerSeed()] };
+  const now = new Date().toISOString();
+  const resetSeed = {
+    ...seed,
+    users: [initialAdminUser()],
+    homeowners: loadHomeownerSeed().map(homeowner => ({ ...homeowner, created_at: now, updated_at: now })),
+  };
   for (const table of Object.keys(tableConfig)) {
     await run(`DELETE FROM ${tableName(table)}`);
   }
@@ -1051,8 +1151,7 @@ async function resetDatabase() {
     for (const record of records) {
       const resetRecord = { ...record };
       if (table === 'users' && !isBcryptHash(resetRecord.password)) {
-        const plaintext = resetRecord.password || crypto.randomBytes(32).toString('base64url');
-        resetRecord.password = await bcrypt.hash(plaintext, 10);
+        resetRecord.password = await bcrypt.hash(resetRecord.password, 10);
       }
       await saveRecord(table, resetRecord);
     }
@@ -1192,6 +1291,7 @@ function sessionUserId(req) {
   } catch {
     return null;
   }
+
 }
 
 function getRequestUserId(req) {
@@ -1347,7 +1447,9 @@ async function getRequester(req) {
   if (!userId) return null;
   const row = await get('SELECT * FROM users WHERE id = ?', [userId]);
   if (!row) return null;
-  return deserializeRow('users', row);
+  const user = deserializeRow('users', row);
+  const homeowner = row.homeowner_id ? await get('SELECT * FROM homeowners WHERE id = ?', [row.homeowner_id]) : null;
+  return mergeUserWithHomeowner(user, homeowner);
 }
 
 async function requireAuth(req, res) {
@@ -1374,6 +1476,7 @@ function userHasPermission(user, moduleKey) {
 }
 
 const TABLE_PERMISSIONS = {
+  homeowners: 'homeowners',
   billings: 'billing',
   payments: 'payments',
   payment_settings: 'payments',
@@ -1418,6 +1521,14 @@ async function checkTableAccess(req, res, table, action = 'read') {
       return requester; // User updating their own profile
     }
     res.status(403).json({ error: 'Access Denied: Only administrators can access Accounts & Roles.' });
+    return null;
+  }
+
+  // Homeowner directory records are separate from login accounts.
+  if (table === 'homeowners') {
+    if (action === 'read') return requester;
+    if (action === 'update' && req.params.id === requesterHomeownerId(requester)) return requester;
+    res.status(403).json({ error: 'Access Denied: Only administrators can manage homeowner records.' });
     return null;
   }
 
@@ -1572,6 +1683,7 @@ function cleanExpiredPrivateUploads(now = Date.now()) {
     const [kind, filename] = key.split('/', 2);
     deletePrivateFiles(kind, [filename]);
   }
+
 }
 
 // Remove abandoned staged complaint uploads without touching saved records.
@@ -1698,6 +1810,9 @@ function presentPrivateFiles(table, record, requester) {
   if (table === 'users' && output.profile_photo) {
     output.profile_photo = privateFileUrl('profile-photos', output.id, requester);
   }
+  if (table === 'homeowners' && output.profile_photo) {
+    output.profile_photo = privateFileUrl('profile-photos', output.id, requester);
+  }
   if (table === 'payment_settings' && output.qr_code_path) {
     output.qr_code_path = privateFileUrl('payment-qrcodes', output.id, requester);
   }
@@ -1797,7 +1912,7 @@ function deleteProfileFile(photoPath) {
 }
 
 function stripProfilePhotoField(table, body) {
-  if (table !== 'users' || !body) return body;
+  if (!['users', 'homeowners'].includes(table) || !body) return body;
   if (Array.isArray(body)) {
     return body.map((item) => {
       if (!item || typeof item !== 'object') return item;
@@ -1836,15 +1951,22 @@ app.post('/api/users/:id/photo', (req, res) => {
         res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
         return;
       }
-      const target = await get('SELECT id, profile_photo FROM users WHERE id = ?', [req.params.id]);
+      const target = await get('SELECT id, homeowner_id, profile_photo FROM users WHERE id = ?', [req.params.id]);
       if (!target) {
         await fs.promises.unlink(req.file.path).catch(() => {});
         res.status(404).json({ error: 'User not found.' });
         return;
       }
       const photoPath = photoRecordToUrl(req.file.filename);
-      await run('UPDATE users SET profile_photo = ? WHERE id = ?', [photoPath, req.params.id]);
-      deleteProfileFile(target.profile_photo);
+      let oldPhoto = target.profile_photo;
+      if (target.homeowner_id) {
+        const homeowner = await get('SELECT profile_photo FROM homeowners WHERE id = ?', [target.homeowner_id]);
+        oldPhoto = homeowner?.profile_photo;
+        await run('UPDATE homeowners SET profile_photo = ?, updated_at = ? WHERE id = ?', [photoPath, new Date().toISOString(), target.homeowner_id]);
+      } else {
+        await run('UPDATE users SET profile_photo = ? WHERE id = ?', [photoPath, req.params.id]);
+      }
+      deleteProfileFile(oldPhoto);
       res.json({ ok: true, profile_photo: privateFileUrl('profile-photos', target.id, { id: requesterId }) });
     } catch (err) {
       await fs.promises.unlink(req.file.path).catch(() => {});
@@ -1856,13 +1978,20 @@ app.post('/api/users/:id/photo', (req, res) => {
 
 app.delete('/api/users/:id/photo', asyncHandler(async (req, res) => {
   if (!requireOwnPhotoAccess(req, res)) return;
-  const target = await get('SELECT id, profile_photo FROM users WHERE id = ?', [req.params.id]);
+  const target = await get('SELECT id, homeowner_id, profile_photo FROM users WHERE id = ?', [req.params.id]);
   if (!target) {
     res.status(404).json({ error: 'User not found.' });
     return;
   }
-  await run('UPDATE users SET profile_photo = NULL WHERE id = ?', [req.params.id]);
-  deleteProfileFile(target.profile_photo);
+  let oldPhoto = target.profile_photo;
+  if (target.homeowner_id) {
+    const homeowner = await get('SELECT profile_photo FROM homeowners WHERE id = ?', [target.homeowner_id]);
+    oldPhoto = homeowner?.profile_photo;
+    await run('UPDATE homeowners SET profile_photo = NULL, updated_at = ? WHERE id = ?', [new Date().toISOString(), target.homeowner_id]);
+  } else {
+    await run('UPDATE users SET profile_photo = NULL WHERE id = ?', [req.params.id]);
+  }
+  deleteProfileFile(oldPhoto);
   res.json({ ok: true, profile_photo: null });
 }));
 
@@ -2157,11 +2286,13 @@ app.get('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
   const requester = await getRequester(req);
   const rows = await all(
     `SELECT c.*, 
-            u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo,
-            ru.name AS reply_to_name
+            COALESCE(hu.name, u.name) AS author_name, u.role AS author_role, COALESCE(hu.profile_photo, u.profile_photo) AS author_photo,
+            COALESCE(rhu.name, ru.name) AS reply_to_name
      FROM announcement_comments c
      LEFT JOIN users u ON c.user_id = u.id
+     LEFT JOIN homeowners hu ON hu.id = u.homeowner_id
      LEFT JOIN users ru ON c.reply_to_user_id = ru.id
+     LEFT JOIN homeowners rhu ON rhu.id = ru.homeowner_id
      WHERE c.announcement_id = ?
      ORDER BY c.created_at ASC`,
     [req.params.id]
@@ -2218,11 +2349,13 @@ app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
 
   const created = await get(
     `SELECT c.*, 
-            u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo,
-            ru.name AS reply_to_name
+            COALESCE(hu.name, u.name) AS author_name, u.role AS author_role, COALESCE(hu.profile_photo, u.profile_photo) AS author_photo,
+            COALESCE(rhu.name, ru.name) AS reply_to_name
      FROM announcement_comments c
      LEFT JOIN users u ON c.user_id = u.id
+     LEFT JOIN homeowners hu ON hu.id = u.homeowner_id
      LEFT JOIN users ru ON c.reply_to_user_id = ru.id
+     LEFT JOIN homeowners rhu ON rhu.id = ru.homeowner_id
      WHERE c.id = ?`,
     [id]
   );
@@ -2245,7 +2378,8 @@ app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
     }
 
     if (mentionedNames.size > 0) {
-      const allUsers = await all('SELECT id, name, username FROM users');
+      const allUsers = await all(`SELECT u.id, COALESCE(h.name, u.name) AS name, u.username
+        FROM users u LEFT JOIN homeowners h ON h.id = u.homeowner_id`);
       for (const u of allUsers) {
         const uNameLower = (u.name || '').trim().toLowerCase();
         const uUsernameLower = (u.username || '').trim().toLowerCase();
@@ -2331,11 +2465,13 @@ app.put('/api/announcements/:announcementId/comments/:commentId', asyncHandler(a
 
   const updated = await get(
     `SELECT c.*, 
-            u.name AS author_name, u.role AS author_role, u.profile_photo AS author_photo,
-            ru.name AS reply_to_name
+            COALESCE(hu.name, u.name) AS author_name, u.role AS author_role, COALESCE(hu.profile_photo, u.profile_photo) AS author_photo,
+            COALESCE(rhu.name, ru.name) AS reply_to_name
      FROM announcement_comments c
      LEFT JOIN users u ON c.user_id = u.id
+     LEFT JOIN homeowners hu ON hu.id = u.homeowner_id
      LEFT JOIN users ru ON c.reply_to_user_id = ru.id
+     LEFT JOIN homeowners rhu ON rhu.id = ru.homeowner_id
      WHERE c.id = ?`,
     [req.params.commentId]
   );
@@ -2556,28 +2692,27 @@ app.get('/api/session', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/login', asyncHandler(async (req, res) => {
-  const username = (req.body.username || '').trim();
+  const identifier = (req.body.email || req.body.username || '').trim();
   const password = (req.body.password || '').trim();
-  if (!username || !password) {
-    res.status(400).json({ error: 'Username and password are required.' });
+  if (!identifier || !password) {
+    res.status(400).json({ error: 'Email address and password are required.' });
     return;
   }
   const user = await get(
-    'SELECT * FROM users WHERE (BINARY username = ? OR BINARY email = ? OR (block IS NOT NULL AND lot IS NOT NULL AND (BINARY CONCAT(block, " ", lot) = ? OR BINARY CONCAT(block, ", ", lot) = ?))) LIMIT 1',
-    [username, username, username, username]
+    `SELECT * FROM users
+      WHERE ((LOWER(email) = LOWER(?) AND (role <> 'homeowner' OR homeowner_id IS NOT NULL))
+         OR (role = 'admin' AND BINARY username = ?))
+      LIMIT 1`,
+    [identifier, identifier]
   );
   const matchesIdentifier = Boolean(
     user && (
-      user.username === username ||
-      user.email === username ||
-      (user.block && user.lot && (
-        `${user.block} ${user.lot}` === username ||
-        `${user.block}, ${user.lot}` === username
-      ))
+      String(user.email || '').toLowerCase() === identifier.toLowerCase() ||
+      (user.role === 'admin' && user.username === identifier)
     )
   );
   if (!user || !matchesIdentifier) {
-    res.status(401).json({ error: 'Invalid username or password.' });
+    res.status(401).json({ error: 'Invalid email address or password.' });
     return;
   }
 
@@ -2600,7 +2735,7 @@ app.post('/api/login', asyncHandler(async (req, res) => {
   }
 
   if (!passwordMatches) {
-    res.status(401).json({ error: 'Invalid username or password.' });
+    res.status(401).json({ error: 'Invalid email address or password.' });
     return;
   }
 
@@ -2610,7 +2745,8 @@ app.post('/api/login', asyncHandler(async (req, res) => {
   }
   // Deliberately omit maxAge/expires: closing the browser ends the cookie session.
   res.cookie(SESSION_COOKIE_NAME, signedSessionToken(user.id), sessionCookieOptions());
-  res.json(deserializeRow('users', user));
+  const homeowner = user.homeowner_id ? await get('SELECT * FROM homeowners WHERE id = ?', [user.homeowner_id]) : null;
+  res.json(mergeUserWithHomeowner(deserializeRow('users', user), homeowner));
 }));
 
 app.post('/api/logout', (req, res) => {
@@ -2823,7 +2959,7 @@ app.post('/api/billings/generate-monthly-dues', asyncHandler(async (req, res) =>
   const rate = rateSetting && parseFloat(rateSetting.value) > 0 ? parseFloat(rateSetting.value) : 5.725;
 
   // Retrieve all active homeowners
-  const homeowners = await all("SELECT * FROM users WHERE role = 'homeowner' AND (status = 'active' OR status IS NULL)");
+  const homeowners = await all('SELECT * FROM homeowners');
   if (!homeowners.length) {
     return res.status(400).json({ error: 'No active homeowners found.' });
   }
@@ -2989,15 +3125,11 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    const [residentRows] = await connection.execute('SELECT id, name, status FROM users WHERE id = ? AND role = "homeowner" FOR UPDATE', [homeownerId]);
+    const [residentRows] = await connection.execute('SELECT id, name FROM homeowners WHERE id = ? FOR UPDATE', [homeownerId]);
     const resident = residentRows[0];
     if (!resident) {
       await connection.rollback();
       return res.status(404).json({ error: 'Resident not found.' });
-    }
-    if (['inactive', 'deactivated'].includes(resident.status)) {
-      await connection.rollback();
-      return res.status(400).json({ error: 'Payments cannot be recorded for an inactive resident.' });
     }
 
     // Lock the billing row so two fast submits cannot both create an approved payment.
@@ -3134,6 +3266,11 @@ app.post('/api/payments/submit', (req, res) => {
         await cleanUpFile();
         return res.status(403).json({ error: 'Your account has been deactivated. Please contact the administrator.' });
       }
+      const homeownerId = requesterHomeownerId(requester);
+      if (!homeownerId) {
+        await cleanUpFile();
+        return res.status(403).json({ error: 'Only registered homeowners can submit resident payments.' });
+      }
 
       if (!req.file) {
         return res.status(400).json({ error: 'GCash receipt screenshot is required.' });
@@ -3193,20 +3330,20 @@ app.post('/api/payments/submit', (req, res) => {
         } catch {
           assigned = [];
         }
-        if (!Array.isArray(assigned) || !assigned.includes(requester.id)) {
+        if (!Array.isArray(assigned) || !assigned.includes(homeownerId)) {
           await cleanUpFile();
           return res.status(403).json({ error: 'Access Denied: You are not assigned to this billing.' });
         }
 
         // Check if this billing already has an approved payment
-        const alreadyApproved = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "approved"', [requester.id, billing.id]);
+        const alreadyApproved = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "approved"', [homeownerId, billing.id]);
         if (alreadyApproved) {
           await cleanUpFile();
           return res.status(400).json({ error: 'This bill has already been paid and approved.' });
         }
 
         // Check if there is already a pending verification payment for this billing
-        const alreadyPending = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "pending"', [requester.id, billing.id]);
+        const alreadyPending = await get('SELECT id FROM payments WHERE homeownerId = ? AND billingId = ? AND status = "pending"', [homeownerId, billing.id]);
         if (alreadyPending) {
           await cleanUpFile();
           return res.status(400).json({ error: 'You already have a payment submission pending admin verification for this bill.' });
@@ -3229,7 +3366,7 @@ app.post('/api/payments/submit', (req, res) => {
           // Additional verification: ensure homeowner does not already have an approved payment for this month
           const alreadyApprovedMonth = await get(
             'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "approved"',
-            [requester.id, finalMonthlyDuesMonth]
+            [homeownerId, finalMonthlyDuesMonth]
           );
           if (alreadyApprovedMonth) {
             await cleanUpFile();
@@ -3239,7 +3376,7 @@ app.post('/api/payments/submit', (req, res) => {
           // Ensure homeowner does not already have a pending payment for this month
           const alreadyPendingMonth = await get(
             'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "pending"',
-            [requester.id, finalMonthlyDuesMonth]
+            [homeownerId, finalMonthlyDuesMonth]
           );
           if (alreadyPendingMonth) {
             await cleanUpFile();
@@ -3263,7 +3400,7 @@ app.post('/api/payments/submit', (req, res) => {
         // Check if homeowner already has an APPROVED payment for this monthly dues month
         const alreadyApproved = await get(
           'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "approved"',
-          [requester.id, monthlyDuesMonth]
+          [homeownerId, monthlyDuesMonth]
         );
         if (alreadyApproved) {
           await cleanUpFile();
@@ -3273,7 +3410,7 @@ app.post('/api/payments/submit', (req, res) => {
         // Check if homeowner already has a PENDING payment for this monthly dues month
         const alreadyPending = await get(
           'SELECT id FROM payments WHERE homeownerId = ? AND monthly_dues_month = ? AND status = "pending"',
-          [requester.id, monthlyDuesMonth]
+          [homeownerId, monthlyDuesMonth]
         );
         if (alreadyPending) {
           await cleanUpFile();
@@ -3300,7 +3437,7 @@ app.post('/api/payments/submit', (req, res) => {
           try {
             assigned = typeof mb.assignedTo === 'string' ? JSON.parse(mb.assignedTo) : mb.assignedTo;
           } catch {}
-          if (Array.isArray(assigned) && assigned.includes(requester.id)) {
+          if (Array.isArray(assigned) && assigned.includes(homeownerId)) {
             finalBillingId = mb.id;
             actualAmount = Number(mb.amount) || actualAmount;
             break;
@@ -3323,7 +3460,7 @@ app.post('/api/payments/submit', (req, res) => {
 
       const paymentRecord = {
         id: paymentId,
-        homeownerId: requester.id,
+        homeownerId,
         billingId: finalBillingId,
         amount: actualAmount,
         refNum: refNum,
@@ -3365,7 +3502,7 @@ app.post('/api/payments/submit', (req, res) => {
       await createServerNotification(
         'Payment Submission Received',
         `Your payment of ₱${actualAmount.toLocaleString()} for "${billingTitle}" (Ref: ${refNum}) has been received and is pending admin verification.`,
-        { userIds: [requester.id] }
+        { userIds: [homeownerId] }
       );
 
       res.status(201).json({
@@ -3401,7 +3538,7 @@ app.post('/api/payments/:id/receipt', asyncHandler(async (req, res) => {
         await cleanUpFile();
         return res.status(404).json({ error: 'Payment record not found.' });
       }
-      const mayReplace = requester.id === payment.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'payments');
+      const mayReplace = requesterHomeownerId(requester) === payment.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'payments');
       if (!mayReplace) {
         await cleanUpFile();
         return res.status(403).json({ error: 'You do not have permission to replace this receipt.' });
@@ -3467,7 +3604,7 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
     [updatedBillingId, requester.id, nowIso, reviewedAt, nowIso, payment.id]
   );
 
-  const ho = await get('SELECT name FROM users WHERE id = ?', [payment.homeownerId]);
+  const ho = await get('SELECT name FROM homeowners WHERE id = ?', [payment.homeownerId]);
   const bill = updatedBillingId ? await get('SELECT title FROM billings WHERE id = ?', [updatedBillingId]) : null;
   const hoName = ho ? ho.name : 'Resident';
   let billTitle = bill ? bill.title : '';
@@ -3521,7 +3658,7 @@ app.post('/api/payments/:id/reject', asyncHandler(async (req, res) => {
     [reason, reason, requester.id, nowIso, reviewedAt, nowIso, payment.id]
   );
 
-  const ho = await get('SELECT name FROM users WHERE id = ?', [payment.homeownerId]);
+  const ho = await get('SELECT name FROM homeowners WHERE id = ?', [payment.homeownerId]);
   const bill = payment.billingId ? await get('SELECT title FROM billings WHERE id = ?', [payment.billingId]) : null;
   const hoName = ho ? ho.name : 'Resident';
   let billTitle = bill ? bill.title : '';
@@ -3558,7 +3695,7 @@ app.get('/api/files/receipts/:id', asyncHandler(async (req, res) => {
   if (!requester) return;
   const payment = await get('SELECT * FROM payments WHERE id = ?', [req.params.id]);
   if (!payment) return res.status(404).json({ error: 'Payment record not found.' });
-  const mayView = requester.id === payment.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'payments');
+  const mayView = requesterHomeownerId(requester) === payment.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'payments');
   if (!mayView) return res.status(403).json({ error: 'You do not have permission to view this receipt.' });
   const filename = storedPrivateFilename(payment.receipt, 'receipts');
   if (!filename) return res.status(404).json({ error: 'Receipt file not found.' });
@@ -3572,7 +3709,7 @@ app.get('/api/files/complaints/:id/:index?', asyncHandler(async (req, res) => {
   if (!requester) return;
   const complaint = await get('SELECT * FROM complaints WHERE id = ?', [req.params.id]);
   if (!complaint) return res.status(404).json({ error: 'Complaint not found.' });
-  const mayView = requester.id === complaint.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'complaints');
+  const mayView = requesterHomeownerId(requester) === complaint.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'complaints');
   if (!mayView) return res.status(403).json({ error: 'You do not have permission to view this complaint attachment.' });
   const item = complaintAttachmentItems(deserializeRow('complaints', complaint))[index];
   const filename = privateFilenameFromComplaintItem(item);
@@ -3586,8 +3723,14 @@ app.get('/api/files/complaints/:id/:index?', asyncHandler(async (req, res) => {
 app.get('/api/files/profile-photos/:id', asyncHandler(async (req, res) => {
   const requester = await requesterFromPrivateFileTicket(req, res, 'profile-photos', req.params.id);
   if (!requester) return;
-  const user = await get('SELECT profile_photo FROM users WHERE id = ?', [req.params.id]);
-  const filename = storedPrivateFilename(user?.profile_photo, 'profile-photos');
+  const record = await get(
+    `SELECT COALESCE(h.profile_photo, u.profile_photo) AS profile_photo
+       FROM users u LEFT JOIN homeowners h ON h.id = u.homeowner_id WHERE u.id = ?
+     UNION ALL
+     SELECT h.profile_photo FROM homeowners h WHERE h.id = ? LIMIT 1`,
+    [req.params.id, req.params.id]
+  );
+  const filename = storedPrivateFilename(record?.profile_photo, 'profile-photos');
   if (!filename) return res.status(404).json({ error: 'Profile photo not found.' });
   return sendPrivateFile(res, filename, 'profile-photos');
 }));
@@ -3696,7 +3839,7 @@ function canUserSeeNotification(notification, user) {
   const targetIds = Array.isArray(notification.targetIds) ? notification.targetIds : [];
   if (audience === 'all') return true;
   if (audience === 'roles') return targetIds.includes(user.role);
-  if (audience === 'users') return targetIds.includes(user.id);
+  if (audience === 'users') return targetIds.includes(user.id) || targetIds.includes(requesterHomeownerId(user));
   return false;
 }
 
@@ -3755,12 +3898,12 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
 
   let data = await getTableData(table);
   if (table === 'billings' && allowed.role !== 'admin' && !userHasPermission(allowed, 'billing')) {
-    data = data.filter(b => getAssignedHomeownerIds(b).includes(allowed.id));
+    data = data.filter(b => getAssignedHomeownerIds(b).includes(requesterHomeownerId(allowed)));
   }
   if (table === 'lostFound') {
     const isManager = allowed && typeof allowed === 'object' && (allowed.role === 'admin' || userHasPermission(allowed, 'lostfound'));
     if (!isManager) {
-      const requesterId = (allowed && typeof allowed === 'object') ? allowed.id : null;
+      const requesterId = (allowed && typeof allowed === 'object') ? requesterHomeownerId(allowed) : null;
       data = data.filter(item => {
         const isPublic = ['Approved', 'Posted', 'Claimed'].includes(item.status);
         const isOwn = Boolean(requesterId && item.homeownerId === requesterId);
@@ -3769,7 +3912,7 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
     }
   }
   if (table === 'complaints' && allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) {
-    data = data.filter(item => item.homeownerId === allowed.id);
+    data = data.filter(item => item.homeownerId === requesterHomeownerId(allowed));
   }
   if (table === 'auditLog' && (req.query.filter || req.query.date || req.query.startDate || req.query.endDate || req.query.q)) {
     const filterMode = req.query.filter || 'all';
@@ -3894,7 +4037,7 @@ app.put('/api/:table', asyncHandler(async (req, res) => {
         const item = { ...record };
         const existing = previousComplaintRows.find(row => row.id === item.id) || null;
         const meta = prepareComplaintPrivateAttachments(item, allowed, existing);
-        if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) item.homeownerId = allowed.id;
+        if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) item.homeownerId = requesterHomeownerId(allowed);
         return { item, meta };
       });
     } catch (error) {
@@ -4132,7 +4275,7 @@ app.post('/api/complaints', (req, res, next) => {
         });
 
         const body = { ...req.body };
-        if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) body.homeownerId = allowed.id;
+        if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) body.homeownerId = requesterHomeownerId(allowed);
         if (uploadedFiles.length > 0) {
           const primary = uploadedFiles[0];
           body.attachment = primary.url;
@@ -4195,6 +4338,79 @@ app.post('/api/reset', asyncHandler(async (req, res) => {
   res.json(await loadAllData(admin));
 }));
 
+function isValidEmailAddress(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+}
+
+function isValidMobileNumber(value) {
+  return /^[0-9+()\-\s]{7,20}$/.test(String(value || '').trim());
+}
+
+app.post('/api/homeowners/:id/account', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+
+  const homeowner = await get('SELECT * FROM homeowners WHERE id = ?', [req.params.id]);
+  if (!homeowner) return res.status(404).json({ error: 'Homeowner not found.' });
+
+  const existingAccount = await get('SELECT id FROM users WHERE homeowner_id = ?', [homeowner.id]);
+  if (existingAccount) return res.status(409).json({ error: 'This homeowner already has a registered account.' });
+
+  const email = String(req.body.email || '').trim().toLowerCase();
+  const mobile = String(req.body.mobile || '').trim();
+  const password = String(req.body.password || '').trim();
+  if (!email || !mobile || !password) {
+    return res.status(400).json({ error: 'Email Address, Mobile Number, and Initial Password are required.' });
+  }
+  if (!isValidEmailAddress(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+  if (!isValidMobileNumber(mobile)) return res.status(400).json({ error: 'Enter a valid mobile number.' });
+  if (password.length < 12) return res.status(400).json({ error: 'Password must be at least 12 characters long.' });
+
+  const duplicateEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email]);
+  if (duplicateEmail) return res.status(409).json({ error: 'Email address is already registered.' });
+
+  const accountId = 'u' + Date.now().toString(36).toUpperCase() + crypto.randomBytes(3).toString('hex').toUpperCase();
+  const hashedPassword = await bcrypt.hash(password, 10);
+  try {
+    await run(
+      `INSERT INTO users (id, username, password, role, name, email, mobile, homeowner_id, permissions, status)
+       VALUES (?, NULL, ?, 'homeowner', NULL, ?, ?, ?, ?, 'active')`,
+      [accountId, hashedPassword, email, mobile, homeowner.id, JSON.stringify(['resident'])]
+    );
+    await run('UPDATE homeowners SET contact = ?, updated_at = ? WHERE id = ?', [mobile, new Date().toISOString(), homeowner.id]);
+  } catch (error) {
+    if (error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Email address is already registered or this homeowner already has an account.' });
+    throw error;
+  }
+
+  await recordAuditLog(`Registered SmartHood account for homeowner ${homeowner.name} (${homeowner.id})`, admin.id);
+  res.status(201).json({
+    id: accountId,
+    homeowner_id: homeowner.id,
+    email,
+    mobile,
+    role: 'homeowner',
+    status: 'active',
+    permissions: ['resident'],
+  });
+}));
+
+app.post('/api/homeowners/:id/reset-password', asyncHandler(async (req, res) => {
+  const admin = await requireAdmin(req, res);
+  if (!admin) return;
+  const password = String(req.body.password || '').trim();
+  if (password.length < 12) return res.status(400).json({ error: 'Password must be at least 12 characters long.' });
+  const account = await get(
+    `SELECT u.id, h.name FROM users u JOIN homeowners h ON h.id = u.homeowner_id
+     WHERE u.homeowner_id = ? AND u.role = 'homeowner'`,
+    [req.params.id]
+  );
+  if (!account) return res.status(404).json({ error: 'This homeowner does not have a registered account.' });
+  await run('UPDATE users SET password = ? WHERE id = ?', [await bcrypt.hash(password, 10), account.id]);
+  await recordAuditLog(`Reset password for homeowner account ${account.name} (${req.params.id})`, admin.id);
+  res.json({ ok: true });
+}));
+
 app.post('/api/users', asyncHandler(async (req, res) => {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
@@ -4204,6 +4420,10 @@ app.post('/api/users', asyncHandler(async (req, res) => {
   const email = (req.body.email || '').trim().toLowerCase();
   const password = (req.body.password || '').trim();
   const role = req.body.role === 'admin' ? 'admin' : 'homeowner';
+
+  if (role === 'homeowner') {
+    return res.status(400).json({ error: 'Create the homeowner record first, then use Register Account from Homeowner Management.' });
+  }
 
   if (!name || !username || !email || !password) {
     return res.status(400).json({ error: 'Name, Username, Email, and Password are all required.' });
@@ -4330,7 +4550,7 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
     if (!isManager) {
       req.body.status = 'Pending';
       if (allowed && typeof allowed === 'object') {
-        req.body.homeownerId = allowed.id;
+        req.body.homeownerId = requesterHomeownerId(allowed);
       }
     }
     if (!req.body.status) {
@@ -4343,10 +4563,29 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
     req.body.updatedAt = nowIso;
   }
 
+  if ((table === 'amenityBookings' || table === 'vehicleRegistrations') && allowed.role !== 'admin') {
+    const managePermission = table === 'amenityBookings' ? 'amenities' : 'vehicles';
+    if (!userHasPermission(allowed, managePermission)) req.body.homeownerId = requesterHomeownerId(allowed);
+  }
+
+  if (table === 'homeowners') {
+    const name = String(req.body.name || '').trim();
+    if (!name) return res.status(400).json({ error: 'Full Name is required.' });
+    const lotArea = req.body.lotArea === '' || req.body.lotArea === null || req.body.lotArea === undefined
+      ? 0
+      : Number(req.body.lotArea);
+    if (!Number.isFinite(lotArea) || lotArea < 0) return res.status(400).json({ error: 'Lot Area must be a valid non-negative number.' });
+    req.body.name = name;
+    req.body.lotArea = lotArea;
+    req.body.balance = Number(req.body.balance) || 0;
+    req.body.created_at = req.body.created_at || new Date().toISOString();
+    req.body.updated_at = new Date().toISOString();
+  }
+
   let complaintFiles = null;
   if (table === 'complaints') {
     // A resident may only create a complaint in their own name.
-    if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) req.body.homeownerId = allowed.id;
+    if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) req.body.homeownerId = requesterHomeownerId(allowed);
     try {
       complaintFiles = prepareComplaintPrivateAttachments(req.body, allowed);
     } catch (error) {
@@ -4405,9 +4644,30 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
       delete req.body.balance;
       delete req.body.status;
       delete req.body.password;
+      if (req.body.email !== undefined) {
+        const email = String(req.body.email || '').trim().toLowerCase();
+        if (!isValidEmailAddress(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
+        const duplicateEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?', [email, req.params.id]);
+        if (duplicateEmail) return res.status(400).json({ error: 'Email address is already registered.' });
+        req.body.email = email;
+      }
+      if (existing.homeowner_id) {
+        const profilePatch = { id: existing.homeowner_id, updated_at: new Date().toISOString() };
+        for (const field of ['name', 'contact']) {
+          if (req.body[field] !== undefined) profilePatch[field] = req.body[field];
+          delete req.body[field];
+        }
+        if (profilePatch.contact !== undefined) req.body.mobile = profilePatch.contact;
+        await saveRecord('homeowners', profilePatch);
+        req.body.username = null;
+        for (const field of ['block', 'lot', 'lotArea', 'balance', 'profile_photo']) delete req.body[field];
+      }
     } else {
       // Admin updating a user
       if (req.body.password !== undefined && req.body.password !== null && String(req.body.password).trim() !== '') {
+        if (existing.role === 'homeowner') {
+          return res.status(400).json({ error: 'Use Reset Password for homeowner accounts.' });
+        }
         const pass = String(req.body.password).trim();
         if (pass.length < 12) {
           return res.status(400).json({ error: 'Password must be at least 12 characters long.' });
@@ -4426,10 +4686,13 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
         }
       }
       if (req.body.email && req.body.email.trim().toLowerCase() !== (existing.email || '').toLowerCase()) {
-        const dupEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?', [req.body.email.trim().toLowerCase(), req.params.id]);
+        const normalizedEmail = req.body.email.trim().toLowerCase();
+        if (!isValidEmailAddress(normalizedEmail)) return res.status(400).json({ error: 'Enter a valid email address.' });
+        const dupEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?) AND id != ?', [normalizedEmail, req.params.id]);
         if (dupEmail) {
           return res.status(400).json({ error: 'Email address is already registered. Please choose another email.' });
         }
+        req.body.email = normalizedEmail;
       }
 
       const targetRole = req.body.role !== undefined ? req.body.role : existing.role;
@@ -4440,6 +4703,22 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
         const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
         const clean = rawPerms.filter(p => validPermissions.includes(p));
         req.body.permissions = clean.length > 0 ? clean : ['resident'];
+      }
+
+      if (existing.homeowner_id) {
+        const profilePatch = {
+          id: existing.homeowner_id,
+          updated_at: new Date().toISOString(),
+        };
+        for (const field of ['name', 'block', 'lot', 'lotArea', 'contact']) {
+          if (req.body[field] !== undefined) profilePatch[field] = req.body[field];
+          delete req.body[field];
+        }
+        if (profilePatch.contact !== undefined) req.body.mobile = profilePatch.contact;
+        await saveRecord('homeowners', profilePatch);
+        req.body.username = null;
+        delete req.body.balance;
+        delete req.body.profile_photo;
       }
     }
   }
@@ -4454,6 +4733,30 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
     const validBilling = await validateAndPrepareBillingPayload(merged, res, req.params.id);
     if (!validBilling) return;
     req.body = merged;
+  }
+
+  if (table === 'homeowners') {
+    const existing = await get('SELECT * FROM homeowners WHERE id = ?', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: 'Homeowner not found.' });
+    if (req.body.name !== undefined && !String(req.body.name).trim()) {
+      return res.status(400).json({ error: 'Full Name is required.' });
+    }
+    if (req.body.lotArea !== undefined) {
+      const lotArea = Number(req.body.lotArea);
+      if (!Number.isFinite(lotArea) || lotArea < 0) return res.status(400).json({ error: 'Lot Area must be a valid non-negative number.' });
+      req.body.lotArea = lotArea;
+    }
+    if (allowed.role !== 'admin') {
+      delete req.body.balance;
+      delete req.body.block;
+      delete req.body.lot;
+    }
+    delete req.body.accountStatus;
+    delete req.body.account_id;
+    delete req.body.email;
+    delete req.body.mobile;
+    delete req.body.account_active;
+    req.body.updated_at = new Date().toISOString();
   }
 
   let complaintFiles = null;
@@ -4484,6 +4787,22 @@ app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
 
   if (table === 'users' && req.params.id === 'u001') {
     return res.status(400).json({ error: 'Primary Administrator account cannot be deleted.' });
+  }
+
+  if (table === 'homeowners') {
+    const [payments, complaints, bookings, vehicles, lostFoundRows, billings] = await Promise.all([
+      get('SELECT id FROM payments WHERE homeownerId = ? LIMIT 1', [req.params.id]),
+      get('SELECT id FROM complaints WHERE homeownerId = ? LIMIT 1', [req.params.id]),
+      get('SELECT id FROM amenityBookings WHERE homeownerId = ? LIMIT 1', [req.params.id]),
+      get('SELECT id FROM vehicleRegistrations WHERE homeownerId = ? LIMIT 1', [req.params.id]),
+      get('SELECT id FROM lostFound WHERE homeownerId = ? LIMIT 1', [req.params.id]),
+      getTableData('billings'),
+    ]);
+    const hasAssignedBilling = billings.some(billing => getAssignedHomeownerIds(billing).includes(req.params.id));
+    if (payments || complaints || bookings || vehicles || lostFoundRows || hasAssignedBilling) {
+      return res.status(409).json({ error: 'This homeowner has related billing or activity records and cannot be deleted.' });
+    }
+    await run('DELETE FROM users WHERE homeowner_id = ?', [req.params.id]);
   }
 
   if (table === 'lostFound') {

@@ -23,8 +23,8 @@ function renderHomeowners() {
   currentHOFilteredList = null;
 
   const area = document.getElementById('contentArea');
-  const blockOptions = [...new Set(db.get('users')
-    .filter(u => u.role === 'homeowner' && u.block)
+  const blockOptions = [...new Set(getHomeowners()
+    .filter(u => u.block)
     .map(u => u.block))]
     .sort((a, b) => Number(a.replace(/\D/g, '')) - Number(b.replace(/\D/g, '')));
   area.innerHTML = `
@@ -46,7 +46,7 @@ function renderHomeowners() {
     </div>
     <div class="section-card-body no-pad">
       <div class="table-wrapper"><table class="data-table homeowner-compact-table">
-        <thead><tr><th>#</th><th>Homeowner</th><th>Block / Lot</th><th>Balance</th><th>Details</th><th>Actions</th></tr></thead>
+        <thead><tr><th>#</th><th>Homeowner</th><th>Block / Lot</th><th>Balance</th><th>Account Status</th><th>Details</th><th>Actions</th></tr></thead>
         <tbody id="hoTableBody"></tbody>
       </table></div>
     </div>
@@ -61,7 +61,7 @@ function renderHOTable(filtered = null, resetPage = false) {
   if (filtered !== null) {
     currentHOFilteredList = filtered;
   } else if (currentHOFilteredList === null) {
-    currentHOFilteredList = db.get('users').filter(u => u.role === 'homeowner');
+    currentHOFilteredList = getHomeowners();
   }
   const users = currentHOFilteredList || [];
   const tbody = document.getElementById('hoTableBody');
@@ -76,7 +76,7 @@ function renderHOTable(filtered = null, resetPage = false) {
   if (hoPaginationState.page < 1) hoPaginationState.page = 1;
 
   if (!totalItems) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg>No homeowners found.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg>No homeowners found.</div></td></tr>`;
     renderPaginationComponent({
       containerId: 'hoPagination',
       currentPage: 1,
@@ -99,8 +99,12 @@ function renderHOTable(filtered = null, resetPage = false) {
       <td><div class="homeowner-name-cell">${avatarHTML(u, 'avatar-sm')}<strong>${escapeHtml(u.name)}</strong></div></td>
       <td>${escapeHtml(u.block || '—')}, ${escapeHtml(u.lot || '—')}</td>
       <td class="${(u.balance||0) > 0 ? 'amount-due' : 'amount-paid'}">₱${(u.balance||0).toLocaleString()}</td>
+      <td><span class="${u.accountStatus === 'Registered' ? 'badge-status-active' : 'badge-status-inactive'}">${escapeHtml(u.accountStatus || 'No Account')}</span></td>
       <td><button class="ho-info-btn" onclick="openViewHO('${u.id}')" title="View details">i</button></td>
       <td><div class="td-actions">
+        ${u.accountStatus === 'Registered'
+          ? `<button class="btn btn-secondary btn-sm" onclick="openResetPasswordModal('${u.id}')">Reset Password</button>`
+          : `<button class="btn btn-primary btn-sm" onclick="openRegisterAccountModal('${u.id}')">Register Account</button>`}
         <button class="btn btn-secondary btn-sm" onclick="openEditHO('${u.id}')">Edit</button>
         <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteHO('${u.id}')" title="Delete"><svg width="14" height="14"><use href="#ico-trash"/></svg></button>
       </div></td>
@@ -120,12 +124,12 @@ function renderHOTable(filtered = null, resetPage = false) {
 function filterHomeowners() {
   const q = (document.getElementById('hoSearch')?.value || '').toLowerCase();
   const blk = document.getElementById('hoFilter')?.value || '';
-  let users = db.get('users').filter(u => u.role === 'homeowner');
+  let users = getHomeowners();
   if (q) users = users.filter(u =>
     u.name.toLowerCase().includes(q)
-    || (u.username || '').toLowerCase().includes(q)
-    || u.email.toLowerCase().includes(q)
+    || (u.email || '').toLowerCase().includes(q)
     || (u.block || '').toLowerCase().includes(q)
+    || (u.lot || '').toLowerCase().includes(q)
   );
   if (blk) users = users.filter(u => u.block === blk);
   renderHOTable(users, true);
@@ -133,14 +137,7 @@ function filterHomeowners() {
 
 function openAddHomeownerModal() {
   openModal('Add Homeowner', `
-    <div class="grid-2">
-      <div class="form-group"><label>Full Name *</label><input id="f_name" placeholder="e.g. Juan Dela Cruz"/></div>
-      <div class="form-group"><label>Username *</label><input id="f_user" placeholder="e.g. juandelacruz"/></div>
-    </div>
-    <div class="grid-2">
-      <div class="form-group"><label>Password *</label><input id="f_pass" type="password" placeholder="Min 6 characters"/></div>
-      <div class="form-group"><label>Email *</label><input id="f_email" type="email" placeholder="email@example.com"/></div>
-    </div>
+    <div class="form-group"><label>Full Name *</label><input id="f_name" placeholder="e.g. Juan Dela Cruz"/></div>
     <div class="grid-2">
       <div class="form-group"><label>Block</label><input id="f_block" inputmode="numeric" placeholder="e.g. 3"/></div>
       <div class="form-group"><label>Lot</label><input id="f_lot" inputmode="numeric" placeholder="e.g. 7"/></div>
@@ -157,42 +154,28 @@ function openAddHomeownerModal() {
 
 async function saveAddHomeowner() {
   const name = document.getElementById('f_name').value.trim();
-  const username = document.getElementById('f_user').value.trim();
-  const password = document.getElementById('f_pass').value.trim();
-  const email = document.getElementById('f_email').value.trim().toLowerCase();
-  if (!name || !username || !password || !email) { showToast('error', 'Missing Fields', 'Please fill in all required fields.'); return; }
-  if (/\s/.test(username)) { showToast('error', 'Invalid Username', 'Username cannot contain whitespace.'); return; }
-  if (username.length < 3) { showToast('error', 'Username Too Short', 'Username must be at least 3 characters.'); return; }
-  if (password.length < 6) { showToast('error', 'Weak Password', 'Password must be at least 6 characters.'); return; }
-  const users = db.get('users');
-  if (users.find(u => (u.username || '') === username)) { showToast('error', 'Duplicate Username', 'Username already exists. Please choose another username.'); return; }
-  if (users.find(u => (u.email || '').toLowerCase() === email)) { showToast('error', 'Duplicate Email', 'Email address is already registered. Please choose another email.'); return; }
+  if (!name) { showToast('error', 'Missing Name', 'Full Name is required.'); return; }
   const lotAreaValue = document.getElementById('f_lotArea').value.trim();
   const lotArea = lotAreaValue ? Number(lotAreaValue) : 0;
   if (!Number.isFinite(lotArea) || lotArea < 0) { showToast('error', 'Invalid Lot Area', 'Please enter a valid lot area.'); return; }
   const newUser = {
-    id: db.newId('u'),
-    username,
-    password,
-    role: 'homeowner',
+    id: db.newId('h'),
     name,
-    email,
     block: formatLocationPart(document.getElementById('f_block').value, 'Block'),
     lot: formatLocationPart(document.getElementById('f_lot').value, 'Lot'),
     lotArea,
     contact: document.getElementById('f_contact').value.trim(),
     balance: 0,
-    permissions: ['resident'],
-    status: 'active',
+    accountStatus: 'No Account',
   };
   showLoading();
   try {
-    await db.save('users', newUser);
+    await db.save('homeowners', newUser);
     await api.loadAll();
-    logAction(`Added homeowner ${name} (@${username})`);
+    logAction(`Added homeowner record ${name} (${newUser.id})`);
     closeModal();
     hideLoading();
-    showToast('success', 'Homeowner Added', `Account for ${name} has been created in MySQL. Login Username: "${username}"`);
+    showToast('success', 'Homeowner Added', `${name} was added with No Account status.`);
     renderHomeowners();
   } catch (err) {
     hideLoading();
@@ -201,7 +184,7 @@ async function saveAddHomeowner() {
 }
 
 function openViewHO(id) {
-  const u = db.getOne('users', id);
+  const u = getHomeownerById(id);
   if (!u) return;
   const payments = db.get('payments').filter(p => p.homeownerId === id);
   const billings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(id));
@@ -209,7 +192,7 @@ function openViewHO(id) {
   openModal(`Profile: ${u.name}`, `
     <div class="profile-card" style="margin-bottom:16px">
       <div class="profile-avatar-big">${avatarHTML(u, 'avatar-xl')}</div>
-      <div class="profile-info"><h3>${u.name}</h3><p>${u.email}</p><p>${u.block||''} ${u.lot||''}</p></div>
+      <div class="profile-info"><h3>${escapeHtml(u.name)}</h3><p>${escapeHtml(u.email || 'No SmartHood account')}</p><p>${escapeHtml(u.block||'')} ${escapeHtml(u.lot||'')}</p></div>
     </div>
     <div class="report-summary-grid" style="gap:10px;margin-bottom:0">
       <div class="report-summary-item"><div class="r-val">${billings.length}</div><div class="r-lbl">Bills Assigned</div></div>
@@ -217,16 +200,15 @@ function openViewHO(id) {
       <div class="report-summary-item"><div class="r-val">${complaints.length}</div><div class="r-lbl">Complaints Filed</div></div>
     </div>
     <p style="margin-top:14px;font-size:0.85rem;color:var(--text-3)">Lot Area: <strong>${u.lotArea || 0} sqm</strong> | Contact: ${u.contact||'N/A'} | Balance: <strong style="color:var(--red-600)">₱${(u.balance||0).toLocaleString()}</strong></p>
-    <p style="margin-top:14px;font-size:0.85rem;color:var(--text-3)">Username: <strong>${u.username || 'N/A'}</strong> | Password: <strong>${u.password || 'N/A'}</strong></p>
+    <p style="margin-top:14px;font-size:0.85rem;color:var(--text-3)">Account Status: <strong>${escapeHtml(u.accountStatus || 'No Account')}</strong>${u.email ? ` | Login Email: <strong>${escapeHtml(u.email)}</strong>` : ''}</p>
   `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
 }
 
 function openEditHO(id) {
-  const u = db.getOne('users', id);
+  const u = getHomeownerById(id);
   if (!u) return;
   openModal('Edit Homeowner', `
     <div class="form-group"><label>Full Name</label><input id="e_name" value="${u.name}"/></div>
-    <div class="form-group"><label>Email</label><input id="e_email" value="${u.email}"/></div>
     <div class="grid-2">
       <div class="form-group"><label>Block</label><input id="e_block" value="${u.block||''}"/></div>
       <div class="form-group"><label>Lot</label><input id="e_lot" value="${u.lot||''}"/></div>
@@ -244,14 +226,13 @@ function confirmSaveEditHO(id) {
 }
 
 function saveEditHO(id) {
-  const u = db.getOne('users', id);
+  const u = getHomeownerById(id);
   if (!u) return;
   u.name = document.getElementById('e_name').value.trim() || u.name;
-  u.email = document.getElementById('e_email').value.trim() || u.email;
   u.block = formatLocationPart(document.getElementById('e_block').value, 'Block');
   u.lot = formatLocationPart(document.getElementById('e_lot').value, 'Lot');
   u.contact = document.getElementById('e_contact').value.trim();
-  db.save('users', u);
+  db.save('homeowners', u);
   logAction(`Updated homeowner profile: ${u.name}`);
   closeModal();
   showToast('success', 'Profile Updated', `${u.name}'s profile saved.`);
@@ -259,11 +240,98 @@ function saveEditHO(id) {
 }
 
 function confirmDeleteHO(id) {
-  const u = db.getOne('users', id);
+  const u = getHomeownerById(id);
   if (!u) return;
   openModal('Confirm Delete', `<p>Are you sure you want to delete <strong>${u.name}</strong>? This action cannot be undone.</p>`, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    { label: 'Delete', cls: 'btn-danger', action: () => { db.delete('users', id); logAction(`Deleted homeowner: ${u.name}`); closeModal(); showToast('success', 'Deleted', `${u.name} removed.`); renderHomeowners(); } },
+    { label: 'Delete', cls: 'btn-danger', action: async () => { try { await db.delete('homeowners', id); logAction(`Deleted homeowner: ${u.name}`); closeModal(); showToast('success', 'Deleted', `${u.name} removed.`); renderHomeowners(); } catch (err) { showToast('error', 'Cannot Delete', err.message); } } },
   ]);
 }
 
+function openRegisterAccountModal(id) {
+  const homeowner = getHomeownerById(id);
+  if (!homeowner || homeowner.accountStatus === 'Registered') return;
+  openModal('Register SmartHood Account', `
+    <div class="grid-2">
+      <div class="form-group"><label>Homeowner Name</label><input value="${escapeHtml(homeowner.name)}" readonly/></div>
+      <div class="form-group"><label>Block / Lot</label><input value="${escapeHtml([homeowner.block, homeowner.lot].filter(Boolean).join(' / ') || '—')}" readonly/></div>
+    </div>
+    <div class="form-group"><label>Email Address *</label><input id="ra_email" type="email" placeholder="resident@example.com" autocomplete="off"/></div>
+    <div class="form-group"><label>Mobile Number *</label><input id="ra_mobile" inputmode="tel" value="${escapeHtml(homeowner.contact || '')}" placeholder="e.g. 09171234567"/></div>
+    <div class="form-group"><label>Initial Password *</label><input id="ra_password" type="password" placeholder="Minimum 12 characters" autocomplete="new-password"/></div>
+    <small style="color:var(--text-3)">The email address becomes the homeowner's login ID. The password is hashed and will never be displayed.</small>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Register Account', cls: 'btn-primary', action: () => registerHomeownerAccount(id) },
+  ]);
+}
+
+async function registerHomeownerAccount(id) {
+  const email = (document.getElementById('ra_email')?.value || '').trim().toLowerCase();
+  const mobile = (document.getElementById('ra_mobile')?.value || '').trim();
+  const password = (document.getElementById('ra_password')?.value || '').trim();
+  if (!email || !mobile || !password) {
+    showToast('error', 'Missing Fields', 'Email Address, Mobile Number, and Initial Password are required.');
+    return;
+  }
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    showToast('error', 'Invalid Email', 'Enter a valid email address.');
+    return;
+  }
+  if (!/^[0-9+()\-\s]{7,20}$/.test(mobile)) {
+    showToast('error', 'Invalid Mobile Number', 'Enter a valid mobile number.');
+    return;
+  }
+  if (password.length < 12) {
+    showToast('error', 'Weak Password', 'Initial Password must be at least 12 characters.');
+    return;
+  }
+  showLoading();
+  try {
+    await api.registerHomeownerAccount(id, { email, mobile, password });
+    await api.loadAll();
+    closeModal();
+    hideLoading();
+    showToast('success', 'Account Registered', 'The homeowner can now sign in using their email address and password.');
+    renderHomeowners();
+  } catch (err) {
+    hideLoading();
+    showToast('error', 'Registration Failed', err.message || 'Could not register the account.');
+  }
+}
+
+function openResetPasswordModal(id) {
+  const homeowner = getHomeownerById(id);
+  if (!homeowner || homeowner.accountStatus !== 'Registered') return;
+  openModal('Reset Password', `
+    <p style="margin-bottom:14px;color:var(--text-2)">Set a new password for <strong>${escapeHtml(homeowner.name)}</strong>. The existing password cannot be viewed.</p>
+    <div class="form-group"><label>New Password *</label><input id="rp_password" type="password" placeholder="Minimum 12 characters" autocomplete="new-password"/></div>
+    <div class="form-group"><label>Confirm New Password *</label><input id="rp_confirm" type="password" placeholder="Repeat the new password" autocomplete="new-password"/></div>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Reset Password', cls: 'btn-primary', action: () => resetHomeownerPassword(id) },
+  ]);
+}
+
+async function resetHomeownerPassword(id) {
+  const password = (document.getElementById('rp_password')?.value || '').trim();
+  const confirmation = (document.getElementById('rp_confirm')?.value || '').trim();
+  if (password.length < 12) {
+    showToast('error', 'Weak Password', 'New Password must be at least 12 characters.');
+    return;
+  }
+  if (password !== confirmation) {
+    showToast('error', 'Password Mismatch', 'The password confirmation does not match.');
+    return;
+  }
+  showLoading();
+  try {
+    await api.resetHomeownerPassword(id, password);
+    closeModal();
+    hideLoading();
+    showToast('success', 'Password Reset', 'The new password is active. The old password will no longer work.');
+  } catch (err) {
+    hideLoading();
+    showToast('error', 'Reset Failed', err.message || 'Could not reset the password.');
+  }
+}

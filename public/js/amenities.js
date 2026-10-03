@@ -161,7 +161,7 @@ function renderHOAmenityBooking() {
   const today = getLocalDateValue();
   const currentMonth = today.slice(0, 7);
   const myBookings = db.get('amenityBookings')
-    .filter(booking => booking.homeownerId === currentUser.id)
+    .filter(booking => booking.homeownerId === getCurrentHomeownerId())
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   const area = document.getElementById('contentArea');
   area.innerHTML = `
@@ -261,7 +261,7 @@ function confirmSubmitAmenityBooking() {
 function submitAmenityBooking({ amenity, bookingDate, startTime, endTime, purpose }) {
   const booking = {
     id: db.newId('ab'),
-    homeownerId: currentUser.id,
+    homeownerId: getCurrentHomeownerId(),
     amenity,
     bookingDate,
     startTime,
@@ -367,7 +367,7 @@ function renderAmenityBookingsAdmin() {
           <thead><tr><th>Homeowner</th><th>Amenity</th><th>Date / Time</th><th>Status</th><th>Actions</th></tr></thead>
           <tbody>
             ${bookings.map(booking => {
-              const homeowner = db.getOne('users', booking.homeownerId);
+              const homeowner = getHomeownerById(booking.homeownerId);
               return `<tr>
                 <td><div class="cell-user">${avatarHTML(homeowner, 'avatar-sm')}<strong>${homeowner ? homeowner.name : 'Unknown'}</strong></div></td>
                 <td>${booking.amenity}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.purpose || 'No purpose provided'}</span></td>
@@ -452,7 +452,7 @@ function approveAmenityBooking(id) {
   booking.status = 'Approved';
   booking.reviewedAt = getLocalDateValue();
   db.save('amenityBookings', booking);
-  const homeowner = db.getOne('users', booking.homeownerId);
+  const homeowner = getHomeownerById(booking.homeownerId);
   logAction(`Approved amenity booking: ${booking.amenity} for ${homeowner ? homeowner.name : 'Unknown'}`);
   showToast('success', 'Approved', 'Amenity booking approved.');
   renderAmenityBookingsAdmin();
@@ -482,7 +482,7 @@ function rejectAmenityBooking(id, remarks) {
   booking.adminRemarks = remarks;
   booking.reviewedAt = getLocalDateValue();
   db.save('amenityBookings', booking);
-  const homeowner = db.getOne('users', booking.homeownerId);
+  const homeowner = getHomeownerById(booking.homeownerId);
   logAction(`Rejected amenity booking: ${booking.amenity} for ${homeowner ? homeowner.name : 'Unknown'} - ${remarks}`);
   closeModal();
   showToast('warning', 'Rejected', 'Amenity booking rejected.');
@@ -492,7 +492,7 @@ function rejectAmenityBooking(id, remarks) {
 function viewAmenityBooking(id) {
   const booking = db.getOne('amenityBookings', id);
   if (!booking) return;
-  const homeowner = db.getOne('users', booking.homeownerId);
+  const homeowner = getHomeownerById(booking.homeownerId);
   openModal('Amenity Booking', `
     <table style="width:100%;font-size:0.88rem">
       <tr><td style="padding:6px 0;color:var(--text-3)">Homeowner</td><td style="font-weight:600">${homeowner ? homeowner.name : 'Unknown'}</td></tr>

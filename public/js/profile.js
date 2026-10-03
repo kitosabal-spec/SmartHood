@@ -37,6 +37,15 @@ function syncUserPhotoInCache(userId, photoPath) {
   }
   if (currentUser && currentUser.id === userId) {
     currentUser = { ...currentUser, profile_photo: photoPath };
+    const homeownerId = getCurrentHomeownerId();
+    if (homeownerId) {
+      const homeowners = getHomeowners();
+      const homeownerIndex = homeowners.findIndex(homeowner => homeowner.id === homeownerId);
+      if (homeownerIndex >= 0) {
+        homeowners[homeownerIndex] = { ...homeowners[homeownerIndex], profile_photo: photoPath };
+        dbCache.homeowners = homeowners;
+      }
+    }
   }
 }
 

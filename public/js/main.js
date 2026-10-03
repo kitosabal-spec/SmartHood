@@ -243,7 +243,21 @@ const api = {
   async login(username, password) {
     return this.request('/api/login', {
       method: 'POST',
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ email: username, password }),
+    });
+  },
+
+  async registerHomeownerAccount(homeownerId, accountData) {
+    return this.request(`/api/homeowners/${encodeURIComponent(homeownerId)}/account`, {
+      method: 'POST',
+      body: JSON.stringify(accountData),
+    });
+  },
+
+  async resetHomeownerPassword(homeownerId, password) {
+    return this.request(`/api/homeowners/${encodeURIComponent(homeownerId)}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ password }),
     });
   },
 
@@ -474,6 +488,24 @@ const db = {
   }
 };
 
+function getHomeowners() {
+  return db.get('homeowners');
+}
+
+function getHomeownerById(id) {
+  return db.getOne('homeowners', id);
+}
+
+function getCurrentHomeownerId() {
+  return currentUser?.homeowner_id || currentUser?.homeownerId || (currentUser?.role === 'homeowner' ? currentUser.id : null);
+}
+
+if (typeof window !== 'undefined') {
+  window.getHomeowners = getHomeowners;
+  window.getHomeownerById = getHomeownerById;
+  window.getCurrentHomeownerId = getCurrentHomeownerId;
+}
+
 
 // SECTION 4: AUTH
 
@@ -492,7 +524,7 @@ async function handleLogin() {
   if (errEl) errEl.classList.add('hidden');
 
   if (!username || !password) {
-    showLoginError('Please enter both username and password.');
+    showLoginError('Please enter both email address and password.');
     return;
   }
 
@@ -516,7 +548,7 @@ async function handleLogin() {
     initApp();
   } catch (error) {
     hideLoading();
-    showLoginError(error.message || 'Invalid username or password.');
+    showLoginError(error.message || 'Invalid email address or password.');
   }
 }
 
@@ -676,6 +708,7 @@ function getSidebarBadgeItems(viewId) {
 
   const role = currentUser.role;
   const users = db.get('users');
+  const homeownerId = getCurrentHomeownerId();
   const billings = db.get('billings');
   const payments = db.get('payments');
   const complaints = db.get('complaints');
@@ -683,8 +716,8 @@ function getSidebarBadgeItems(viewId) {
   const vehicles = db.get('vehicleRegistrations');
   const lostFound = db.get('lostFound');
 
-  const homeownerBillings = () => billings.filter(billing => getAssignedHomeownerIds(billing).includes(currentUser.id));
-  const homeownerPayments = () => payments.filter(payment => payment.homeownerId === currentUser.id);
+  const homeownerBillings = () => billings.filter(billing => getAssignedHomeownerIds(billing).includes(homeownerId));
+  const homeownerPayments = () => payments.filter(payment => payment.homeownerId === homeownerId);
   const unpaidHomeownerBillings = () => {
     const myPayments = homeownerPayments();
     return homeownerBillings().filter(billing =>
@@ -693,7 +726,7 @@ function getSidebarBadgeItems(viewId) {
   };
 
   const itemMap = {
-    homeowners: () => users.filter(user => user.role === 'homeowner'),
+    homeowners: () => getHomeowners(),
     billing: () => billings.filter(billing => ['active', 'pending', 'overdue'].includes(getBillingCollectionStatus(billing))),
     payments: () => payments.filter(payment => payment.status === 'pending'),
     amenities: () => amenityBookings.filter(booking => booking.status === 'Pending'),
@@ -707,18 +740,18 @@ function getSidebarBadgeItems(viewId) {
     auditlog: () => db.get('auditLog'),
     'ho-billing': () => unpaidHomeownerBillings(),
     'ho-history': () => homeownerPayments().filter(payment => payment.status === 'pending'),
-    'ho-amenities': () => amenityBookings.filter(booking => booking.homeownerId === currentUser.id && booking.status === 'Pending'),
+    'ho-amenities': () => amenityBookings.filter(booking => booking.homeownerId === homeownerId && booking.status === 'Pending'),
     'ho-vehicles': () => vehicles.filter(vehicle =>
-      vehicle.homeownerId === currentUser.id &&
+      vehicle.homeownerId === homeownerId &&
       (vehicle.registrationStatus === 'Pending' ||
         (vehicle.registrationStatus === 'Approved' && vehicle.paymentStatus !== 'Paid'))
     ),
     'ho-complaints': () => complaints.filter(complaint =>
-      complaint.homeownerId === currentUser.id &&
+      complaint.homeownerId === homeownerId &&
       ['Reviewed', 'In Progress'].includes(normalizeComplaintStatus(complaint.status))
     ),
     'ho-announcements': () => db.get('announcements'),
-    'ho-lostfound': () => lostFound.filter(report => report.homeownerId === currentUser.id && report.status === 'Pending'),
+    'ho-lostfound': () => lostFound.filter(report => report.homeownerId === homeownerId && report.status === 'Pending'),
   };
 
 
@@ -1041,20 +1074,20 @@ function calculateUserOutstandingBalance(userId) {
 async function syncHomeownerBalances() {
   if (!canManageBilling()) {
     if (currentUser && currentUser.role === 'homeowner') {
-      const balance = calculateUserOutstandingBalance(currentUser.id);
+      const balance = calculateUserOutstandingBalance(getCurrentHomeownerId());
       currentUser.balance = balance;
     }
     return;
   }
-  const homeowners = db.get('users').filter(user => user.role === 'homeowner');
+  const homeowners = getHomeowners();
   const updates = [];
   for (const user of homeowners) {
     const balance = calculateUserOutstandingBalance(user.id);
     if (toMoneyNumber(user.balance) !== balance) {
       const updatedUser = { ...user, balance };
       updates.push(
-        db.save('users', updatedUser).then(saved => {
-          if (currentUser && currentUser.id === user.id) currentUser = saved;
+        db.save('homeowners', updatedUser).then(saved => {
+          if (currentUser && getCurrentHomeownerId() === user.id) currentUser = { ...currentUser, ...saved };
         })
       );
     }
@@ -1498,7 +1531,7 @@ function renderReports() {
   const range = getDateRangeFilter();
   const payments = filterByDateRange(db.get('payments'), getReportPaymentDate, range);
   const billings = filterByDateRange(db.get('billings'), getReportBillingDate, range);
-  const users = db.get('users').filter(u => u.role === 'homeowner');
+  const users = getHomeowners();
   const complaints = filterByDateRange(db.get('complaints'), getReportComplaintDate, range);
   const activeHomeownerIds = new Set([
     ...billings.flatMap(getAssignedHomeownerIds),
@@ -1632,7 +1665,7 @@ function renderReports() {
         <thead><tr><th>Homeowner</th><th>Category</th><th>Date of Occurrence</th><th>Date Filed</th><th>Status</th></tr></thead>
         <tbody>
           ${complaints.map(c => {
-            const ho = db.getOne('users', c.homeownerId);
+            const ho = getHomeownerById(c.homeownerId);
             return `<tr>
               <td>${ho ? ho.name : 'Unknown'}</td>
               <td>${complaintCategoryBadge(c.category)}</td>
@@ -1772,7 +1805,7 @@ function renderHOBalanceReportTable(filtered = null, resetPage = false) {
   if (filtered !== null) {
     currentHOBalanceFiltered = filtered;
   } else if (currentHOBalanceFiltered === null) {
-    currentHOBalanceFiltered = currentReportsData?.reportUsers || db.get('users').filter(u => u.role === 'homeowner');
+    currentHOBalanceFiltered = currentReportsData?.reportUsers || getHomeowners();
   }
   const users = currentHOBalanceFiltered || [];
 
@@ -1837,7 +1870,7 @@ function filterHOBalanceReport() {
   const q = (document.getElementById('hoBalanceSearch')?.value || '').toLowerCase().trim();
   const statusFilter = document.getElementById('hoBalanceStatusFilter')?.value || '';
 
-  let users = currentReportsData?.reportUsers || db.get('users').filter(u => u.role === 'homeowner');
+  let users = currentReportsData?.reportUsers || getHomeowners();
   if (q) {
     users = users.filter(u =>
       (u.name || '').toLowerCase().includes(q)
@@ -2322,7 +2355,7 @@ function renderUserManagement() {
     <div class="page-header-actions">
       <button class="btn btn-primary" onclick="openCreateAccountModal()">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:5px;vertical-align:-2px"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-        New Account
+        New Administrator
       </button>
     </div>
   </div>
@@ -2355,7 +2388,7 @@ function renderUserManagement() {
       <div class="filters-row accounts-filters-row">
         <div class="search-box">
           <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
-          <input id="userMgmtSearch" type="text" placeholder="Search by name, username, email, role..." oninput="filterUserManagementTable()"/>
+          <input id="userMgmtSearch" type="text" placeholder="Search by name, email, or role..." oninput="filterUserManagementTable()"/>
         </div>
         <select class="filter-select" id="userRoleFilter" onchange="filterUserManagementTable()">
           <option value="">All Account Types</option>
@@ -2492,8 +2525,8 @@ function renderUserManagementRows(filteredUsers = null, resetPage = false) {
           <div class="user-cell-meta">
             <div class="user-name" title="${escapeHtml(u.name)}">${escapeHtml(u.name)}</div>
             <div class="user-sub">
-              <span class="user-username">@${escapeHtml(u.username || '—')}</span>
-              ${u.email ? `<span class="user-dot">&bull;</span><span class="user-email" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</span>` : ''}
+              ${u.role === 'admin' && u.username ? `<span class="user-username">@${escapeHtml(u.username)}</span><span class="user-dot">&bull;</span>` : ''}
+              ${u.email ? `<span class="user-email" title="${escapeHtml(u.email)}">${escapeHtml(u.email)}</span>` : ''}
             </div>
           </div>
         </div>
@@ -2634,9 +2667,9 @@ function clearCreateAdditionalPermissions() {
 }
 
 function openCreateAccountModal() {
-  openModal('Create New Account', `
+  openModal('Create Administrator Account', `
     <div class="account-credentials-notice">
-      <strong>Sign-In Credentials Note:</strong> The account holder will log in using their <strong>Username</strong> and <strong>Password</strong>. Full Name is used as their display name in directory and records.
+      <strong>Administrator Account:</strong> Homeowner accounts must be registered from Homeowner Management. This form creates administrators only.
     </div>
 
     <!-- Section 1: Personal Information -->
@@ -2654,8 +2687,7 @@ function openCreateAccountModal() {
         </div>
       </div>
 
-      <!-- Homeowner-specific inputs (shown by default for Resident) -->
-      <div id="ca_ho_fields">
+      <div id="ca_ho_fields" class="hidden">
         <div class="grid-2">
           <div class="form-group"><label>Block</label><input id="ca_block" placeholder="e.g. Block 2"/></div>
           <div class="form-group"><label>Lot</label><input id="ca_lot" placeholder="e.g. Lot 5"/></div>
@@ -2683,8 +2715,7 @@ function openCreateAccountModal() {
         <div class="form-group">
           <label>Account Type *</label>
           <select id="ca_role" onchange="handleCreateAccountRoleChange()">
-            <option value="homeowner" selected>Resident</option>
-            <option value="admin">Administrator</option>
+            <option value="admin" selected>Administrator</option>
           </select>
         </div>
         <div class="form-group">
@@ -2701,7 +2732,7 @@ function openCreateAccountModal() {
         ★ Administrator account has full unrestricted access to all system modules and settings. Module configuration is not required.
       </div>
 
-      <div id="ca_resident_perms_wrap">
+      <div id="ca_resident_perms_wrap" class="hidden">
         <div class="compact-perm-header">
           <div>
             <div class="modal-section-title" style="margin-bottom:2px;">Module Access Permissions</div>
@@ -2751,7 +2782,7 @@ function openCreateAccountModal() {
     </div>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    { label: 'Create Account', cls: 'btn-primary', action: saveCreateAccount },
+    { label: 'Create Administrator', cls: 'btn-primary', action: saveCreateAccount },
   ], 'modal-account-edit');
 
   handleCreateAccountRoleChange();
@@ -2891,7 +2922,7 @@ async function saveCreateAccount() {
     logAction(`Created account: "${name}" (@${username}) with account type: ${role === 'admin' ? 'Administrator' : 'Resident'}`);
     closeModal();
     hideLoading();
-    showToast('success', 'Account Created Successfully', `Account for ${name} has been created in MySQL. Login Username: "${username}"`);
+    showToast('success', 'Administrator Created', `Administrator account for ${name} has been created.`);
     renderUserManagement();
   } catch (err) {
     hideLoading();
@@ -2966,7 +2997,7 @@ function openEditUserAccountModal(userId) {
           <span class="${isActive ? 'badge-status-active' : 'badge-status-inactive'}">● ${isActive ? 'Active' : 'Deactivated'}</span>
         </div>
         <div style="font-size:0.78rem;color:var(--text-3);margin-top:2px;">
-          @${escapeHtml(u.username || '—')} &bull; ${escapeHtml(u.email || 'No email')}
+          ${isAdminUser && u.username ? `@${escapeHtml(u.username)} &bull; ` : ''}${escapeHtml(u.email || 'No email')}
           ${u.block || u.lot ? ` &bull; ${escapeHtml([u.block, u.lot].filter(Boolean).join(', '))}` : ''}
         </div>
       </div>
@@ -3008,20 +3039,20 @@ function openEditUserAccountModal(userId) {
     <div class="modal-form-section">
       <div class="modal-section-title">Account Information</div>
       <div class="grid-2">
-        <div class="form-group">
+        ${isAdminUser ? `<div class="form-group">
           <label>Login Username *</label>
           <input id="ea_user" value="${escapeHtml(u.username || '')}" ${u.id === 'u001' ? 'disabled title="Primary admin username cannot be changed"' : ''} placeholder="e.g. mariasantos" autocomplete="off"/>
-        </div>
+        </div>` : `<div class="form-group"><label>Login ID</label><input value="Email Address" readonly/></div>`}
         <div class="form-group">
           <label>Email Address *</label>
           <input id="ea_email" type="email" value="${escapeHtml(u.email || '')}" placeholder="e.g. maria@example.com" autocomplete="off"/>
         </div>
       </div>
-      <div class="form-group">
+      ${isAdminUser ? `<div class="form-group">
         <label>Change Password (Optional)</label>
         <input id="ea_newpass" type="password" placeholder="Leave blank to keep current password" autocomplete="new-password"/>
         <small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:2px;">Minimum 12 characters. Leave blank if password should remain unchanged.</small>
-      </div>
+      </div>` : `<div class="form-group"><button type="button" class="btn btn-secondary btn-sm" onclick="openResetPasswordModal('${u.homeowner_id}')">Reset Password</button><small style="font-size:0.73rem;color:var(--text-3);display:block;margin-top:4px;">Existing passwords are never displayed.</small></div>`}
     </div>
 
     <!-- Section 3: Module Access Permissions -->
@@ -3142,7 +3173,7 @@ async function saveEditUserAccount(userId) {
   }
 
   // Check username uniqueness if changed
-  if (username && username !== (u.username || '')) {
+  if (u.role === 'admin' && username && username !== (u.username || '')) {
     if (/\s/.test(username)) {
       showToast('error', 'Invalid Username', 'Username cannot contain spaces.');
       return;
@@ -3239,8 +3270,8 @@ function confirmToggleUserStatus(userId) {
   const targetAction = isCurrentlyActive ? 'deactivate' : 'activate';
   const title = isCurrentlyActive ? 'Deactivate Account?' : 'Activate Account?';
   const message = isCurrentlyActive
-    ? `Are you sure you want to deactivate <strong>${escapeHtml(u.name)}</strong> (@${escapeHtml(u.username)})?<br/><br/><span style="color:var(--red-600);font-size:0.84rem;">The user will be immediately blocked from logging in and accessing the system.</span>`
-    : `Are you sure you want to reactivate <strong>${escapeHtml(u.name)}</strong> (@${escapeHtml(u.username)})?<br/><br/>The user will regain login access with their assigned permissions.`;
+    ? `Are you sure you want to deactivate <strong>${escapeHtml(u.name)}</strong> (${escapeHtml(u.email || u.username || '')})?<br/><br/><span style="color:var(--red-600);font-size:0.84rem;">The user will be immediately blocked from logging in and accessing the system.</span>`
+    : `Are you sure you want to reactivate <strong>${escapeHtml(u.name)}</strong> (${escapeHtml(u.email || u.username || '')})?<br/><br/>The user will regain login access with their assigned permissions.`;
 
   openModal(title, `<p style="color:var(--text-2);line-height:1.6">${message}</p>`, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
@@ -3279,10 +3310,10 @@ function confirmDeleteUserAccount(userId) {
 
   openModal('Delete User Account?', `
     <p style="color:var(--text-2);line-height:1.6">
-      Are you sure you want to permanently delete <strong>${escapeHtml(u.name)}</strong> (@${escapeHtml(u.username)})?
+      Are you sure you want to permanently delete the login account for <strong>${escapeHtml(u.name)}</strong> (${escapeHtml(u.email || u.username || '')})?
     </p>
     <p style="color:var(--red-600);font-size:0.83rem;margin-top:8px;">
-      This action cannot be undone. All associated account permissions and profile data will be permanently removed.
+      This action cannot be undone. The separate homeowner record and its billing/activity history will remain intact.
     </p>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
@@ -3294,6 +3325,7 @@ function confirmDeleteUserAccount(userId) {
         showLoading();
         try {
           await db.delete('users', userId);
+          await api.loadAll();
           logAction(`Deleted user account: ${u.name} (@${u.username})`);
           hideLoading();
           showToast('success', 'Account Deleted', `Account for ${u.name} has been removed.`);
@@ -3454,7 +3486,7 @@ function canSeeNotification(notification) {
 
   if (audience === 'all') return true;
   if (audience === 'roles') return targetIds.includes(currentUser.role);
-  if (audience === 'users') return targetIds.includes(currentUser.id);
+  if (audience === 'users') return targetIds.includes(currentUser.id) || targetIds.includes(getCurrentHomeownerId());
   return true;
 }
 
@@ -3986,7 +4018,7 @@ function togglePubNav() {
 function updateHeroStat() {
   const el = document.getElementById('heroStatHO');
   if (el) {
-    const count = db.get('users').filter(u => u.role === 'homeowner').length;
+    const count = getHomeowners().length;
     el.textContent = count;
   }
 }

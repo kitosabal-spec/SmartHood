@@ -111,7 +111,7 @@ function renderResidentVehicleRow(vehicle) {
 
 function renderHOVehicles() {
   const vehicles = db.get('vehicleRegistrations')
-    .filter(vehicle => vehicle.homeownerId === currentUser.id)
+    .filter(vehicle => vehicle.homeownerId === getCurrentHomeownerId())
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   const area = document.getElementById('contentArea');
   area.innerHTML = `
@@ -196,7 +196,7 @@ function submitVehicleRegistration({ registrantType, ownerName, block, lot, plat
   const today = getLocalDateValue();
   const vehicle = {
     id: db.newId('vr'),
-    homeownerId: currentUser.id,
+    homeownerId: getCurrentHomeownerId(),
     ownerName,
     block,
     lot,
