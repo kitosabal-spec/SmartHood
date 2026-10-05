@@ -561,6 +561,8 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.
   border-right: 1px solid rgba(240,180,41,0.12);
   flex-shrink: 0;
 }
+.pub-band-item .band-ico { flex-shrink: 0; }
+.pub-band-item span { line-height: 1.25; }
 .pub-band-item:last-child { border-right: none; }
 
 .pub-section { padding: 80px 0; }
@@ -2465,7 +2467,6 @@ input[type="date"].filter-select {
   }
   .pub-hero { padding: 110px 20px 80px; }
   .pub-hero-stats { flex-wrap: wrap; gap: 16px; }
-  .pub-band-inner { justify-content: flex-start; overflow-x: auto; flex-wrap: nowrap; }
   .pub-footer-inner { flex-direction: column; align-items: flex-start; gap: 16px; }
 }
 
@@ -2577,18 +2578,34 @@ input[type="date"].filter-select {
   }
   .pub-band {
     margin-top: 0;
-    padding: 14px 0;
+    padding: 10px 0;
+    overflow: hidden;
   }
   .pub-band-inner {
-    justify-content: flex-start;
-    overflow-x: auto;
-    flex-wrap: nowrap;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 0;
     padding: 0 16px;
+    max-width: 900px;
+    overflow: visible;
   }
-  .pub-band-inner::-webkit-scrollbar {
-    display: none;
+  .pub-band-item {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 14px;
+    font-size: 0.85rem;
+    white-space: normal;
+    min-width: 0;
+    border-right: 1px solid rgba(240, 180, 41, 0.12);
+    border-bottom: 1px solid rgba(240, 180, 41, 0.12);
+  }
+  .pub-band-item:nth-child(3n) {
+    border-right: none;
+  }
+  .pub-band-item:nth-child(n+4) {
+    border-bottom: none;
   }
 }
 
@@ -2597,6 +2614,35 @@ input[type="date"].filter-select {
   .pub-about-cards { grid-template-columns: 1fr; }
   .pub-portals-grid { grid-template-columns: 1fr; }
   .pub-footer-links, .pub-footer-logins { flex-wrap: wrap; }
+  .pub-band {
+    padding: 6px 0;
+  }
+  .pub-band-inner {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 0 10px;
+  }
+  .pub-band-item {
+    padding: 10px 8px;
+    font-size: 0.82rem;
+    gap: 7px;
+    border-right: 1px solid rgba(240, 180, 41, 0.12);
+    border-bottom: 1px solid rgba(240, 180, 41, 0.12);
+  }
+  .pub-band-item:nth-child(3n) {
+    border-right: 1px solid rgba(240, 180, 41, 0.12);
+  }
+  .pub-band-item:nth-child(even) {
+    border-right: none;
+  }
+  .pub-band-item:nth-child(odd) {
+    border-right: 1px solid rgba(240, 180, 41, 0.12);
+  }
+  .pub-band-item:nth-child(n+4) {
+    border-bottom: 1px solid rgba(240, 180, 41, 0.12);
+  }
+  .pub-band-item:nth-child(n+5) {
+    border-bottom: none;
+  }
   .modal-overlay { padding: 12px; }
   .modal { max-height: calc(100vh - 24px); border-radius: var(--radius-lg); }
   .modal-header { padding: 16px 18px 12px; }
@@ -2735,8 +2781,9 @@ input[type="date"].filter-select {
   .pub-hero-scroll {
     bottom: 18px;
   }
-  .pub-band-inner { padding: 0 12px; }
-  .pub-band-item { padding: 6px 14px; font-size: 0.8rem; }
+  .pub-band-inner { padding: 0 8px; }
+  .pub-band-item { padding: 9px 6px; font-size: 0.8rem; gap: 6px; }
+  .pub-band-item .band-ico { width: 16px; height: 16px; }
   .pub-container { padding: 0 14px; }
 }
 
@@ -2796,8 +2843,9 @@ input[type="date"].filter-select {
   }
   .pub-hero-scroll { bottom: 14px; font-size: 0.65rem; }
   .pub-scroll-arrow { font-size: 1rem; }
-  .pub-band-inner { padding: 0 8px; }
-  .pub-band-item { padding: 5px 10px; font-size: 0.75rem; }
+  .pub-band-inner { padding: 0 4px; }
+  .pub-band-item { padding: 7px 4px; font-size: 0.72rem; gap: 4px; }
+  .pub-band-item .band-ico { width: 14px; height: 14px; }
   .modal-header h3 { font-size: 0.95rem; }
   .modal-footer { padding: 8px 10px 12px; gap: 6px; }
   .modal-footer .btn { min-width: 75px; padding: 6px 8px; font-size: 0.78rem; min-height: 34px; }
@@ -4577,6 +4625,7 @@ input[type="date"].filter-select {
 }
 [data-theme="dark"] .pub-band-item {
   border-right-color: var(--border);
+  border-bottom-color: var(--border);
   color: var(--text-2);
 }
 [data-theme="dark"] .pub-ann-card {

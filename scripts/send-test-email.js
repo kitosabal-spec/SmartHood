@@ -1,7 +1,7 @@
 'use strict';
 
 require('dotenv').config();
-const { isEmailConfigured, sendEmail, verifyEmailConnection } = require('../emailService');
+const { isEmailConfigured, sendEmail, verifyEmailConnection } = require('../src/services/emailService');
 
 async function main() {
   const to = process.argv[2] || process.env.TEST_EMAIL_TO;

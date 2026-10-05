@@ -19,15 +19,22 @@ These backend files were added:
 
 ```text
 package.json
-server.js
+src/
 ```
 
 What each file does:
 
 ```text
-package.json     Lists the Node.js packages and start commands.
-server.js        Runs the Express backend and connects to MySQL.
-MySQL database   Stores your homeowners, bills, payments, complaints, announcements, logs, and notifications.
+package.json      Lists the Node.js packages and start commands.
+src/server.js     Starts the Express backend and connects to MySQL.
+src/app.js        Configures the application and its API features.
+src/config/       Stores environment and filesystem path configuration.
+src/routes/       Defines route registration.
+src/controllers/  Handles routed requests.
+src/middleware/   Contains reusable Express middleware.
+src/services/     Contains email and upload services.
+src/utils/        Contains shared utility functions.
+MySQL database    Stores your homeowners, bills, payments, complaints, announcements, logs, and notifications.
 ```
 
 Your frontend files are organized into modular CSS and JS directories:
@@ -154,9 +161,9 @@ The app saved data only in the browser using localStorage.
 Now:
 
 ```text
-The app sends data to server.js using fetch().
-server.js receives the request through /api routes.
-server.js saves the record into MySQL.
+The app sends data to the backend using fetch().
+The routes under src/routes receive requests through /api URLs.
+The backend saves the record into MySQL.
 ```
 
 Examples:

@@ -1,5 +1,3 @@
-require('dotenv').config();
-
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
@@ -7,32 +5,32 @@ const crypto = require('crypto');
 const multer = require('multer');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
-const { isEmailConfigured, sendEmail } = require('./emailService');
-
-function isBcryptHash(str) {
-  return typeof str === 'string' && /^\$2[aby]?\$\d{2}\$[./A-Za-z0-9]{53}$/.test(str);
-}
-
-function hashPasswordResetToken(token) {
-  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
-}
-
-function isPasswordResetToken(token) {
-  return typeof token === 'string' && /^[a-f0-9]{64}$/i.test(token);
-}
+const { DB_CONFIG } = require('./config/environment');
+const {
+  PUBLIC_DIR,
+  INDEX_FILE,
+  DATA_DIR,
+  PUBLIC_UPLOAD_DIR,
+  ANNOUNCEMENT_UPLOAD_DIR,
+  BOARD_UPLOAD_DIR,
+  LOSTFOUND_UPLOAD_DIR,
+  PRIVATE_UPLOAD_DIR,
+  PRIVATE_RECEIPT_UPLOAD_DIR,
+  PRIVATE_COMPLAINT_UPLOAD_DIR,
+  PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR,
+  PRIVATE_PROFILE_UPLOAD_DIR,
+  PRIVATE_QRCODE_UPLOAD_DIR,
+} = require('./config/paths');
+const asyncHandler = require('./middleware/asyncHandler');
+const { isEmailConfigured, sendEmail } = require('./services/emailService');
+const { ensureUploadDirectories, moveLegacyPrivateUploads } = require('./services/uploadService');
+const { createHealthController } = require('./controllers/healthController');
+const { createIndexController } = require('./controllers/pageController');
+const { createHealthRoutes } = require('./routes/healthRoutes');
+const { registerPageRoutes } = require('./routes');
+const { isBcryptHash, hashPasswordResetToken, isPasswordResetToken } = require('./utils/security');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
-const DB_CONFIG = {
-  host: process.env.MYSQL_HOST || 'localhost',
-  port: Number(process.env.MYSQL_PORT || 3306),
-  user: process.env.MYSQL_USER || 'root',
-  password: process.env.MYSQL_PASSWORD || '',
-  database: process.env.MYSQL_DATABASE || 'san_alfonso_homes',
-  ssl: (process.env.MYSQL_SSL === 'true' || (process.env.MYSQL_HOST && process.env.MYSQL_HOST !== 'localhost'))
-    ? { rejectUnauthorized: false }
-    : undefined,
-};
 
 let db;
 // Set FILE_ACCESS_SECRET in production so signed file links survive restarts.
@@ -48,33 +46,26 @@ app.use(express.json({ limit: '15mb' }));
 // index.html still uses /public for CSS, JS, and images. Block its upload
 // subtree before the broad static mount so it cannot bypass /uploads rules.
 app.use('/public/uploads', (req, res) => res.status(404).end());
-app.use('/public', express.static(path.join(__dirname, 'public')));
-app.use('/images', express.static(path.join(__dirname, 'public', 'images')));
-app.use('/css', express.static(path.join(__dirname, 'public', 'css')));
-app.use('/js', express.static(path.join(__dirname, 'public', 'js')));
+app.use('/public', express.static(PUBLIC_DIR));
+app.use('/images', express.static(path.join(PUBLIC_DIR, 'images')));
+app.use('/css', express.static(path.join(PUBLIC_DIR, 'css')));
+app.use('/js', express.static(path.join(PUBLIC_DIR, 'js')));
 
 // Public media is deliberately limited to community-facing images and videos.
 // Never add resident profiles, payment QR codes, receipts, complaint evidence,
 // or resident documents to this tree.
-const PUBLIC_UPLOAD_DIR = path.join(__dirname, 'public', 'uploads');
-const ANNOUNCEMENT_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'announcements');
-fs.mkdirSync(ANNOUNCEMENT_UPLOAD_DIR, { recursive: true });
-const BOARD_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'board');
-fs.mkdirSync(BOARD_UPLOAD_DIR, { recursive: true });
-const LOSTFOUND_UPLOAD_DIR = path.join(PUBLIC_UPLOAD_DIR, 'lostfound');
-fs.mkdirSync(LOSTFOUND_UPLOAD_DIR, { recursive: true });
-
 // Private uploads are not served by express.static. They are returned only by
 // the authorization-checked /api/files routes below.
-const PRIVATE_UPLOAD_DIR = path.join(__dirname, 'private_uploads');
-const PRIVATE_RECEIPT_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'receipts');
-const PRIVATE_COMPLAINT_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'complaints');
-const PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'resident-documents');
-const PRIVATE_PROFILE_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'profile-photos');
-const PRIVATE_QRCODE_UPLOAD_DIR = path.join(PRIVATE_UPLOAD_DIR, 'payment-qrcodes');
-for (const directory of [PRIVATE_RECEIPT_UPLOAD_DIR, PRIVATE_COMPLAINT_UPLOAD_DIR, PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR, PRIVATE_PROFILE_UPLOAD_DIR, PRIVATE_QRCODE_UPLOAD_DIR]) {
-  fs.mkdirSync(directory, { recursive: true });
-}
+ensureUploadDirectories([
+  ANNOUNCEMENT_UPLOAD_DIR,
+  BOARD_UPLOAD_DIR,
+  LOSTFOUND_UPLOAD_DIR,
+  PRIVATE_RECEIPT_UPLOAD_DIR,
+  PRIVATE_COMPLAINT_UPLOAD_DIR,
+  PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR,
+  PRIVATE_PROFILE_UPLOAD_DIR,
+  PRIVATE_QRCODE_UPLOAD_DIR,
+]);
 
 // Keep only genuinely public content public. In particular, there is no
 // /uploads/profile, /uploads/qrcodes, /uploads/receipts, or
@@ -86,19 +77,9 @@ for (const [urlPath, directory] of [
 ]) {
   app.use(urlPath, express.static(directory));
 }
-
-function moveLegacyPrivateUploads(legacyDirectory, privateDirectory) {
-  // Existing sensitive files are moved once on startup, so old /uploads URLs
-  // stop working without losing records that still contain their old paths.
-  if (!fs.existsSync(legacyDirectory)) return;
-  for (const entry of fs.readdirSync(legacyDirectory, { withFileTypes: true })) {
-    if (!entry.isFile() || entry.name === '.gitkeep') continue;
-    const source = path.join(legacyDirectory, entry.name);
-    const destination = path.join(privateDirectory, path.basename(entry.name));
-    if (!fs.existsSync(destination)) fs.renameSync(source, destination);
-    else fs.unlinkSync(source);
-  }
-}
+// Built-in board portraits are application assets, not runtime uploads. Keep
+// their historical URLs valid so existing database rows do not need migration.
+app.use('/uploads/board', express.static(path.join(PUBLIC_DIR, 'images', 'board')));
 
 moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'receipts'), PRIVATE_RECEIPT_UPLOAD_DIR);
 moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'complaints'), PRIVATE_COMPLAINT_UPLOAD_DIR);
@@ -209,7 +190,7 @@ function initialAdminUser() {
 
 
 function loadHomeownerSeed() {
-  const seedPath = path.join(__dirname, 'data', 'homeowners.seed.json');
+  const seedPath = path.join(DATA_DIR, 'homeowners.seed.json');
   try {
     const raw = fs.readFileSync(seedPath, 'utf8').replace(/^\uFEFF/, '');
     // Seed records are directory data, never credentials.
@@ -605,12 +586,6 @@ function validateTable(req, res) {
     return null;
   }
   return table;
-}
-
-function asyncHandler(handler) {
-  return (req, res, next) => {
-    Promise.resolve(handler(req, res, next)).catch(next);
-  };
 }
 
 async function saveRecord(table, item) {
@@ -2215,7 +2190,7 @@ app.put('/api/announcements/:id', (req, res) => {
         if (req.body.remove_image === 'true' || req.body.remove_all_images === 'true') {
           for (const imgPath of currentImages) {
             if (imgPath && imgPath.startsWith('/uploads/announcements/')) {
-              const oldFile = path.join(__dirname, 'public', imgPath);
+              const oldFile = path.join(PUBLIC_DIR, imgPath);
               fs.promises.unlink(oldFile).catch(() => {});
             }
           }
@@ -2229,7 +2204,7 @@ app.put('/api/announcements/:id', (req, res) => {
 
           for (const oldImg of currentImages) {
             if (!keptImages.includes(oldImg) && oldImg && oldImg.startsWith('/uploads/announcements/')) {
-              const oldFile = path.join(__dirname, 'public', oldImg);
+              const oldFile = path.join(PUBLIC_DIR, oldImg);
               fs.promises.unlink(oldFile).catch(() => {});
             }
           }
@@ -2298,7 +2273,7 @@ app.delete('/api/announcements/:id', asyncHandler(async (req, res) => {
 
   for (const imgPath of allImages) {
     if (imgPath && imgPath.startsWith('/uploads/announcements/')) {
-      const oldFile = path.join(__dirname, 'public', imgPath);
+      const oldFile = path.join(PUBLIC_DIR, imgPath);
       fs.promises.unlink(oldFile).catch(() => {});
     }
   }
@@ -2671,12 +2646,12 @@ app.put('/api/board/:id', (req, res) => {
 
           // Unlink old photo if custom uploaded
           if (existing.photo && existing.photo.startsWith('/uploads/board/') && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
-            const oldFile = path.join(__dirname, 'public', existing.photo);
+            const oldFile = path.join(PUBLIC_DIR, existing.photo);
             fs.promises.unlink(oldFile).catch(() => {});
           }
         } else if (req.body.remove_photo === 'true') {
           if (existing.photo && existing.photo.startsWith('/uploads/board/') && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
-            const oldFile = path.join(__dirname, 'public', existing.photo);
+            const oldFile = path.join(PUBLIC_DIR, existing.photo);
             fs.promises.unlink(oldFile).catch(() => {});
           }
           photoPath = null;
@@ -2713,7 +2688,7 @@ app.delete('/api/board/:id', asyncHandler(async (req, res) => {
   }
 
   if (existing.photo && existing.photo.startsWith('/uploads/board/') && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
-    const oldFile = path.join(__dirname, 'public', existing.photo);
+    const oldFile = path.join(PUBLIC_DIR, existing.photo);
     fs.promises.unlink(oldFile).catch(() => {});
   }
 
@@ -2721,15 +2696,9 @@ app.delete('/api/board/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.get('/api/health', asyncHandler(async (req, res) => {
-  const row = await get('SELECT COUNT(*) AS users FROM users');
-  res.json({
-    ok: true,
-    database: DB_CONFIG.database,
-    host: DB_CONFIG.host,
-    port: DB_CONFIG.port,
-    users: Number(row.users),
-  });
+app.use('/api', createHealthRoutes({
+  asyncHandler,
+  healthController: createHealthController({ get, databaseConfig: DB_CONFIG }),
 }));
 
 app.get('/api/data', asyncHandler(async (req, res) => {
@@ -5248,7 +5217,7 @@ app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
         } catch {}
       }
       for (const f of filesToDelete) {
-        const filePath = path.join(__dirname, 'public', f);
+        const filePath = path.join(PUBLIC_DIR, f);
         fs.promises.unlink(filePath).catch(() => {});
       }
     }
@@ -5269,39 +5238,20 @@ app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-app.get(['/', '/index.html'], (req, res) => {
-  res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  res.setHeader('Pragma', 'no-cache');
-  res.setHeader('Expires', '0');
-  res.sendFile(path.join(__dirname, 'index.html'));
-});
+registerPageRoutes(app, { indexController: createIndexController(INDEX_FILE) });
 
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ error: 'Server error. Check the VS Code terminal.' });
 });
 
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught Exception:', err);
-});
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
-});
+async function initializeApp() {
+  await ensureDatabase();
+  await createTables();
+  await seedIfEmpty();
+  await migrateLegacyPasswords();
+  await ensureAdminUser();
+  return app;
+}
 
-ensureDatabase()
-  .then(createTables)
-  .then(seedIfEmpty)
-  .then(migrateLegacyPasswords)
-  .then(ensureAdminUser)
-  .then(() => {
-    app.listen(PORT, () => {
-      console.log(`SmartHood is running at http://localhost:${PORT}`);
-      console.log(`MySQL database: ${DB_CONFIG.host}:${DB_CONFIG.port}/${DB_CONFIG.database}`);
-      console.log(isEmailConfigured()
-        ? 'Email notifications: configured'
-        : 'Email notifications: disabled (set SMTP_HOST, SMTP_USER, SMTP_PASS, and EMAIL_FROM)');
-    });
-  })
-  .catch((err) => {
-    console.error('Failed to start server:', err);
-  });
+module.exports = { app, initializeApp, isEmailConfigured };
