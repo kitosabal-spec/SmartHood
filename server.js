@@ -13,6 +13,14 @@ function isBcryptHash(str) {
   return typeof str === 'string' && /^\$2[aby]?\$\d{2}\$[./A-Za-z0-9]{53}$/.test(str);
 }
 
+function hashPasswordResetToken(token) {
+  return crypto.createHash('sha256').update(String(token || '')).digest('hex');
+}
+
+function isPasswordResetToken(token) {
+  return typeof token === 'string' && /^[a-f0-9]{64}$/i.test(token);
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const DB_CONFIG = {
@@ -31,6 +39,8 @@ let db;
 const FILE_ACCESS_SECRET = process.env.FILE_ACCESS_SECRET || crypto.randomBytes(32).toString('hex');
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 const SESSION_COOKIE_NAME = 'smarthood_session';
+const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
+const PASSWORD_RESET_RESPONSE = 'If an active account is registered with that email address, a password reset link has been sent.';
 if (!process.env.FILE_ACCESS_SECRET) console.warn('FILE_ACCESS_SECRET is not set; private file links will expire after a server restart.');
 if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not set; sessions will expire after a server restart.');
 
@@ -550,6 +560,8 @@ function deserializeRow(table, row) {
 
   if (table === 'users') {
     delete output.password;
+    delete output.reset_token_hash;
+    delete output.reset_token_expires_at;
     if (output.role === 'admin') {
       output.permissions = ['*'];
     } else {
@@ -577,6 +589,8 @@ function sanitizeRecord(table, item) {
   if (table !== 'users') return item;
   const output = { ...item };
   delete output.password;
+  delete output.reset_token_hash;
+  delete output.reset_token_expires_at;
   output.status = output.status || 'active';
   return output;
 }
@@ -801,6 +815,8 @@ async function createTables() {
   await run("ALTER TABLE users ADD COLUMN status VARCHAR(32) DEFAULT 'active'").catch(() => {});
   await run('ALTER TABLE users ADD COLUMN mobile VARCHAR(64)').catch(() => {});
   await run('ALTER TABLE users ADD COLUMN homeowner_id VARCHAR(64) NULL').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN reset_token_hash CHAR(64) NULL').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN reset_token_expires_at DATETIME NULL').catch(() => {});
   await run('ALTER TABLE users MODIFY email VARCHAR(255) NULL').catch(() => {});
   await run("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''").catch(() => {});
   await run("UPDATE users SET permissions = '[\"*\"]' WHERE role = 'admin' AND (permissions IS NULL OR permissions = '' OR permissions = '[]')").catch(() => {});
@@ -846,6 +862,7 @@ async function createTables() {
   await run("ALTER TABLE users ADD COLUMN homeowner_email_key VARCHAR(255) GENERATED ALWAYS AS (CASE WHEN role = 'homeowner' THEN LOWER(email) ELSE NULL END) STORED").catch(() => {});
   await run('ALTER TABLE users ADD UNIQUE INDEX idx_users_homeowner_email (homeowner_email_key)').catch(() => {});
   await run('ALTER TABLE users ADD UNIQUE INDEX idx_users_email_unique (email)').catch(() => {});
+  await run('ALTER TABLE users ADD INDEX idx_users_reset_token_hash (reset_token_hash)').catch(() => {});
 
   await run(`CREATE TABLE IF NOT EXISTS billings (
     id VARCHAR(64) PRIMARY KEY,
@@ -2795,6 +2812,109 @@ app.post('/api/login', asyncHandler(async (req, res) => {
   res.cookie(SESSION_COOKIE_NAME, signedSessionToken(user.id), sessionCookieOptions());
   const homeowner = user.homeowner_id ? await get('SELECT * FROM homeowners WHERE id = ?', [user.homeowner_id]) : null;
   res.json(mergeUserWithHomeowner(deserializeRow('users', user), homeowner));
+}));
+
+app.post('/api/forgot-password', asyncHandler(async (req, res) => {
+  const email = String(req.body.email || '').trim().toLowerCase();
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    res.status(400).json({ error: 'Enter a valid email address.' });
+    return;
+  }
+  if (!isEmailConfigured() || !String(process.env.APP_BASE_URL || '').trim()) {
+    res.status(503).json({ error: 'Password reset email is temporarily unavailable. Please contact the administrator.' });
+    return;
+  }
+
+  const user = await get(
+    `SELECT u.id, u.email, u.name, u.username, u.status, h.name AS homeowner_name
+       FROM users u
+       LEFT JOIN homeowners h ON h.id = u.homeowner_id
+      WHERE LOWER(u.email) = ?
+      LIMIT 1`,
+    [email]
+  );
+
+  if (user && user.status !== 'inactive' && user.status !== 'deactivated') {
+    const token = crypto.randomBytes(32).toString('hex');
+    const tokenHash = hashPasswordResetToken(token);
+    const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
+    await run(
+      'UPDATE users SET reset_token_hash = ?, reset_token_expires_at = ? WHERE id = ?',
+      [tokenHash, expiresAt, user.id]
+    );
+
+    try {
+      await sendEmail({
+        to: user.email,
+        homeownerName: user.homeowner_name || user.name || user.username || 'SmartHood user',
+        subject: 'Reset your SmartHood password',
+        title: 'Reset your password',
+        message: 'We received a request to reset your SmartHood password. This secure link expires in 15 minutes. If you did not request this, you can ignore this email.',
+        details: [{ label: 'Link expires', value: '15 minutes after this email was requested' }],
+        actionPath: `?reset_token=${encodeURIComponent(token)}#reset-password`,
+        actionLabel: 'Reset password',
+      });
+    } catch (error) {
+      await run(
+        'UPDATE users SET reset_token_hash = NULL, reset_token_expires_at = NULL WHERE id = ? AND reset_token_hash = ?',
+        [user.id, tokenHash]
+      );
+      console.error(`Password reset email delivery failed for user ${user.id}:`, error.message);
+    }
+  }
+
+  res.json({ ok: true, message: PASSWORD_RESET_RESPONSE });
+}));
+
+app.get('/api/reset-password/validate', asyncHandler(async (req, res) => {
+  const token = String(req.query.token || '').trim();
+  if (!isPasswordResetToken(token)) {
+    res.status(400).json({ error: 'This password reset link is invalid or has expired.' });
+    return;
+  }
+  const user = await get(
+    `SELECT id FROM users
+      WHERE reset_token_hash = ?
+        AND reset_token_expires_at > NOW()
+        AND status NOT IN ('inactive', 'deactivated')
+      LIMIT 1`,
+    [hashPasswordResetToken(token)]
+  );
+  if (!user) {
+    res.status(400).json({ error: 'This password reset link is invalid or has expired.' });
+    return;
+  }
+  res.json({ valid: true });
+}));
+
+app.post('/api/reset-password', asyncHandler(async (req, res) => {
+  const token = String(req.body.token || '').trim();
+  const newPassword = String(req.body.newPassword || '').trim();
+  if (!isPasswordResetToken(token)) {
+    res.status(400).json({ error: 'This password reset link is invalid or has expired.' });
+    return;
+  }
+  if (newPassword.length < 12) {
+    res.status(400).json({ error: 'Password must be at least 12 characters long.' });
+    return;
+  }
+
+  const passwordHash = await bcrypt.hash(newPassword, 10);
+  const result = await run(
+    `UPDATE users
+        SET password = ?, reset_token_hash = NULL, reset_token_expires_at = NULL
+      WHERE reset_token_hash = ?
+        AND reset_token_expires_at > NOW()
+        AND status NOT IN ('inactive', 'deactivated')`,
+    [passwordHash, hashPasswordResetToken(token)]
+  );
+  if (result.affectedRows !== 1) {
+    res.status(400).json({ error: 'This password reset link is invalid or has expired.' });
+    return;
+  }
+
+  res.clearCookie(SESSION_COOKIE_NAME, sessionCookieOptions());
+  res.json({ ok: true, message: 'Your password has been reset. You can now sign in with your new password.' });
 }));
 
 app.post('/api/logout', (req, res) => {

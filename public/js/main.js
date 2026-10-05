@@ -13,6 +13,7 @@ let pendingPostLoginView = null;
 let pendingPaymentSubmission = null;
 let notificationRefreshTimer = null;
 let sidebarBadgeRefreshPending = false;
+let activePasswordResetToken = null;
 
 const ROLES = { ADMIN: 'admin', HOMEOWNER: 'homeowner' };
 const COMPLAINT_STATUSES = ['Reviewed', 'In Progress', 'Resolved', 'Rejected'];
@@ -244,6 +245,24 @@ const api = {
     return this.request('/api/login', {
       method: 'POST',
       body: JSON.stringify({ email: username, password }),
+    });
+  },
+
+  async forgotPassword(email) {
+    return this.request('/api/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  },
+
+  async validatePasswordResetToken(token) {
+    return this.request(`/api/reset-password/validate?token=${encodeURIComponent(token)}`);
+  },
+
+  async resetPassword(token, newPassword) {
+    return this.request('/api/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, newPassword }),
     });
   },
 
@@ -565,6 +584,140 @@ function showLoginError(msg) {
   if (!el) return;
   el.textContent = msg;
   el.classList.remove('hidden');
+}
+
+function setAuthPanel(panelName) {
+  const panels = {
+    login: document.getElementById('authPanelLogin'),
+    forgot: document.getElementById('authPanelForgot'),
+    reset: document.getElementById('authPanelReset'),
+  };
+  Object.entries(panels).forEach(([name, panel]) => panel?.classList.toggle('hidden', name !== panelName));
+  const subtitle = document.getElementById('authModalSubtitle');
+  if (subtitle) {
+    subtitle.textContent = panelName === 'forgot'
+      ? 'Recover your account'
+      : panelName === 'reset'
+        ? 'Create a new password'
+        : 'Please sign in to continue';
+  }
+}
+
+function showAuthMessage(elementId, message, isSuccess = false) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  element.textContent = message;
+  element.classList.toggle('auth-success', isSuccess);
+  element.classList.remove('hidden');
+}
+
+function clearAuthMessage(elementId) {
+  const element = document.getElementById(elementId);
+  if (!element) return;
+  element.textContent = '';
+  element.classList.remove('auth-success');
+  element.classList.add('hidden');
+}
+
+function openForgotPassword() {
+  setAuthPanel('forgot');
+  clearAuthMessage('forgotPasswordMessage');
+  const loginEmail = document.getElementById('loginUser')?.value.trim() || '';
+  const emailInput = document.getElementById('forgotPasswordEmail');
+  if (emailInput) {
+    emailInput.value = loginEmail;
+    setTimeout(() => emailInput.focus(), 50);
+  }
+}
+
+function showLoginPanel() {
+  activePasswordResetToken = null;
+  setAuthPanel('login');
+  clearAuthMessage('loginError');
+  const emailInput = document.getElementById('loginUser');
+  setTimeout(() => emailInput?.focus(), 50);
+}
+
+async function handleForgotPassword() {
+  const emailInput = document.getElementById('forgotPasswordEmail');
+  const email = emailInput?.value.trim() || '';
+  clearAuthMessage('forgotPasswordMessage');
+  if (!email) {
+    showAuthMessage('forgotPasswordMessage', 'Enter your registered email address.');
+    return;
+  }
+
+  const button = document.querySelector('#authPanelForgot .btn-login');
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  try {
+    const result = await api.forgotPassword(email);
+    showAuthMessage('forgotPasswordMessage', result.message, true);
+  } catch (error) {
+    showAuthMessage('forgotPasswordMessage', error.message || 'Unable to send the reset link. Please try again.');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+async function openSelfServiceResetPasswordModal(token) {
+  activePasswordResetToken = token;
+  setAuthPanel('reset');
+  clearAuthMessage('resetPasswordMessage');
+  const fields = document.getElementById('resetPasswordFields');
+  if (fields) fields.classList.remove('hidden');
+  for (const id of ['resetPasswordNew', 'resetPasswordConfirm']) {
+    const input = document.getElementById(id);
+    if (input) input.value = '';
+  }
+  document.getElementById('loginModal')?.classList.remove('hidden');
+  document.body.style.overflow = 'hidden';
+
+  try {
+    await api.validatePasswordResetToken(token);
+    document.getElementById('resetPasswordNew')?.focus();
+  } catch (error) {
+    if (fields) fields.classList.add('hidden');
+    showAuthMessage('resetPasswordMessage', error.message || 'This password reset link is invalid or has expired.');
+  }
+}
+
+async function handleResetPassword() {
+  const fields = document.getElementById('resetPasswordFields');
+  if (!fields || fields.classList.contains('hidden')) return;
+  const newPassword = document.getElementById('resetPasswordNew')?.value || '';
+  const confirmPassword = document.getElementById('resetPasswordConfirm')?.value || '';
+  clearAuthMessage('resetPasswordMessage');
+  if (newPassword.length < 12) {
+    showAuthMessage('resetPasswordMessage', 'Password must be at least 12 characters long.');
+    return;
+  }
+  if (newPassword !== confirmPassword) {
+    showAuthMessage('resetPasswordMessage', 'The passwords do not match.');
+    return;
+  }
+
+  const button = document.querySelector('#resetPasswordFields .btn-login');
+  if (button?.disabled) return;
+  if (button) button.disabled = true;
+  try {
+    const result = await api.resetPassword(activePasswordResetToken, newPassword);
+    fields.classList.add('hidden');
+    showAuthMessage('resetPasswordMessage', result.message, true);
+    activePasswordResetToken = null;
+  } catch (error) {
+    showAuthMessage('resetPasswordMessage', error.message || 'Unable to reset your password. Please request a new link.');
+  } finally {
+    if (button) button.disabled = false;
+  }
+}
+
+function returnToLoginFromReset() {
+  activePasswordResetToken = null;
+  try {
+    window.history.replaceState({ auth: false, modal: 'login' }, '', `${window.location.pathname}#login`);
+  } catch {}
+  showLoginPanel();
 }
 
 function restoreSession() {
@@ -3858,7 +4011,11 @@ document.addEventListener('keydown', e => {
   }
   if (e.key === 'Enter') {
     const lm = document.getElementById('loginModal');
-    if (lm && !lm.classList.contains('hidden')) handleLogin();
+    if (lm && !lm.classList.contains('hidden')) {
+      if (!document.getElementById('authPanelReset')?.classList.contains('hidden')) handleResetPassword();
+      else if (!document.getElementById('authPanelForgot')?.classList.contains('hidden')) handleForgotPassword();
+      else handleLogin();
+    }
   }
 });
 
@@ -3903,13 +4060,15 @@ window.addEventListener('touchmove', () => { isManualPubScrolling = false; }, { 
 
 function openLoginModal(role) {
   currentRole = role || null;
+  activePasswordResetToken = null;
+  setAuthPanel('login');
   const lu = document.getElementById('loginUser');
   const lp = document.getElementById('loginPass');
   const le = document.getElementById('loginError');
   if (lu) lu.value = '';
   if (lp) lp.value = '';
   if (le) le.classList.add('hidden');
-  if (lu) lu.placeholder = 'Enter your username';
+  if (lu) lu.placeholder = 'Enter your email address';
   document.getElementById('loginModal').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
   try {
@@ -3932,10 +4091,14 @@ function closeLoginModal() {
   if (lp) lp.value = '';
   document.body.style.overflow = '';
   try {
-    if (window.location.hash === '#login') {
-      window.history.replaceState({ auth: false }, '', window.location.pathname);
+    const url = new URL(window.location.href);
+    if (url.hash === '#login' || url.hash === '#reset-password' || url.searchParams.has('reset_token')) {
+      url.searchParams.delete('reset_token');
+      url.hash = '';
+      window.history.replaceState({ auth: false }, '', `${url.pathname}${url.search}`);
     }
   } catch {}
+  activePasswordResetToken = null;
 }
 
 function closeLoginModalOutside(e) {
@@ -4142,6 +4305,17 @@ async function init() {
   applyStoredTheme();
 
   const currentHash = (window.location.hash || '').replace(/^#/, '');
+  const passwordResetToken = new URLSearchParams(window.location.search).get('reset_token');
+
+  if (passwordResetToken || currentHash === 'reset-password') {
+    currentUser = null;
+    currentRole = null;
+    document.getElementById('appShell').classList.add('hidden');
+    showLandingPage();
+    await openSelfServiceResetPasswordModal(passwordResetToken || '');
+    finishStartup();
+    return;
+  }
 
   if (restoreSession()) {
     const isPublicOnlyHash = (currentHash === 'hero' || currentHash === 'about' || currentHash === 'contact' || currentHash === 'login');

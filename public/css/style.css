@@ -1031,6 +1031,34 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.
   font-size: 0.88rem; margin-bottom: 14px;
   border-left: 3px solid var(--red-600);
 }
+.login-error.auth-success {
+  background: var(--teal-50);
+  color: var(--teal-700);
+  border-left-color: var(--teal-600);
+}
+.auth-panel-copy {
+  margin: 0 0 18px;
+  color: var(--text-2);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+.forgot-password-link,
+.auth-back-link {
+  display: block;
+  width: fit-content;
+  border: 0;
+  background: none;
+  color: var(--teal-600);
+  cursor: pointer;
+  font-size: 0.84rem;
+  font-weight: 600;
+  padding: 0;
+}
+.forgot-password-link { margin: -6px 0 14px auto; }
+.auth-back-link { margin: 18px auto 0; }
+.forgot-password-link:hover,
+.auth-back-link:hover { color: var(--teal-700); text-decoration: underline; }
+.btn-login:disabled { opacity: 0.65; cursor: wait; transform: none; }
 .login-hint {
   margin-top: 18px; padding: 12px;
   background: var(--teal-50);
@@ -4199,6 +4227,12 @@ input[type="date"].filter-select {
   border: 1px solid rgba(239, 68, 68, 0.3);
   border-left: 3px solid var(--red-600);
   color: #fca5a5;
+}
+[data-theme="dark"] .login-error.auth-success {
+  background: rgba(24, 134, 141, 0.12);
+  border-color: rgba(45, 212, 191, 0.28);
+  border-left-color: var(--teal-500);
+  color: #99f6e4;
 }
 
 /* Modals */
