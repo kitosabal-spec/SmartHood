@@ -138,8 +138,8 @@
   #landingPage .pub-nav-brand { gap: 7px; }
   #landingPage .pub-brand-name { font-size: .9rem; }
   #landingPage .pub-brand-tag { font-size: .58rem; }
-  #landingPage .pub-nav-logo { width: 32px; height: 36px; }
-  #landingPage .pub-nav-logo-img { height: 34px; max-width: 36px; }
+  #landingPage .pub-nav-logo { width: 28px; height: 28px; }
+  #landingPage .pub-nav-logo-img { height: 26px; max-width: 34px; }
   #landingPage .pub-nav-actions { gap: 4px; }
   #landingPage .pub-login-btn { padding: 10px 12px; font-size: .78rem; }
   #landingPage .pub-login-btn .btn-ico { display: none; }
