@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="public/css/lost-found.css" />
   <link rel="stylesheet" href="public/css/profile.css" />
   <link rel="stylesheet" href="public/css/board-of-directors.css" />
+  <link rel="stylesheet" href="public/css/landing.css?v=5" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -277,10 +278,13 @@
       </div>
 
       <div class="pub-nav-actions">
+        <button type="button" class="pub-theme-toggle" id="pubThemeToggle" onclick="toggleDarkMode()" aria-label="Switch to dark mode" title="Switch to dark mode">
+          <svg width="20" height="20" aria-hidden="true"><use href="#ico-moon"/></svg>
+        </button>
         <button class="pub-login-btn pub-homeowner-btn" onclick="openLoginModal()">
           <svg class="btn-ico"><use href="#ico-home"/></svg> Login
         </button>
-        <button class="pub-hamburger" id="pubHamburger" onclick="togglePubNav()">
+        <button class="pub-hamburger" id="pubHamburger" onclick="togglePubNav()" aria-label="Open navigation" aria-expanded="false" aria-controls="pubMobileNav">
           <span></span><span></span><span></span>
         </button>
       </div>
@@ -314,36 +318,33 @@
   </div>
 
   <!-- ── HERO ── -->
-  <section class="pub-hero" id="hero">
-    <div class="pub-hero-img-bg"></div>
-    <div class="pub-hero-overlay"></div>
-    <div class="pub-hero-texture"></div>
-
+  <section class="pub-home" id="hero">
+  <div class="pub-hero">
     <div class="pub-hero-content">
       <div class="pub-hero-badge">
         <svg class="btn-ico"><use href="#ico-map-pin"/></svg>
-        Pacol, Naga City, Camarines Sur, Philippines
+        Pacol, Naga City &middot; Camarines Sur
       </div>
-      <h1 class="pub-hero-title">Welcome to<br/>San Alfonso Homes</h1>
+      <h1 class="pub-hero-title"><span class="pub-hero-welcome">Welcome to</span>San Alfonso<br/>Homes.</h1>
       <p class="pub-hero-sub">A safe, vibrant, and well-managed community in the heart of Pacol. Your home, our commitment.</p>
       <div class="pub-hero-btns">
-        <button class="pub-btn-cta" onclick="pubScrollTo(event,'lostfound')">
-          <svg class="btn-ico"><use href="#ico-search"/></svg> View Lost &amp; Found
+        <button class="pub-btn-cta" onclick="pubScrollTo(event,'announcements')">
+          Announcements <svg class="btn-ico"><use href="#ico-arrow-right"/></svg>
         </button>
-        <button class="pub-btn-secondary" onclick="pubScrollTo(event,'announcements')">
-          <svg class="btn-ico"><use href="#ico-megaphone"/></svg> View Announcements
+        <button class="pub-btn-secondary" onclick="pubScrollTo(event,'lostfound')">
+          <svg class="btn-ico"><use href="#ico-search"/></svg> Lost &amp; Found
         </button>
       </div>
      
     </div>
-    <div class="pub-hero-scroll" onclick="pubScrollTo(event,'announcements')">
-      <span>Scroll Down</span>
-      <div class="pub-scroll-arrow">&#8595;</div>
-    </div>
-  </section>
+    <figure class="pub-hero-photo">
+      <img src="public/images/IMG Sat.png" alt="San Alfonso Homes entrance sign surrounded by greenery" width="1543" height="613" fetchpriority="high">
+      <figcaption><span>Our neighborhood</span><span>San Alfonso Homes, Pacol</span></figcaption>
+    </figure>
+  </div>
 
-  <!-- ── QUICK STATS BAND ── -->
-  <section class="pub-band">
+  <!-- Amenities are part of the full-screen Home section. -->
+  <div class="pub-band">
     <div class="pub-band-inner">
       <div class="pub-band-item">
         <svg class="band-ico"><use href="#ico-shield"/></svg><span>24/7 Security</span>
@@ -364,6 +365,7 @@
         <svg class="band-ico"><use href="#ico-droplet"/></svg><span>Reliable Water Supply</span>
       </div>
     </div>
+  </div>
   </section>
 
   <!-- ── ANNOUNCEMENTS ── -->

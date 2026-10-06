@@ -3972,6 +3972,16 @@ function handleProfileLogout(e) {
   handleLogout();
 }
 
+function updatePublicThemeToggle() {
+  const button = document.getElementById('pubThemeToggle');
+  if (!button) return;
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  const label = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  button.querySelector('use').setAttribute('href', isDark ? '#ico-sun' : '#ico-moon');
+}
+
 function toggleDarkMode() {
   const html = document.documentElement;
   const isDark = html.dataset.theme === 'dark';
@@ -3984,6 +3994,7 @@ function toggleDarkMode() {
   const toggleEl = document.getElementById('darkToggle');
   if (toggleEl) toggleEl.checked = !isDark;
   updateProfileDarkModeUI();
+  updatePublicThemeToggle();
 }
 
 function applyStoredTheme() {
@@ -3994,6 +4005,7 @@ function applyStoredTheme() {
   if (icon) { icon.innerHTML = t === 'dark' ? '<use href="#ico-sun"/>' : '<use href="#ico-moon"/>'; icon.setAttribute('width','16'); icon.setAttribute('height','16'); }
   if (label) label.textContent = t === 'dark' ? 'Light Mode' : 'Dark Mode';
   updateProfileDarkModeUI();
+  updatePublicThemeToggle();
 }
 
 
@@ -4198,8 +4210,22 @@ function scrollToTopDashboard() {
 
 function togglePubNav() {
   const mn = document.getElementById('pubMobileNav');
-  if (mn) mn.classList.toggle('hidden');
+  const trigger = document.getElementById('pubHamburger');
+  if (!mn) return;
+  const isOpen = !mn.classList.toggle('hidden');
+  if (trigger) {
+    trigger.setAttribute('aria-expanded', String(isOpen));
+    trigger.setAttribute('aria-label', isOpen ? 'Close navigation' : 'Open navigation');
+  }
 }
+
+document.addEventListener('keydown', (event) => {
+  const menu = document.getElementById('pubMobileNav');
+  if (event.key === 'Escape' && menu && !menu.classList.contains('hidden')) {
+    togglePubNav();
+    document.getElementById('pubHamburger')?.focus();
+  }
+});
 
 
 function updateHeroStat() {
