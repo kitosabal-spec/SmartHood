@@ -17,6 +17,7 @@
   <link rel="stylesheet" href="public/css/profile.css" />
   <link rel="stylesheet" href="public/css/board-of-directors.css" />
   <link rel="stylesheet" href="public/css/landing.css?v=9" />
+  <link rel="stylesheet" href="public/css/legal.css?v=1.0.0" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -513,6 +514,11 @@
   <footer class="pub-footer">
       <div style="color:#e0f5f6;font-weight:100;font-size:1rem" class="pub-footer-bottom">
         <p>&#169; 2025 San Alfonso Homes HOA. All rights reserved.</p>
+        <nav class="legal-link-row" aria-label="Legal information">
+          <a href="/terms-and-conditions" onclick="openLegalPage('terms', event)">Terms &amp; Conditions</a>
+          <span aria-hidden="true">|</span>
+          <a href="/privacy-policy" onclick="openLegalPage('privacy', event)">Privacy Policy</a>
+        </nav>
       </div>
   </footer>
 
@@ -557,6 +563,11 @@
           <span>Sign In</span>
           <svg width="18" height="18"><use href="#ico-arrow-right"/></svg>
         </button>
+        <nav class="auth-legal-links" aria-label="Legal information">
+          <a href="/terms-and-conditions" onclick="openLegalPage('terms', event)">Terms &amp; Conditions</a>
+          <span aria-hidden="true">|</span>
+          <a href="/privacy-policy" onclick="openLegalPage('privacy', event)">Privacy Policy</a>
+        </nav>
       </div>
 
       <div id="authPanelForgot" class="hidden">
@@ -688,6 +699,25 @@
   </div>
 </div>
 
+<!-- PUBLIC AND AUTHENTICATED LEGAL PAGE -->
+<section id="legalPage" class="legal-page hidden" aria-hidden="true">
+  <header class="legal-page-header">
+    <div class="legal-page-header-inner">
+      <a href="/" class="legal-brand" onclick="closeLegalPage(event)" aria-label="Return to SmartHood">
+        <img src="public/images/SH Logo.png" alt="" class="legal-brand-logo">
+        <span><strong>SmartHood</strong><small>San Alfonso Homes Portal</small></span>
+      </a>
+      <button type="button" class="btn btn-secondary btn-sm legal-back-button" onclick="closeLegalPage(event)">
+        <svg width="15" height="15" aria-hidden="true"><use href="#ico-arrow-right"/></svg>
+        Back
+      </button>
+    </div>
+  </header>
+  <main class="legal-page-main">
+    <article class="legal-document" id="legalDocument" tabindex="-1"></article>
+  </main>
+</section>
+
 <!-- GLOBAL MODAL -->
 <div class="modal-overlay hidden" id="modalOverlay" onclick="closeModalOutside(event)">
   <div class="modal" id="modal">
@@ -811,7 +841,8 @@
   <div class="spinner"></div>
 </div>
 
-  <script src="public/js/main.js?v=2.4.0"></script>
+  <script src="public/js/legal.js?v=1.0.0"></script>
+  <script src="public/js/main.js?v=2.5.0"></script>
   <script src="public/js/dashboard.js?v=2.2.0"></script>
   <script src="public/js/announcements.js"></script>
   <script src="public/js/residents.js"></script>

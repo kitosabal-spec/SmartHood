@@ -39,6 +39,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toSt
 const SESSION_COOKIE_NAME = 'smarthood_session';
 const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_RESPONSE = 'If an active account is registered with that email address, a password reset link has been sent.';
+const LEGAL_POLICY_VERSION = '2026-10-06';
 if (!process.env.FILE_ACCESS_SECRET) console.warn('FILE_ACCESS_SECRET is not set; private file links will expire after a server restart.');
 if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not set; sessions will expire after a server restart.');
 
@@ -88,7 +89,7 @@ moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'qrcodes'), PRIVATE_QRCODE
 
 const tableConfig = {
   users: {
-    columns: ['id', 'username', 'password', 'role', 'name', 'email', 'mobile', 'homeowner_id', 'block', 'lot', 'lotArea', 'contact', 'balance', 'profile_photo', 'permissions', 'status'],
+    columns: ['id', 'username', 'password', 'role', 'name', 'email', 'mobile', 'homeowner_id', 'block', 'lot', 'lotArea', 'contact', 'balance', 'profile_photo', 'permissions', 'status', 'terms_accepted_at', 'terms_version', 'privacy_acknowledged_at', 'privacy_version', 'legal_consent_recorded_by'],
     jsonColumns: ['permissions'],
     booleanColumns: [],
   },
@@ -792,6 +793,11 @@ async function createTables() {
   await run('ALTER TABLE users ADD COLUMN homeowner_id VARCHAR(64) NULL').catch(() => {});
   await run('ALTER TABLE users ADD COLUMN reset_token_hash CHAR(64) NULL').catch(() => {});
   await run('ALTER TABLE users ADD COLUMN reset_token_expires_at DATETIME NULL').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN terms_accepted_at DATETIME NULL').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN terms_version VARCHAR(32) NULL').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN privacy_acknowledged_at DATETIME NULL').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN privacy_version VARCHAR(32) NULL').catch(() => {});
+  await run('ALTER TABLE users ADD COLUMN legal_consent_recorded_by VARCHAR(64) NULL').catch(() => {});
   await run('ALTER TABLE users MODIFY email VARCHAR(255) NULL').catch(() => {});
   await run("UPDATE users SET status = 'active' WHERE status IS NULL OR status = ''").catch(() => {});
   await run("UPDATE users SET permissions = '[\"*\"]' WHERE role = 'admin' AND (permissions IS NULL OR permissions = '' OR permissions = '[]')").catch(() => {});
@@ -4727,12 +4733,16 @@ app.post('/api/homeowners/:id/account', asyncHandler(async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   const mobile = String(req.body.mobile || '').trim();
   const password = String(req.body.password || '').trim();
+  const policyVersion = String(req.body.policyVersion || '').trim();
   if (!email || !mobile || !password) {
     return res.status(400).json({ error: 'Email Address, Mobile Number, and Initial Password are required.' });
   }
   if (!isValidEmailAddress(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
   if (!isValidMobileNumber(mobile)) return res.status(400).json({ error: 'Enter a valid mobile number.' });
   if (password.length < 12) return res.status(400).json({ error: 'Password must be at least 12 characters long.' });
+  if (req.body.termsAccepted !== true || req.body.privacyAcknowledged !== true || policyVersion !== LEGAL_POLICY_VERSION) {
+    return res.status(400).json({ error: 'The current Terms & Conditions and Privacy Policy must be accepted before registration.' });
+  }
 
   const duplicateEmail = await get('SELECT id FROM users WHERE LOWER(email) = LOWER(?)', [email]);
   if (duplicateEmail) return res.status(409).json({ error: 'Email address is already registered.' });
@@ -4741,9 +4751,11 @@ app.post('/api/homeowners/:id/account', asyncHandler(async (req, res) => {
   const hashedPassword = await bcrypt.hash(password, 10);
   try {
     await run(
-      `INSERT INTO users (id, username, password, role, name, email, mobile, homeowner_id, permissions, status)
-       VALUES (?, NULL, ?, 'homeowner', NULL, ?, ?, ?, ?, 'active')`,
-      [accountId, hashedPassword, email, mobile, homeowner.id, JSON.stringify(['resident'])]
+      `INSERT INTO users (
+         id, username, password, role, name, email, mobile, homeowner_id, permissions, status,
+         terms_accepted_at, terms_version, privacy_acknowledged_at, privacy_version, legal_consent_recorded_by
+       ) VALUES (?, NULL, ?, 'homeowner', NULL, ?, ?, ?, ?, 'active', NOW(), ?, NOW(), ?, ?)`,
+      [accountId, hashedPassword, email, mobile, homeowner.id, JSON.stringify(['resident']), policyVersion, policyVersion, admin.id]
     );
     await run('UPDATE homeowners SET contact = ?, updated_at = ? WHERE id = ?', [mobile, new Date().toISOString(), homeowner.id]);
   } catch (error) {
@@ -4751,7 +4763,7 @@ app.post('/api/homeowners/:id/account', asyncHandler(async (req, res) => {
     throw error;
   }
 
-  await recordAuditLog(`Registered SmartHood account for homeowner ${homeowner.name} (${homeowner.id})`, admin.id);
+  await recordAuditLog(`Registered SmartHood account for homeowner ${homeowner.name} (${homeowner.id}) with legal policy version ${policyVersion}`, admin.id);
   res.status(201).json({
     id: accountId,
     homeowner_id: homeowner.id,

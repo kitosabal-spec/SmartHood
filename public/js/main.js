@@ -2499,6 +2499,19 @@ function renderSettings() {
   </div>
 
   <div class="settings-section">
+    <div class="settings-section-header"><h4>Privacy &amp; Legal</h4></div>
+    <div class="settings-section-body">
+      <div class="settings-row">
+        <div><div class="settings-label">SmartHood policies</div><div style="font-size:0.78rem;color:var(--text-3)">Review the current legal terms and privacy practices.</div></div>
+        <nav class="privacy-legal-links" aria-label="Privacy and legal documents">
+          <a href="/terms-and-conditions" onclick="openLegalPage('terms', event)">Terms &amp; Conditions</a>
+          <a href="/privacy-policy" onclick="openLegalPage('privacy', event)">Privacy Policy</a>
+        </nav>
+      </div>
+    </div>
+  </div>
+
+  <div class="settings-section">
     <div class="settings-section-header"><h4>Danger Zone</h4></div>
     <div class="settings-section-body">
       <div class="settings-row">
@@ -4343,6 +4356,7 @@ async function init() {
   applyStoredTheme();
 
   const currentHash = (window.location.hash || '').replace(/^#/, '');
+  const startupLegalPage = typeof legalPageFromPath === 'function' ? legalPageFromPath() : null;
   const passwordResetToken = new URLSearchParams(window.location.search).get('reset_token');
 
   if (passwordResetToken || currentHash === 'reset-password') {
@@ -4360,6 +4374,7 @@ async function init() {
     const targetView = (!isPublicOnlyHash && currentHash && canAccessView(currentHash)) ? currentHash : null;
     document.getElementById('landingPage').classList.add('hidden');
     initApp(targetView);
+    if (startupLegalPage) openLegalPage(startupLegalPage, null, { pushHistory: false });
     finishStartup();
   } else {
     currentUser = null;
@@ -4371,6 +4386,13 @@ async function init() {
     document.getElementById('appShell').classList.add('hidden');
 
     showLandingPage();
+
+    if (startupLegalPage) {
+      closeLoginModal();
+      openLegalPage(startupLegalPage, null, { pushHistory: false });
+      finishStartup();
+      return;
+    }
 
     if (!currentHash || currentHash === 'hero' || PUBLIC_LANDING_SECTIONS.has(currentHash)) {
       // Clean site visit, hero section, or public landing section:
@@ -4405,6 +4427,13 @@ async function init() {
 
 // Intercept browser Back/Forward navigation
 window.addEventListener('popstate', () => {
+  const requestedLegalPage = typeof legalPageFromPath === 'function' ? legalPageFromPath() : null;
+  if (requestedLegalPage) {
+    openLegalPage(requestedLegalPage, null, { pushHistory: false });
+    return;
+  }
+  if (typeof hideLegalPage === 'function') hideLegalPage();
+
   if (!restoreSession()) {
     const hash = (window.location.hash || '').replace(/^#/, '');
     if (hash === 'login') {

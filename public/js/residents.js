@@ -260,6 +260,10 @@ function openRegisterAccountModal(id) {
     <div class="form-group"><label>Mobile Number *</label><input id="ra_mobile" inputmode="tel" value="${escapeHtml(homeowner.contact || '')}" placeholder="e.g. 09171234567"/></div>
     <div class="form-group"><label>Initial Password *</label><input id="ra_password" type="password" placeholder="Minimum 12 characters" autocomplete="new-password"/></div>
     <small style="color:var(--text-3)">The email address becomes the homeowner's login ID. The password is hashed and will never be displayed.</small>
+    <label class="legal-consent" for="ra_legal_consent">
+      <input id="ra_legal_consent" type="checkbox"/>
+      <span class="legal-consent-copy">I confirm that the homeowner has been given an opportunity to read and has agreed to the <a href="/terms-and-conditions" onclick="openLegalPage('terms', event)">Terms &amp; Conditions</a> and acknowledges the <a href="/privacy-policy" onclick="openLegalPage('privacy', event)">Privacy Policy</a>.</span>
+    </label>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
     { label: 'Register Account', cls: 'btn-primary', action: () => registerHomeownerAccount(id) },
@@ -270,6 +274,7 @@ async function registerHomeownerAccount(id) {
   const email = (document.getElementById('ra_email')?.value || '').trim().toLowerCase();
   const mobile = (document.getElementById('ra_mobile')?.value || '').trim();
   const password = (document.getElementById('ra_password')?.value || '').trim();
+  const legalConsent = Boolean(document.getElementById('ra_legal_consent')?.checked);
   if (!email || !mobile || !password) {
     showToast('error', 'Missing Fields', 'Email Address, Mobile Number, and Initial Password are required.');
     return;
@@ -286,9 +291,20 @@ async function registerHomeownerAccount(id) {
     showToast('error', 'Weak Password', 'Initial Password must be at least 12 characters.');
     return;
   }
+  if (!legalConsent) {
+    showToast('error', 'Consent Required', 'The Terms & Conditions and Privacy Policy must be accepted before registration.');
+    return;
+  }
   showLoading();
   try {
-    await api.registerHomeownerAccount(id, { email, mobile, password });
+    await api.registerHomeownerAccount(id, {
+      email,
+      mobile,
+      password,
+      termsAccepted: true,
+      privacyAcknowledged: true,
+      policyVersion: window.LEGAL_POLICY_VERSION,
+    });
     await api.loadAll();
     closeModal();
     hideLoading();

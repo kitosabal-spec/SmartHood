@@ -460,6 +460,18 @@ function renderHOProfile() {
       </div>
       <button class="btn btn-primary btn-sm" onclick="confirmSaveHOPassword()">Update Password</button>
     </div>
+  </div>
+  <div class="settings-section">
+    <div class="settings-section-header"><h4>Privacy &amp; Legal</h4></div>
+    <div class="settings-section-body">
+      <div class="settings-row">
+        <div><div class="settings-label">SmartHood policies</div><div style="font-size:0.78rem;color:var(--text-3)">Review the rules for using SmartHood and how personal information is handled.</div></div>
+        <nav class="privacy-legal-links" aria-label="Privacy and legal documents">
+          <a href="/terms-and-conditions" onclick="openLegalPage('terms', event)">Terms &amp; Conditions</a>
+          <a href="/privacy-policy" onclick="openLegalPage('privacy', event)">Privacy Policy</a>
+        </nav>
+      </div>
+    </div>
   </div>`;
 }
 
