@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="public/css/lost-found.css" />
   <link rel="stylesheet" href="public/css/profile.css" />
   <link rel="stylesheet" href="public/css/board-of-directors.css" />
-  <link rel="stylesheet" href="public/css/landing.css?v=5" />
+  <link rel="stylesheet" href="public/css/landing.css?v=8" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -631,10 +631,13 @@
       </button>
       <div class="topbar-title" id="topbarTitle">Dashboard</div>
       <div class="topbar-actions">
-        <div class="notif-bell" id="notifBellBtn" onclick="toggleNotifPanel()">
+        <button type="button" class="topbar-theme-toggle" id="topbarThemeToggle" onclick="toggleDarkMode()" aria-label="Switch to dark mode" title="Switch to dark mode">
+          <svg width="20" height="20" aria-hidden="true"><use href="#ico-moon"/></svg>
+        </button>
+        <button type="button" class="notif-bell" id="notifBellBtn" onclick="toggleNotifPanel()" aria-label="Notifications" title="Notifications">
           <svg width="20" height="20"><use href="#ico-bell"/></svg>
           <span class="notif-badge hidden" id="notifBadge"></span>
-        </div>
+        </button>
         <div class="topbar-user-menu" id="topbarUserMenu">
           <button type="button" class="topbar-user-btn" id="topbarUserBtn" onclick="toggleProfileDropdown(event)" aria-expanded="false" aria-haspopup="true" title="User Menu">
             <div class="topbar-avatar-wrapper">

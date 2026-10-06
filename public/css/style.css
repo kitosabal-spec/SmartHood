@@ -1469,15 +1469,44 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.
   flex: 1;
 }
 .topbar-actions { display: flex; align-items: center; gap: 12px; position: relative; }
+.topbar-theme-toggle,
 .notif-bell {
-  position: relative;
-  font-size: 1.15rem;
-  cursor: pointer;
-  padding: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  color: var(--text-2);
+  border: 0;
   border-radius: var(--radius-sm);
-  transition: background var(--transition);
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: background var(--transition), color var(--transition), transform var(--transition);
+  user-select: none;
+  flex-shrink: 0;
+  line-height: 1;
 }
-.notif-bell:hover { background: var(--bg); }
+.topbar-theme-toggle svg,
+.notif-bell svg {
+  display: block;
+  flex-shrink: 0;
+}
+.topbar-theme-toggle:hover,
+.notif-bell:hover {
+  background: var(--bg);
+  color: var(--text);
+}
+.topbar-theme-toggle:active,
+.notif-bell:active {
+  transform: scale(0.95);
+}
+.topbar-theme-toggle:focus-visible,
+.notif-bell:focus-visible {
+  outline: 2px solid var(--teal-500);
+  outline-offset: 2px;
+}
 .notif-badge {
   position: absolute; top: 2px; right: 2px;
   background: var(--red-600);
@@ -4323,8 +4352,10 @@ input[type="date"].filter-select {
   background: var(--teal-600);
   color: #ffffff;
 }
+[data-theme="dark"] .topbar-theme-toggle:hover,
 [data-theme="dark"] .notif-bell:hover {
   background: var(--surface-2);
+  color: var(--text);
 }
 [data-theme="dark"] .notif-panel {
   background: var(--surface);

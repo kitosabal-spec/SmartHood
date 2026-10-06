@@ -3982,6 +3982,16 @@ function updatePublicThemeToggle() {
   button.querySelector('use').setAttribute('href', isDark ? '#ico-sun' : '#ico-moon');
 }
 
+function updateTopbarThemeToggle() {
+  const button = document.getElementById('topbarThemeToggle');
+  if (!button) return;
+  const isDark = document.documentElement.dataset.theme === 'dark';
+  const label = isDark ? 'Switch to light mode' : 'Switch to dark mode';
+  button.setAttribute('aria-label', label);
+  button.title = label;
+  button.querySelector('use').setAttribute('href', isDark ? '#ico-sun' : '#ico-moon');
+}
+
 function toggleDarkMode() {
   const html = document.documentElement;
   const isDark = html.dataset.theme === 'dark';
@@ -3995,6 +4005,7 @@ function toggleDarkMode() {
   if (toggleEl) toggleEl.checked = !isDark;
   updateProfileDarkModeUI();
   updatePublicThemeToggle();
+  updateTopbarThemeToggle();
 }
 
 function applyStoredTheme() {
@@ -4006,6 +4017,7 @@ function applyStoredTheme() {
   if (label) label.textContent = t === 'dark' ? 'Light Mode' : 'Dark Mode';
   updateProfileDarkModeUI();
   updatePublicThemeToggle();
+  updateTopbarThemeToggle();
 }
 
 
