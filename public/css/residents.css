@@ -16,12 +16,13 @@
 .homeowner-compact-table th:nth-child(5),
 .homeowner-compact-table td:nth-child(5) {
   text-align: center;
-  width: 86px;
+  width: 136px;
 }
 
 .homeowner-compact-table th:nth-child(6),
 .homeowner-compact-table td:nth-child(6) {
-  width: 120px;
+  text-align: center;
+  width: 82px;
 }
 
 .homeowner-name-cell {
@@ -58,6 +59,18 @@
 .ho-info-btn:hover {
   background: var(--teal-100);
   border-color: var(--teal-400);
+}
+
+.homeowner-compact-table .ho-compact-action,
+.homeowner-compact-table .td-actions > .btn:nth-last-child(-n + 2) {
+  box-sizing: border-box;
+  flex: 0 0 44px;
+  height: 32px;
+  justify-content: center;
+  max-width: 44px;
+  min-width: 44px;
+  padding: 0;
+  width: 44px;
 }
 
 /* ── RESIDENTS DARK MODE ── */

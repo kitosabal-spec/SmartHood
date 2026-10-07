@@ -99,10 +99,19 @@ async function cleanup() {
 
     const register = await request(`/api/homeowners/${encodeURIComponent(homeownerId)}/account`, {
       method: 'POST',
-      body: JSON.stringify({ email, mobile: '09171234567', password: initialPassword }),
+      body: JSON.stringify({
+        email,
+        mobile: '09171234567',
+        password: initialPassword,
+        permissions: ['billing'],
+        termsAccepted: true,
+        privacyAcknowledged: true,
+        policyVersion: '2026-10-06',
+      }),
     });
     if (register.data.id) created.users.push(register.data.id);
     expect('Existing homeowner account registration succeeds', register.response.status === 201);
+    expect('Homeowner account can omit Resident Portal and keep other module access', register.data.permissions?.includes('billing') && !register.data.permissions?.includes('resident'));
     expect('Registration response exposes no password or hash', !Object.hasOwn(register.data, 'password') && !Object.hasOwn(register.data, 'password_hash'));
 
     dataResult = await request('/api/data');
@@ -119,7 +128,15 @@ async function cleanup() {
     expect('Second no-account homeowner can be added', createSecond.response.status === 201);
     const duplicate = await request(`/api/homeowners/${encodeURIComponent(secondHomeownerId)}/account`, {
       method: 'POST',
-      body: JSON.stringify({ email, mobile: '09171234568', password: initialPassword }),
+      body: JSON.stringify({
+        email,
+        mobile: '09171234568',
+        password: initialPassword,
+        permissions: ['billing'],
+        termsAccepted: true,
+        privacyAcknowledged: true,
+        policyVersion: '2026-10-06',
+      }),
     });
     expect('Duplicate email registration is rejected', duplicate.response.status === 409);
 

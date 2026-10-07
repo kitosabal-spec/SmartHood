@@ -762,10 +762,10 @@ function initApp(targetView) {
 function getNavForRole(role) {
   if (role === 'admin') return ADMIN_NAV;
 
-  // For resident, build base navigation plus any permitted management/analytics modules
+  // Build navigation strictly from the modules assigned to the account.
   if (currentUser) {
     const perms = Array.isArray(currentUser.permissions) ? currentUser.permissions : [];
-    const baseNav = (perms.includes('resident') || role === 'homeowner') ? [...HOMEOWNER_NAV] : [];
+    const baseNav = perms.includes('resident') ? [...HOMEOWNER_NAV] : [];
     // Only include assignable modules, NEVER admin-only modules (users, settings) or board
     const additionalNav = ADMIN_NAV.filter(item =>
       !ADMIN_ONLY_MODULES.includes(item.id) && item.id !== 'board' && perms.includes(item.id)
@@ -773,13 +773,13 @@ function getNavForRole(role) {
     return [...baseNav, ...additionalNav];
   }
 
-  return HOMEOWNER_NAV;
+  return [];
 }
 
 function getDefaultViewForRole(role) {
   const nav = getNavForRole(role);
   if (nav && nav.length > 0) return nav[0].id;
-  return role === 'admin' ? ADMIN_NAV[0].id : (role === 'homeowner' || userHasModulePermission('resident') ? HOMEOWNER_NAV[0].id : 'dashboard');
+  return role === 'admin' ? ADMIN_NAV[0].id : (userHasModulePermission('resident') ? HOMEOWNER_NAV[0].id : 'dashboard');
 }
 
 function userHasModulePermission(moduleId) {
@@ -816,9 +816,9 @@ function canAccessView(viewId) {
   // Block admin-only views for non-admin accounts
   if (ADMIN_ONLY_MODULES.includes(viewId)) return false;
 
-  // Base resident views require resident permission or homeowner role
+  // Base resident views require the explicitly assigned resident permission.
   if (viewId === 'resident' || viewId.startsWith('ho-')) {
-    return userHasModulePermission('resident') || currentUser.role === 'homeowner';
+    return userHasModulePermission('resident');
   }
 
   if (Array.isArray(currentUser.permissions) && currentUser.permissions.length > 0) {
@@ -2637,24 +2637,27 @@ function getUserAccessSummaryHtml(u) {
     return `<span class="access-pill admin" title="Full Unrestricted System Access"><svg width="12" height="12" style="vertical-align:-1px;"><use href="#ico-shield"/></svg> Full Access</span>`;
   }
 
-  let perms = Array.isArray(u.permissions) ? [...u.permissions] : [];
+  const perms = Array.isArray(u.permissions) ? [...u.permissions] : [];
+  const hasResident = perms.includes('resident');
   const extraModules = perms.filter(p => !p.startsWith('ho-') && p !== '*' && p !== 'users' && p !== 'settings' && p !== 'resident');
 
   if (extraModules.length === 0) {
-    return `<span class="access-pill resident">Resident</span>`;
+    return hasResident
+      ? `<span class="access-pill resident">Resident</span>`
+      : `<span class="access-pill extra">No Modules</span>`;
   }
 
   if (extraModules.length === 1) {
     const mod = MODULE_PERMISSIONS.find(m => m.id === extraModules[0]);
     const label = mod ? mod.label : extraModules[0];
-    return `<span class="access-pill extra" title="Assigned module: ${escapeHtml(label)}">Resident + ${escapeHtml(label)}</span>`;
+    return `<span class="access-pill extra" title="Assigned module: ${escapeHtml(label)}">${hasResident ? 'Resident + ' : ''}${escapeHtml(label)}</span>`;
   }
 
   const moduleLabels = extraModules.map(pid => {
     const mod = MODULE_PERMISSIONS.find(m => m.id === pid);
     return mod ? mod.label : pid;
   });
-  return `<span class="access-pill extra" title="Assigned modules: ${escapeHtml(moduleLabels.join(', '))}">Resident + ${extraModules.length} modules</span>`;
+  return `<span class="access-pill extra" title="Assigned modules: ${escapeHtml(moduleLabels.join(', '))}">${hasResident ? 'Resident + ' : ''}${extraModules.length} modules</span>`;
 }
 
 function renderUserManagementRows(filteredUsers = null, resetPage = false) {
@@ -3133,6 +3136,11 @@ const RESIDENT_ASSIGNABLE_MODULES = [
   { id: 'auditlog',      label: 'Audit Logs',         icon: 'ico-log',       desc: 'System actions audit trail' },
 ];
 
+const HOMEOWNER_ACCOUNT_MODULES = [
+  { id: 'resident', label: 'Resident Portal', icon: 'ico-home', desc: 'Dues, payments, complaints, bookings & notices' },
+  ...RESIDENT_ASSIGNABLE_MODULES,
+];
+
 function updateCompactCardState(checkbox) {
   const card = checkbox.closest('.compact-perm-card');
   if (card) {
@@ -3259,33 +3267,21 @@ function openEditUserAccountModal(userId) {
         <div class="compact-perm-header">
           <div>
             <div class="modal-section-title" style="margin-bottom:2px;">Module Access Permissions</div>
-            <div class="compact-perm-subtitle">Resident portal is default access. Assign additional operational &amp; analytics modules below:</div>
+            <div class="compact-perm-subtitle">Choose the modules this account can access. Resident Portal is optional.</div>
           </div>
           <div style="display:flex;gap:6px;">
             <button type="button" class="btn btn-secondary btn-xs" id="btnEditSelectAll" onclick="toggleEditSelectAll(this)">
               Select All
             </button>
             <button type="button" class="btn btn-secondary btn-xs" onclick="clearEditAdditionalPermissions()">
-              Clear Extra
+              Clear All
             </button>
           </div>
         </div>
 
-        <!-- Default Base Module Card (Resident) -->
-        <div class="compact-perm-card base-default selected" style="margin-top:8px;margin-bottom:8px;">
-          <input type="checkbox" checked disabled title="Default access for all resident accounts" />
-          <div class="compact-perm-info">
-            <div class="compact-perm-name">
-              <svg width="13" height="13" style="vertical-align:-1px;color:var(--teal-600);"><use href="#ico-home"/></svg>
-              Resident Portal <span class="badge badge-blue" style="font-size:0.65rem;padding:1px 6px;margin-left:4px;">Default Base Access</span>
-            </div>
-            <div class="compact-perm-desc">Homeowner portal: dues, payment submission, complaints, facility bookings, notices</div>
-          </div>
-        </div>
-
-        <!-- Additional Assignable Modules Grid -->
+        <!-- Assignable Modules Grid -->
         <div class="compact-perm-grid" id="ea_perms_wrap">
-          ${RESIDENT_ASSIGNABLE_MODULES.map(m => {
+          ${HOMEOWNER_ACCOUNT_MODULES.map(m => {
             const isChecked = currentPerms.includes(m.id);
             return `
               <label class="compact-perm-card ${isChecked ? 'selected' : ''}" for="ea_perm_${m.id}">
@@ -3408,13 +3404,17 @@ async function saveEditUserAccount(userId) {
     const lotAreaVal = document.getElementById('ea_lotArea')?.value;
     u.lotArea = lotAreaVal ? Number(lotAreaVal) : 0;
 
-    // Collect module permissions: resident base is default access
-    const newPerms = ['resident'];
+    // Collect only the modules explicitly assigned by the administrator.
+    const newPerms = [];
     document.querySelectorAll('#ea_perms_wrap .perm-checkbox:checked').forEach(cb => {
       if (cb.value && !newPerms.includes(cb.value)) {
         newPerms.push(cb.value);
       }
     });
+    if (newPerms.length === 0) {
+      showToast('error', 'Module Required', 'Select at least one module for this account. Resident Portal is optional.');
+      return;
+    }
     u.permissions = newPerms;
   } else {
     u.permissions = ['*'];

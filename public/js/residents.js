@@ -105,8 +105,8 @@ function renderHOTable(filtered = null, resetPage = false) {
         ${u.accountStatus === 'Registered'
           ? `<button class="btn btn-secondary btn-sm" onclick="openResetPasswordModal('${u.id}')">Reset Password</button>`
           : `<button class="btn btn-primary btn-sm" onclick="openRegisterAccountModal('${u.id}')">Register Account</button>`}
-        <button class="btn btn-secondary btn-sm" onclick="openEditHO('${u.id}')">Edit</button>
-        <button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteHO('${u.id}')" title="Delete"><svg width="14" height="14"><use href="#ico-trash"/></svg></button>
+        <button class="btn btn-secondary btn-sm ho-compact-action" onclick="openEditHO('${u.id}')">Edit</button>
+        <button class="btn btn-danger btn-sm btn-icon ho-compact-action" onclick="confirmDeleteHO('${u.id}')" title="Delete" aria-label="Delete homeowner"><svg width="14" height="14"><use href="#ico-trash"/></svg></button>
       </div></td>
     </tr>`).join('');
 
@@ -260,6 +260,33 @@ function openRegisterAccountModal(id) {
     <div class="form-group"><label>Mobile Number *</label><input id="ra_mobile" inputmode="tel" value="${escapeHtml(homeowner.contact || '')}" placeholder="e.g. 09171234567"/></div>
     <div class="form-group"><label>Initial Password *</label><input id="ra_password" type="password" placeholder="Minimum 12 characters" autocomplete="new-password"/></div>
     <small style="color:var(--text-3)">The email address becomes the homeowner's login ID. The password is hashed and will never be displayed.</small>
+    <div class="modal-form-section" style="margin-top:16px;">
+      <div class="compact-perm-header">
+        <div>
+          <div class="modal-section-title" style="margin-bottom:2px;">Module Access Permissions *</div>
+          <div class="compact-perm-subtitle">Choose the modules this account can access. Resident Portal is optional.</div>
+        </div>
+        <button type="button" class="btn btn-secondary btn-xs" onclick="toggleSelectAllPermissions('ra_perms_grid', this)">Select All</button>
+      </div>
+      <div class="compact-perm-grid" id="ra_perms_grid" style="margin-top:8px;">
+        ${HOMEOWNER_ACCOUNT_MODULES.map(module => `
+          <label class="compact-perm-card" for="ra_perm_${module.id}">
+            <input type="checkbox"
+                   id="ra_perm_${module.id}"
+                   value="${module.id}"
+                   class="perm-checkbox"
+                   onchange="updateCompactCardState(this)" />
+            <div class="compact-perm-info">
+              <div class="compact-perm-name">
+                <svg width="13" height="13" style="vertical-align:-1px;"><use href="#${module.icon}"/></svg>
+                ${escapeHtml(module.label)}
+              </div>
+              <div class="compact-perm-desc">${escapeHtml(module.desc)}</div>
+            </div>
+          </label>
+        `).join('')}
+      </div>
+    </div>
     <label class="legal-consent" for="ra_legal_consent">
       <input id="ra_legal_consent" type="checkbox"/>
       <span class="legal-consent-copy">I confirm that the homeowner has been given an opportunity to read and has agreed to the <a href="/terms-and-conditions" onclick="openLegalPage('terms', event)">Terms &amp; Conditions</a> and acknowledges the <a href="/privacy-policy" onclick="openLegalPage('privacy', event)">Privacy Policy</a>.</span>
@@ -267,7 +294,7 @@ function openRegisterAccountModal(id) {
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
     { label: 'Register Account', cls: 'btn-primary', action: () => registerHomeownerAccount(id) },
-  ]);
+  ], 'modal-account-edit');
 }
 
 async function registerHomeownerAccount(id) {
@@ -275,6 +302,9 @@ async function registerHomeownerAccount(id) {
   const mobile = (document.getElementById('ra_mobile')?.value || '').trim();
   const password = (document.getElementById('ra_password')?.value || '').trim();
   const legalConsent = Boolean(document.getElementById('ra_legal_consent')?.checked);
+  const permissions = Array.from(document.querySelectorAll('#ra_perms_grid .perm-checkbox:checked'))
+    .map(checkbox => checkbox.value)
+    .filter(Boolean);
   if (!email || !mobile || !password) {
     showToast('error', 'Missing Fields', 'Email Address, Mobile Number, and Initial Password are required.');
     return;
@@ -291,6 +321,10 @@ async function registerHomeownerAccount(id) {
     showToast('error', 'Weak Password', 'Initial Password must be at least 12 characters.');
     return;
   }
+  if (permissions.length === 0) {
+    showToast('error', 'Module Required', 'Select at least one module for this account. Resident Portal is optional.');
+    return;
+  }
   if (!legalConsent) {
     showToast('error', 'Consent Required', 'The Terms & Conditions and Privacy Policy must be accepted before registration.');
     return;
@@ -301,6 +335,7 @@ async function registerHomeownerAccount(id) {
       email,
       mobile,
       password,
+      permissions,
       termsAccepted: true,
       privacyAcknowledged: true,
       policyVersion: window.LEGAL_POLICY_VERSION,
