@@ -462,6 +462,39 @@ async function findApprovedMonthlyDuesPayment(homeownerId, month) {
   return totalPaid >= roundMoney(linked[0].billing_amount) ? linked[0] : null;
 }
 
+function parseStoredPermissions(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value.trim()) return [];
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return parsed;
+    if (typeof parsed === 'string') return parseStoredPermissions(parsed);
+  } catch {}
+  return value.split(',').map(permission => permission.trim()).filter(Boolean);
+}
+
+async function getResidentModuleHomeownerIds() {
+  const accounts = await all(
+    "SELECT homeowner_id, permissions FROM users WHERE role = 'homeowner' AND homeowner_id IS NOT NULL"
+  );
+  return new Set(accounts
+    .filter(account => parseStoredPermissions(account.permissions).includes('resident'))
+    .map(account => account.homeowner_id));
+}
+
+async function keepResidentModuleBillingRecipients(payload, res) {
+  const assigned = [...new Set(getAssignedHomeownerIds(payload))];
+  const eligibleHomeownerIds = await getResidentModuleHomeownerIds();
+  payload.assignedTo = assigned.filter(homeownerId => eligibleHomeownerIds.has(homeownerId));
+
+  if (payload.assignedTo.length > 0) return true;
+
+  res.status(400).json({
+    error: 'Select at least one homeowner account with the Resident Portal module. Accounts without that module cannot receive billings.',
+  });
+  return false;
+}
+
 async function validateAndPrepareBillingPayload(payload, res, excludeBillingId = null) {
   const inferredMonth = payload.monthly_dues_month || payload.billingMonth || (payload.title ? parseMonthFromTitle(payload.title) : null);
   const billingType = normalizeBillingType(payload.billing_type || payload.billingType, payload.title, inferredMonth);
@@ -3101,10 +3134,12 @@ app.post('/api/billings/generate-monthly-dues', asyncHandler(async (req, res) =>
   const rateSetting = await get('SELECT value FROM appSettings WHERE id = "duesRatePerSqm"');
   const rate = rateSetting && parseFloat(rateSetting.value) > 0 ? parseFloat(rateSetting.value) : 5.725;
 
-  // Retrieve all active homeowners
-  const homeowners = await all('SELECT * FROM homeowners');
+  // Only accounts with the Resident Portal module can receive a billing.
+  const residentModuleHomeownerIds = await getResidentModuleHomeownerIds();
+  const homeowners = (await all('SELECT * FROM homeowners'))
+    .filter(homeowner => residentModuleHomeownerIds.has(homeowner.id));
   if (!homeowners.length) {
-    return res.status(400).json({ error: 'No active homeowners found.' });
+    return res.status(400).json({ error: 'No homeowner accounts with the Resident Portal module were found.' });
   }
 
   // Retrieve existing Monthly Association Dues billings for this month to prevent duplicate generation.
@@ -4931,6 +4966,8 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
   }
 
   if (table === 'billings') {
+    const hasEligibleRecipients = await keepResidentModuleBillingRecipients(req.body, res);
+    if (!hasEligibleRecipients) return;
     const validBilling = await validateAndPrepareBillingPayload(req.body, res);
     if (!validBilling) return;
   }

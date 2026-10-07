@@ -430,7 +430,7 @@ function renderBillingTable(billings = null, resetPage = false) {
 if (typeof window !== 'undefined') window.renderBillingTable = renderBillingTable;
 
 function openAddBillingModal() {
-  const homeowners = getHomeowners();
+  const homeowners = getBillingEligibleHomeowners();
   const currentMonthValue = getLocalMonthValue();
   const defaultDueDate = getLocalDateValue(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0));
   openModal('Create Billing', `
@@ -466,7 +466,7 @@ function toggleSelectAll(cb) {
 
 function openProfessionalBillingModal() {
   if (!canManageBilling()) { showToast('error', 'Access Denied', 'Only the admin can create billings.'); return; }
-  const homeowners = getHomeowners();
+  const homeowners = getBillingEligibleHomeowners();
   const currentMonthValue = getLocalMonthValue();
   const defaultDueDate = getLocalDateValue(new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0));
   const payments = db.get('payments');
@@ -526,7 +526,7 @@ function openProfessionalBillingModal() {
           </div>
         </div>
         <div class="billing-homeowner-list" id="bf_homeownerList">
-          ${homeowners.map(u => {
+          ${homeowners.length ? homeowners.map(u => {
             const alreadyPaid = isMonthlyDuesFullyPaid(u.id, currentMonthValue, payments, db.get('billings'));
             return `
             <label class="billing-homeowner-row ${alreadyPaid ? 'is-paid-advance' : ''}" data-search="${`${u.name} ${u.block || ''} ${u.lot || ''} ${u.username || ''}`.toLowerCase()}">
@@ -536,7 +536,7 @@ function openProfessionalBillingModal() {
                 <span class="billing-homeowner-meta">${escapeHtml(u.block || 'No block')} | ${escapeHtml(u.lot || 'No lot')}${u.lotArea ? ` (${u.lotArea} sqm)` : ''}</span>
               </span>
             </label>`;
-          }).join('')}
+          }).join('') : '<div class="no-results" style="padding:18px">No homeowner accounts have the Resident Portal module.</div>'}
         </div>
       </section>
     </div>
@@ -549,6 +549,16 @@ function openProfessionalBillingModal() {
   setupBillingAmountAutoFill();
   setupBillingTypeSwitcher();
   updateProfessionalBillingSummary();
+}
+
+function getBillingEligibleHomeowners() {
+  const residentHomeownerIds = new Set(
+    (db.get('users') || [])
+      .filter(user => user.role === 'homeowner' && Array.isArray(user.permissions) && user.permissions.includes('resident'))
+      .map(user => user.homeowner_id || user.homeownerId)
+      .filter(Boolean)
+  );
+  return getHomeowners().filter(homeowner => residentHomeownerIds.has(homeowner.id));
 }
 
 function toggleProfessionalBillingSelectAll(cb) {
@@ -909,7 +919,11 @@ async function autoGenerateMonthlyDues() {
   const month = new Date().toLocaleString('default', { month: 'long' });
   const year = new Date().getFullYear();
   const title = `Monthly Dues – ${month} ${year}`;
-  const homeowners = getHomeowners();
+  const homeowners = getBillingEligibleHomeowners();
+  if (!homeowners.length) {
+    showToast('warning', 'No Eligible Accounts', 'No homeowner accounts have the Resident Portal module.');
+    return;
+  }
   const existing = db.get('billings').find(b => b.title === title);
   if (existing) { showToast('warning', 'Already Exists', `Dues for ${month} already created.`); return; }
   const lastDay = getLocalDateValue(new Date(year, new Date().getMonth() + 1, 0));

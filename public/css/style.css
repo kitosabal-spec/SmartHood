@@ -1468,7 +1468,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.
   color: var(--text);
   flex: 1;
 }
-.topbar-actions { display: flex; align-items: center; gap: 12px; position: relative; }
+.topbar-actions { display: flex; align-items: center; gap: 4px; position: relative; }
 .topbar-theme-toggle,
 .notif-bell {
   display: inline-flex;
@@ -2817,7 +2817,7 @@ input[type="date"].filter-select {
 }
 
 @media (max-width: 375px) {
-  .topbar-actions { gap: 8px; }
+  .topbar-actions { gap: 4px; }
   .pub-login-btn { padding: 5px 10px; font-size: 0.74rem; }
   .pub-nav-actions { gap: 5px; }
   .pub-brand-name { font-size: 0.86rem; }

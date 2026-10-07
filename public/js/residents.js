@@ -42,6 +42,11 @@ function renderHomeowners() {
           <option value="">All Blocks</option>
           ${blockOptions.map(block => `<option value="${block}">${block}</option>`).join('')}
         </select>
+        <select class="filter-select" id="hoRegistrationFilter" onchange="filterHomeowners()" aria-label="Filter by registration status">
+          <option value="">All Registration Statuses</option>
+          <option value="registered">Registered</option>
+          <option value="not-registered">Not Registered</option>
+        </select>
       </div>
     </div>
     <div class="section-card-body no-pad">
@@ -124,6 +129,7 @@ function renderHOTable(filtered = null, resetPage = false) {
 function filterHomeowners() {
   const q = (document.getElementById('hoSearch')?.value || '').toLowerCase();
   const blk = document.getElementById('hoFilter')?.value || '';
+  const registrationStatus = document.getElementById('hoRegistrationFilter')?.value || '';
   let users = getHomeowners();
   if (q) users = users.filter(u =>
     u.name.toLowerCase().includes(q)
@@ -132,6 +138,11 @@ function filterHomeowners() {
     || (u.lot || '').toLowerCase().includes(q)
   );
   if (blk) users = users.filter(u => u.block === blk);
+  if (registrationStatus === 'registered') {
+    users = users.filter(u => u.accountStatus === 'Registered');
+  } else if (registrationStatus === 'not-registered') {
+    users = users.filter(u => u.accountStatus !== 'Registered');
+  }
   renderHOTable(users, true);
 }
 
