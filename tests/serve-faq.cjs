@@ -5,7 +5,10 @@ const fs = require('node:fs');
 const path = require('node:path');
 const allowed = new Set([
   '/tests/faq-browser.html',
+  '/tests/faq-browser-checks.js',
+  '/index.html',
   '/public/css/style.css',
+  '/public/css/landing.css',
   '/public/css/faq.css',
   '/public/js/faq.js',
   '/public/js/search-sliding.js',

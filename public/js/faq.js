@@ -3,7 +3,8 @@
 const FAQ_OFFICER_CATEGORY = 'Administrator and HOA Officers';
 
 function getFAQItems(location, user) {
-  // Management guidance is for portal staff; resident guidance remains public.
+  // Public visitors can read all general guidance, including officer responsibilities.
+  if (location === 'public') return FAQ_ITEMS;
   const staff = user && (user.role === 'admin' ||
     (user.permissions || []).some(permission => permission !== 'resident'));
   return FAQ_ITEMS.filter(item => item.category !== FAQ_OFFICER_CATEGORY ||
@@ -16,7 +17,7 @@ function filterFAQItems(items, query, category) {
     `${item.question} ${item.answer}`.toLocaleLowerCase().includes(search));
 }
 
-function renderFAQ(container, location, user = null) {
+function renderFAQ(container, location, user = null, onContact = null) {
   const items = getFAQItems(location, user);
   const prefix = `faq-${location}`;
   const root = document.createElement('div');
@@ -25,7 +26,7 @@ function renderFAQ(container, location, user = null) {
   root.innerHTML = `
     <header class="faq-heading">
       <h2 id="${prefix}-heading"></h2>
-      <p></p>
+      <p id="${prefix}-description"></p>
     </header>
     <label class="faq-search-label" for="${prefix}-search">Search frequently asked questions</label>
     <div class="faq-search-row">
@@ -47,14 +48,17 @@ function renderFAQ(container, location, user = null) {
     : 'Find answers about your account, payments, bookings, complaints, and other SmartHood services.';
   const contact = root.querySelector('.faq-contact');
   contact.querySelector('p').textContent = location === 'public'
-    ? 'The San Alfonso Homes Association office can help with questions that are not covered here.'
+    ? 'If your concern is not answered here, contact the San Alfonso Homes Association office for assistance.'
     : 'Visit the HOA office at San Alfonso Homes, Pacol, Naga City for account assistance or official record corrections. Have your registered email and any relevant transaction reference ready. Never share your password.';
   if (location === 'public') {
-    const link = document.createElement('a');
+    const link = document.createElement('button');
+    link.type = 'button';
     link.className = 'btn btn-primary';
-    link.href = '#contact';
-    link.textContent = 'Contact the HOA';
-    link.addEventListener('click', event => pubScrollTo(event, 'contact'));
+    link.textContent = 'Contact HOA';
+    link.addEventListener('click', event => {
+      if (onContact) onContact();
+      else pubScrollTo(event, 'contact');
+    });
     contact.appendChild(link);
   }
 
@@ -145,16 +149,104 @@ function renderFAQView() {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
-  const publicFAQ = document.getElementById('publicFAQ');
-  if (publicFAQ) renderFAQ(publicFAQ, 'public');
-  document.querySelectorAll('[data-faq-navigation]').forEach(link => {
-    link.addEventListener('click', event => {
-      pubScrollTo(event, 'faq');
-      if (link.closest('.pub-mobile-nav')) togglePubNav();
-    });
-  });
+  initializePublicFAQ();
   document.getElementById('sidebarFAQ')?.addEventListener('click', () => navigate('help-faq'));
 });
+
+function initializePublicFAQ() {
+  const landing = document.getElementById('landingPage');
+  const trigger = document.getElementById('publicFAQButton');
+  const modal = document.getElementById('publicFAQModal');
+  const content = document.getElementById('publicFAQ');
+  if (!landing || !trigger || !modal || !content || modal.dataset.initialized) return;
+  modal.dataset.initialized = 'true';
+  const closeButton = modal.querySelector('.faq-modal-close');
+  let scrollState = null;
+
+  function restorePage() {
+    if (!scrollState) return;
+    const { x, y, styles } = scrollState;
+    scrollState = null;
+    for (const [property, value, priority] of styles) {
+      if (value) document.body.style.setProperty(property, value, priority);
+      else document.body.style.removeProperty(property);
+    }
+    // Explicit instant scrolling overrides the site's smooth-scroll preference.
+    window.scrollTo({ left: x, top: y, behavior: 'instant' });
+    if (trigger.getClientRects().length) trigger.focus({ preventScroll: true });
+  }
+
+  function closeFAQ() {
+    if (modal.open) modal.close();
+    restorePage();
+  }
+
+  function openFAQ() {
+    if (modal.open || !trigger.getClientRects().length) return;
+    const properties = ['position', 'top', 'left', 'width', 'overflow', 'padding-right'];
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    scrollState = {
+      x: window.scrollX,
+      y: window.scrollY,
+      styles: properties.map(property => [property, document.body.style.getPropertyValue(property),
+        document.body.style.getPropertyPriority(property)]),
+    };
+    const padding = parseFloat(getComputedStyle(document.body).paddingRight) || 0;
+    Object.assign(document.body.style, {
+      position: 'fixed', top: `${-scrollState.y}px`, left: `${-scrollState.x}px`,
+      width: '100%', overflow: 'hidden', paddingRight: `${padding + scrollbar}px`,
+    });
+    modal.showModal(); // Native top layer also makes the rest of the page inert.
+    content.scrollTop = 0;
+    closeButton.focus({ preventScroll: true });
+  }
+
+  renderFAQ(content, 'public', null, () => {
+    closeFAQ();
+    pubScrollTo(null, 'contact');
+  });
+  // Register once for the lifetime of the page, never on each opening.
+  trigger.addEventListener('click', openFAQ);
+  closeButton.addEventListener('click', closeFAQ);
+  modal.addEventListener('cancel', event => {
+    event.preventDefault();
+    closeFAQ();
+  });
+  modal.addEventListener('close', () => {
+    // A queued close event from an earlier opening must not unlock a reopened modal.
+    if (!modal.open) restorePage();
+  });
+  let backdropPress = false;
+  modal.addEventListener('pointerdown', event => { backdropPress = event.target === modal; });
+  modal.addEventListener('click', event => {
+    if (event.target === modal && backdropPress) closeFAQ();
+    backdropPress = false;
+  });
+  modal.addEventListener('keydown', event => {
+    // Search inputs otherwise consume the first Escape to clear their value.
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeFAQ();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), a[href], [tabindex="0"]')]
+      .filter(element => element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden');
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === modal)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === modal)) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  // Authentication and legal-page transitions must never leave the page locked.
+  new MutationObserver(() => {
+    if (modal.open && !trigger.getClientRects().length) closeFAQ();
+  }).observe(landing, { attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+}
 
 // Shared static content for the public and authenticated FAQ views.
 const FAQ_ITEMS = [
@@ -240,7 +332,7 @@ const FAQ_ITEMS = [
     "id": "question-14",
     "category": "Billing and Payments",
     "question": "Can I pay more than my remaining balance?",
-    "answer": "No. SmartHood must prevent a submitted payment from exceeding the remaining balance."
+    "answer": "No. SmartHood prevents a submitted payment from exceeding the remaining balance."
   },
   {
     "id": "question-15",
@@ -264,7 +356,7 @@ const FAQ_ITEMS = [
     "id": "question-18",
     "category": "Amenity Bookings",
     "question": "How will I know if my booking was approved or rejected?",
-    "answer": "SmartHood displays a notification when the booking status changes. The current status can also be checked in the amenity-booking section."
+    "answer": "Check the current status in the amenity-booking section. SmartHood can also send booking status updates to your registered email when email delivery is configured."
   },
   {
     "id": "question-19",
@@ -300,7 +392,7 @@ const FAQ_ITEMS = [
     "id": "question-24",
     "category": "Notifications and Profile",
     "question": "Where can I see my notifications?",
-    "answer": "Select the bell icon in the top navigation bar. Notifications may include new bills, payment decisions, booking updates, complaint responses, announcements, and other account activity."
+    "answer": "Select the bell icon in the top navigation bar. Notifications may include new bills, payment decisions, complaint responses, announcements, and other account activity. Check the amenity-booking section for booking status."
   },
   {
     "id": "question-25",

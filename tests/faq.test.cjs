@@ -7,6 +7,7 @@ const path = require('node:path');
 const root = path.join(__dirname, '..');
 const faq = fs.readFileSync(path.join(root, 'public/js/faq.js'), 'utf8');
 const main = fs.readFileSync(path.join(root, 'public/js/main.js'), 'utf8');
+const html = fs.readFileSync(path.join(root, 'index.html'), 'utf8');
 const context = vm.createContext({ document: { addEventListener() {} } });
 vm.runInContext(faq, context);
 const evaluate = source => vm.runInContext(source, context);
@@ -18,6 +19,14 @@ test('all 28 required questions have unique IDs and complete content', () => {
   assert.ok(evaluate('FAQ_ITEMS.every(item => item.question && item.answer)'));
 });
 
+test('public FAQ uses one dialog and trigger with no navigation link or landing section', () => {
+  assert.equal((html.match(/id="publicFAQButton"/g) || []).length, 1);
+  assert.equal((html.match(/<dialog[^>]*id="publicFAQModal"/g) || []).length, 1);
+  assert.doesNotMatch(html, /data-faq-navigation|data-pub-section="faq"|<section[^>]*id="faq"/);
+  assert.match(html, /aria-label="Open frequently asked questions"/);
+  assert.match(html, /id="sidebarFAQ"/);
+});
+
 test('search matches answers, ignores case and whitespace, and combines with category', () => {
   assert.equal(evaluate("filterFAQItems(FAQ_ITEMS, '  15 MINUTES ', '').length"), 1);
   assert.equal(evaluate("filterFAQItems(FAQ_ITEMS, '15 minutes', 'Billing and Payments').length"), 0);
@@ -25,8 +34,8 @@ test('search matches answers, ignores case and whitespace, and combines with cat
   assert.equal(evaluate("filterFAQItems(FAQ_ITEMS, '<script>', '').length"), 0);
 });
 
-test('public and resident content excludes staff guidance; admin and assigned officer include it', () => {
-  assert.equal(evaluate("getFAQItems('public').length"), 25);
+test('public includes every category; portal guidance retains role-based filtering', () => {
+  assert.equal(evaluate("getFAQItems('public').length"), 28);
   assert.equal(evaluate("getFAQItems('portal', {role:'homeowner', permissions:['resident']}).length"), 25);
   assert.equal(evaluate("getFAQItems('portal', {role:'admin'}).length"), 28);
   assert.equal(evaluate("getFAQItems('portal', {role:'homeowner', permissions:['payments']}).length"), 28);
