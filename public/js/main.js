@@ -811,6 +811,7 @@ function canViewAuditLog() { return isAdmin() || userHasModulePermission('auditl
 function canAccessView(viewId) {
   if (!currentUser) return false;
   if (currentUser.status === 'inactive' || currentUser.status === 'deactivated') return false;
+  if (viewId === 'help-faq') return true;
   if (isAdmin()) return true;
 
   // Block admin-only views for non-admin accounts
@@ -1013,7 +1014,7 @@ function navigate(viewId, pushHistory = true) {
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === viewId);
   });
-  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV, { id: 'settings', label: 'Settings' }];
+  const allNav = [...ADMIN_NAV, ...HOMEOWNER_NAV, { id: 'settings', label: 'Settings' }, { id: 'help-faq', label: 'Help & FAQ' }];
   const navItem = allNav.find(n => n.id === viewId);
   document.getElementById('topbarTitle').textContent = navItem ? navItem.label : 'Dashboard';
   renderView(viewId);
@@ -1071,6 +1072,7 @@ function renderView(viewId) {
   const area = document.getElementById('contentArea');
   area.innerHTML = '';
   const renders = {
+    'help-faq':          renderFAQView,
     'dashboard':         renderAdminDashboard,
     'homeowners':        renderHomeowners,
     'billing':           renderBilling,
@@ -4147,7 +4149,7 @@ let pubScrollTimer = null;
 
 function setActivePubNav(sectionId) {
   const targetId = sectionId || 'hero';
-  const mapping = { hero: 0, announcements: 1, lostfound: 2, board: 3, about: 4, contact: 5 };
+  const mapping = { hero: 0, announcements: 1, lostfound: 2, board: 3, about: 4, faq: 5, contact: 6 };
   const links = document.querySelectorAll('.pub-nav-link');
   links.forEach((l, idx) => {
     const isTarget = l.getAttribute('data-pub-section')
@@ -4187,7 +4189,7 @@ function updateActivePubNavOnScroll() {
     return;
   }
 
-  const sectionIds = ['hero', 'announcements', 'lostfound', 'board', 'about', 'contact'];
+  const sectionIds = ['hero', 'announcements', 'lostfound', 'board', 'about', 'faq', 'contact'];
   const offset = 100;
   let currentSection = 'hero';
 
@@ -4314,8 +4316,8 @@ function handleLogout() {
 
 // SECTION 25: BOOTSTRAP
 
-const PUBLIC_LANDING_SECTIONS = new Set(['hero', 'announcements', 'lostfound', 'board', 'about', 'contact']);
-const PUBLIC_HASHES = new Set(['hero', 'announcements', 'lostfound', 'board', 'about', 'contact', 'login']);
+const PUBLIC_LANDING_SECTIONS = new Set(['hero', 'announcements', 'lostfound', 'board', 'about', 'faq', 'contact']);
+const PUBLIC_HASHES = new Set(['hero', 'announcements', 'lostfound', 'board', 'about', 'faq', 'contact', 'login']);
 
 function finishStartup() {
   const startupScreen = document.getElementById('startupScreen');
@@ -4370,7 +4372,7 @@ async function init() {
   }
 
   if (restoreSession()) {
-    const isPublicOnlyHash = (currentHash === 'hero' || currentHash === 'about' || currentHash === 'contact' || currentHash === 'login');
+    const isPublicOnlyHash = (currentHash === 'hero' || currentHash === 'about' || currentHash === 'faq' || currentHash === 'contact' || currentHash === 'login');
     const targetView = (!isPublicOnlyHash && currentHash && canAccessView(currentHash)) ? currentHash : null;
     document.getElementById('landingPage').classList.add('hidden');
     initApp(targetView);

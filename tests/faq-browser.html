@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<title>SmartHood FAQ browser checks</title>
+<style>body { font: 16px system-ui; } iframe { display: block; height: 600px; margin: 12px 0; border: 1px solid #888; }</style>
+<h1>FAQ browser checks</h1>
+<p>Isolated fixtures use the actual styles and FAQ renderer without signing in or changing application records.</p>
+<pre id="results">Running…</pre>
+<script>
+const results = [];
+window.addEventListener('message', event => {
+  if (event.origin !== location.origin || event.data.type !== 'faq-check') return;
+  results.push(event.data.result);
+  document.getElementById('results').textContent = results.join('\n');
+});
+for (const theme of ['light', 'dark']) {
+  for (const width of [320, 375, 768, 1440]) {
+    const frame = document.createElement('iframe');
+    frame.width = width;
+    frame.title = `${theme} mode at ${width}px`;
+    frame.srcdoc = `<!doctype html><html lang="en" data-theme="${theme}">
+      <link rel="stylesheet" href="/public/css/style.css">
+      <link rel="stylesheet" href="/public/css/faq.css">
+      <body style="padding:16px"><div id="publicFAQ"></div><div id="contentArea"></div>
+      <script src="/public/js/faq.js"><\/script>
+      <script src="/public/js/search-sliding.js"><\/script>
+      <script>
+      document.addEventListener('DOMContentLoaded', async () => {
+        try {
+          const check = (value, message) => { if (!value) throw new Error(message); };
+          const publicRoot = document.getElementById('publicFAQ');
+          const portal = document.getElementById('contentArea');
+          for (let i = 0; i < 3; i++) renderFAQ(portal, 'portal', {role:'admin'});
+          check(portal.querySelectorAll('.faq-question').length === 28, 'staff question count');
+          const first = portal.querySelector('.faq-question');
+          first.click();
+          check(first.getAttribute('aria-expanded') === 'true', 'open after repeated render');
+          first.click();
+          check(first.getAttribute('aria-expanded') === 'false', 'close after repeated render');
+          check(publicRoot.querySelector('.faq-question').getAttribute('aria-expanded') === 'false', 'independent state');
+          const input = portal.querySelector('input');
+          input.value = '15 minutes';
+          input.dispatchEvent(new Event('input'));
+          check(portal.querySelectorAll('.faq-question').length === 1, 'answer search');
+          portal.querySelector('[data-category="Billing and Payments"]').click();
+          check(portal.querySelector('.faq-empty'), 'combined filter empty state');
+          portal.querySelector('.faq-clear').click();
+          check(portal.querySelectorAll('.faq-question').length === 28 && input.value === '', 'clear both filters');
+          check(publicRoot.querySelectorAll('.faq-question').length === 25, 'public independent');
+          for (const button of document.querySelectorAll('.faq-question')) {
+            check(document.getElementById(button.getAttribute('aria-controls')), 'matching panel ID');
+          }
+          const ids = [...document.querySelectorAll('[id]')].map(node => node.id);
+          check(new Set(ids).size === ids.length, 'unique IDs');
+          input.value = '<img src=x onerror=alert(1)>';
+          input.dispatchEvent(new Event('input'));
+          check(!portal.querySelector('img'), 'safe rendering');
+          portal.querySelector('.faq-clear').click();
+          await document.fonts.ready;
+          await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+          check(document.documentElement.scrollWidth <= innerWidth, 'horizontal overflow');
+          parent.postMessage({type:'faq-check', result:'PASS ${theme} ${width}px: filters, rerenders, independent instances, accessibility IDs, safe text, no overflow'}, parent.location.origin);
+        } catch (error) {
+          parent.postMessage({type:'faq-check', result:'FAIL ${theme} ${width}px: ' + error.message}, parent.location.origin);
+        }
+      });
+      <\/script>`;
+    document.body.appendChild(frame);
+  }
+}
+</script>
+</html>
+
