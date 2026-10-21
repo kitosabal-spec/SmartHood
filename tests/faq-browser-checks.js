@@ -25,7 +25,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await settle();
     const rect = trigger.getBoundingClientRect();
     const spacing = innerWidth <= 560 ? 16 : 24;
-    check(Math.abs(rect.left - spacing) < 1 && Math.abs(innerHeight - rect.bottom - spacing) < 1, 'fixed lower-left position');
+    check(Math.abs(innerWidth - rect.right - spacing) < 1 && Math.abs(innerHeight - rect.bottom - spacing) < 1, 'fixed lower-right position');
     check(getComputedStyle(trigger).position === 'fixed', 'fixed positioning');
     trigger.click();
     check(modal.open && document.body.style.position === 'fixed', 'opens and locks page');

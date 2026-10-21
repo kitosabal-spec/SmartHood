@@ -67,7 +67,7 @@
 
 /* Public entry point stays inside #landingPage, so portal/login/legal views hide it. */
 .faq-floating-button {
-  position: fixed; left: max(24px, env(safe-area-inset-left));
+  position: fixed; right: max(24px, env(safe-area-inset-right));
   bottom: max(24px, env(safe-area-inset-bottom)); z-index: 600;
   display: inline-flex; align-items: center; justify-content: center; gap: 8px;
   max-width: calc(100vw - 48px); min-height: 48px; padding: 12px 18px;
@@ -106,7 +106,7 @@
 [data-theme="dark"] .faq-modal::backdrop { background: rgba(0, 0, 0, .76); }
 @media (max-width: 560px) {
   .faq-floating-button {
-    left: max(16px, env(safe-area-inset-left)); bottom: max(16px, env(safe-area-inset-bottom));
+    right: max(16px, env(safe-area-inset-right)); bottom: max(16px, env(safe-area-inset-bottom));
     max-width: calc(100vw - 32px); padding: 10px 14px;
   }
   .faq-modal {
