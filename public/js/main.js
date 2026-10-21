@@ -1726,6 +1726,7 @@ function renderReports() {
 
   const area = document.getElementById('contentArea');
   area.innerHTML = `
+  <div class="reports-page">
   <div class="page-header">
     <div class="page-header-left"><h2>Reports & Analytics</h2><p>Financial summaries and collection reports.</p></div>
     <div class="page-header-actions">
@@ -1758,24 +1759,35 @@ function renderReports() {
   </div>
 
   <div class="report-summary-grid">
-    <div class="report-summary-item"><div class="r-val">₱${totalDue.toLocaleString()}</div><div class="r-lbl">Total Billed</div></div>
-    <div class="report-summary-item"><div class="r-val" style="color:var(--green-600)">₱${totalPaid.toLocaleString()}</div><div class="r-lbl">Total Collected</div></div>
-    <div class="report-summary-item"><div class="r-val" style="color:var(--red-600)">₱${totalOutstanding.toLocaleString()}</div><div class="r-lbl">Outstanding</div></div>
-    <div class="report-summary-item"><div class="r-val">${reportUsers.length}</div><div class="r-lbl">Homeowners with Activity</div></div>
+    <div class="report-summary-item"><div class="r-lbl"><svg width="16" height="16" aria-hidden="true"><use href="#ico-file"/></svg>Total Billed</div><div class="r-val">₱${totalDue.toLocaleString()}</div></div>
+    <div class="report-summary-item"><div class="r-lbl"><svg width="16" height="16" aria-hidden="true"><use href="#ico-credit"/></svg>Total Collected</div><div class="r-val" style="color:var(--green-600)">₱${totalPaid.toLocaleString()}</div></div>
+    <div class="report-summary-item"><div class="r-lbl"><svg width="16" height="16" aria-hidden="true"><use href="#ico-clock"/></svg>Outstanding</div><div class="r-val" style="color:var(--red-600)">₱${totalOutstanding.toLocaleString()}</div></div>
+    <div class="report-summary-item"><div class="r-lbl"><svg width="16" height="16" aria-hidden="true"><use href="#ico-users"/></svg>Homeowners with Activity</div><div class="r-val">${reportUsers.length}</div></div>
   </div>
 
-  <div class="charts-row" style="margin-bottom:22px">
+  <div class="reports-analytics">
+    <div class="chart-card reports-monthly">
+      <h4>Monthly Collections (${analysisYear})</h4>
+      <div class="chart-bars" id="reportBarChart"></div>
+      <div class="reports-month-labels">
+        ${monthlyData.map(d => `<div>${d.m}</div>`).join('')}
+      </div>
+    </div>
+    <div class="reports-status-stack">
     <div class="chart-card">
       <h4>Payment Status</h4>
+      <div class="reports-status-body">
       <div class="donut-wrap" id="reportDonut"></div>
       <div class="donut-legend">
         <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div> Approved (${approved.length})</div>
         <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div> Pending (${pending.length})</div>
         <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Rejected (${rejected.length})</div>
       </div>
+      </div>
     </div>
     <div class="chart-card">
       <h4>Complaint Status</h4>
+      <div class="reports-status-body">
       <div class="donut-wrap" id="complaintDonut"></div>
       <div class="donut-legend">
         <div class="legend-item"><div class="legend-dot" style="background:#2271c3"></div> Reviewed (${complaints.filter(c=>normalizeComplaintStatus(c.status)==='Reviewed').length})</div>
@@ -1783,31 +1795,27 @@ function renderReports() {
         <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div> Resolved (${complaints.filter(c=>c.status==='Resolved').length})</div>
         <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Rejected (${complaints.filter(c=>c.status==='Rejected').length})</div>
       </div>
-    </div>
-    <div class="chart-card chart-card-wide">
-      <h4>Monthly Collections (${analysisYear})</h4>
-      <div class="chart-bars" id="reportBarChart"></div>
-      <div style="display:flex;gap:8px;margin-top:6px">
-        ${monthlyData.map(d => `<div style="flex:1;text-align:center;font-size:0.72rem;color:var(--text-3)">${d.m}</div>`).join('')}
       </div>
     </div>
-    <div class="chart-card" style="flex:2;display:flex;flex-direction:column">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;gap:8px">
-        <h4 style="margin:0">Collection by Billing</h4>
+    </div>
+  </div>
+
+  <div class="section-card reports-billing">
+      <div class="section-card-header">
+        <h3>Collection by Billing</h3>
       </div>
-      <div class="table-wrapper" style="flex:1"><table class="data-table">
+      <div class="table-wrapper"><table class="data-table">
         <thead><tr><th>Billing</th><th>Assigned</th><th>Collected</th><th>Rate</th></tr></thead>
         <tbody id="billingCollectionTableBody"></tbody>
       </table></div>
       <div id="billingCollectionPagination"></div>
-    </div>
   </div>
 
-  <div class="section-card" style="margin-bottom:22px">
+  <div class="section-card reports-balances">
     <div class="section-card-header">
       <div>
         <h3>Homeowner Balance Report</h3>
-        <p style="font-size:0.8rem;color:var(--text-3);margin-top:2px;">Overview of resident account dues and payment clearance status.</p>
+        <p>Overview of resident account dues and payment clearance status.</p>
       </div>
       <div class="filters-row">
         <div class="search-box">
@@ -1837,6 +1845,7 @@ function renderReports() {
       <div><h3>Complaint Summary</h3></div>
     </div>
     <div class="section-card-body no-pad">
+      <div class="table-wrapper">
       <table class="data-table">
         <thead><tr><th>Homeowner</th><th>Category</th><th>Date of Occurrence</th><th>Date Filed</th><th>Status</th></tr></thead>
         <tbody>
@@ -1852,7 +1861,9 @@ function renderReports() {
           }).join('') || '<tr><td colspan="5"><div class="no-results">No complaints on record.</div></td></tr>'}
         </tbody>
       </table>
+      </div>
     </div>
+  </div>
   </div>`;
 
   renderMonthlyBarChart('reportBarChart', monthlyData, analysisYear);
