@@ -47,6 +47,10 @@ app.use(express.json({ limit: '15mb' }));
 // index.html still uses /public for CSS, JS, and images. Block its upload
 // subtree before the broad static mount so it cannot bypass /uploads rules.
 app.use('/public/uploads', (req, res) => res.status(404).end());
+// Expose only the pinned browser bundle for report exports, not node_modules.
+app.get('/public/vendor/exceljs-4.4.0.min.js', (req, res) => {
+  res.sendFile(require.resolve('exceljs/dist/exceljs.min.js'));
+});
 app.use('/public', express.static(PUBLIC_DIR));
 app.use('/images', express.static(path.join(PUBLIC_DIR, 'images')));
 app.use('/css', express.static(path.join(PUBLIC_DIR, 'css')));

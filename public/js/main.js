@@ -1461,68 +1461,65 @@ function setupSidebarOverlay() {
 
 
 
-// SECTION 12: ADMIN — REPORTS & CSV EXPORTS
+// SECTION 12: ADMIN — REPORTS & EXPORTS
 
 function csvEscape(val) {
   if (val === null || val === undefined) return '';
-  const str = String(val);
+  // Only text is escaped against formula injection. Numeric amounts (including
+  // negatives) remain numeric. CSV has no cell types; use XLSX for exact IDs.
+  let str = String(val);
+  if (typeof val === 'string' && (/^[\s\u0000-\u001f]*[=+\-@]/.test(str) || /^[\t\r\n]/.test(str))) str = "'" + str;
   if (str.includes('"') || str.includes(',') || str.includes('\n') || str.includes('\r')) {
     return `"${str.replace(/"/g, '""')}"`;
   }
   return str;
 }
 
-function csvRow(cells) {
-  return cells.map(csvEscape).join(',');
+function csvRow(cells, currencyColumns = [], identifierColumns = []) {
+  return cells.map((value, index) => currencyColumns.includes(index) && typeof value === 'number'
+    ? value.toFixed(2) : csvEscape(identifierColumns.includes(index) && value !== ''
+      ? "'" + String(value) : value)).join(',');
 }
 
-function downloadCSVFile(filename, csvContent, successMessage) {
+function downloadReportFile(filename, blob, format, successMessage) {
+  let url;
+  let link;
   try {
-    const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
+    url = URL.createObjectURL(blob);
+    link = document.createElement('a');
     link.href = url;
     link.download = filename;
     link.style.display = 'none';
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
     showToast('success', 'Download Complete', successMessage || `${filename} downloaded successfully.`);
     if (typeof logAction === 'function') {
-      logAction(`Downloaded report CSV: ${filename}`);
+      logAction(`Downloaded report ${format}: ${filename}`);
     }
   } catch (err) {
-    console.error('CSV download error:', err);
-    showToast('error', 'Download Failed', 'Could not generate CSV file: ' + (err.message || 'Unknown error'));
+    console.error('Report download error:', err);
+    showToast('error', 'Download Failed', 'Could not download report: ' + (err.message || 'Unknown error'));
+  } finally {
+    if (link?.parentNode) link.parentNode.removeChild(link);
+    // Give the browser time to consume the object URL before releasing it.
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 30000);
   }
 }
 
-function exportReportsFinancialCSV() {
-  if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
-  syncHomeownerBalances();
+function downloadCSVFile(filename, csvContent, successMessage) {
+  downloadReportFile(filename, new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' }), 'CSV', successMessage);
+}
 
-  const range = getDateRangeFilter();
-  const billings = filterByDateRange(db.get('billings') || [], getReportBillingDate, range);
-  const payments = filterByDateRange(db.get('payments') || [], getReportPaymentDate, range);
+const REPORT_FINANCIAL_HEADERS = [
+  'Billing Period / Description', 'Billing ID', 'Total Billed (PHP)',
+  'Total Collected (PHP)', 'Outstanding Balance (PHP)',
+  'Fully Paid Billing Accounts', 'Not Fully Paid Billing Accounts (Includes Partial)'
+];
 
-  const rows = [];
-  rows.push(csvRow([
-    'Billing Period/Month',
-    'Total Billed',
-    'Total Collected',
-    'Outstanding Balance',
-    'Number of Paid Accounts',
-    'Number of Unpaid Accounts'
-  ]));
-
-  let sumBilled = 0;
-  let sumCollected = 0;
-  let sumOutstanding = 0;
-  let sumPaid = 0;
-  let sumUnpaid = 0;
-
-  billings.forEach(b => {
+// Preserve the historical collection export rules, including advance dues.
+// These totals deliberately differ from the report summary; see workbook notes.
+function buildReportFinancialRows({ billings, payments }) {
+  const rows = billings.map(b => {
     const assignedIds = getAssignedHomeownerIds(b);
     const billPayments = payments.filter(p => p.billingId === b.id && p.status === 'approved');
     const paidHomeowners = new Set(assignedIds.filter(homeownerId =>
@@ -1535,68 +1532,134 @@ function exportReportsFinancialCSV() {
     const numPaid = paidHomeowners.size;
     const numUnpaid = Math.max(0, assignedIds.length - numPaid);
 
-    sumBilled += totalBilled;
-    sumCollected += totalCollected;
-    sumOutstanding += outstanding;
-    sumPaid += numPaid;
-    sumUnpaid += numUnpaid;
-
-    rows.push(csvRow([
-      b.title || 'General Dues',
-      totalBilled.toFixed(2),
-      totalCollected.toFixed(2),
-      outstanding.toFixed(2),
-      numPaid,
-      numUnpaid
-    ]));
+    return [b.title || 'General Dues', String(b.id ?? ''), totalBilled, totalCollected, outstanding, numPaid, numUnpaid];
   });
 
   // Account for advance monthly dues payments where homeowner was excluded from billing
   const unlinkedAdvancePayments = payments.filter(p => !p.billingId && p.monthly_dues_month && p.status === 'approved');
   if (unlinkedAdvancePayments.length > 0) {
-    const grouped = {};
+    const grouped = new Map();
     unlinkedAdvancePayments.forEach(p => {
-      grouped[p.monthly_dues_month] = grouped[p.monthly_dues_month] || [];
-      grouped[p.monthly_dues_month].push(p);
+      if (!grouped.has(p.monthly_dues_month)) grouped.set(p.monthly_dues_month, []);
+      grouped.get(p.monthly_dues_month).push(p);
     });
 
-    Object.entries(grouped).forEach(([mMonth, mPayments]) => {
+    grouped.forEach((mPayments, mMonth) => {
       const mName = formatBillingMonth(mMonth);
       const totalCollected = mPayments.reduce((sum, p) => sum + toMoneyNumber(p.amount), 0);
       const numPaid = new Set(mPayments.map(p => p.homeownerId)).size;
 
-      sumBilled += totalCollected;
-      sumCollected += totalCollected;
-      sumPaid += numPaid;
-
-      rows.push(csvRow([
+      rows.push([
         `Monthly Dues - ${mName} (Advance)`,
-        totalCollected.toFixed(2),
-        totalCollected.toFixed(2),
-        '0.00',
+        '',
+        totalCollected,
+        totalCollected,
+        0,
         numPaid,
         0
-      ]));
+      ]);
     });
   }
 
-  // Summary row
-  rows.push(csvRow([
-    'Total',
-    sumBilled.toFixed(2),
-    sumCollected.toFixed(2),
-    sumOutstanding.toFixed(2),
-    sumPaid,
-    sumUnpaid
-  ]));
+  const totals = ['Total', '', ...[2, 3, 4, 5, 6].map(i => rows.reduce((sum, row) => sum + row[i], 0))];
+  return { rows, totals };
+}
 
-  const filename = `Financial_Collection_Report_${getLocalDateValue()}.csv`;
-  downloadCSVFile(filename, rows.join('\r\n'), 'Financial & Collection CSV report downloaded.');
+function getReportPeriod(range) {
+  const start = range.start ? getLocalDateValue(range.start) : null;
+  const end = range.end ? getLocalDateValue(range.end) : null;
+  return {
+    label: !start && !end ? 'All time' : start === end ? start : `${start || 'Beginning'} to ${end || 'Present'}`,
+    filename: !start && !end ? 'All_Time' : start === end ? start : `${start || 'Beginning'}_to_${end || 'Present'}`,
+  };
+}
+
+function getReportExportData() {
+  // Use the full displayed snapshot, never paginated DOM rows. Snapshot the
+  // balance filter controls before asynchronous library/logo loading.
+  const data = currentReportsData || getReportsData();
+  const balanceFilters = getReportBalanceFilters();
+  const balanceRows = getFilteredReportHomeowners(data, balanceFilters).map(user => {
+    const balance = getReportBalance(user.id, data.billings, data.payments);
+    return [user.name || '', String(user.id ?? ''), String(user.block || '—'), String(user.lot || '—'), balance, balance > 0 ? 'With Balance' : 'Clear'];
+  });
+  return { ...data, period: getReportPeriod(data.range), generatedAt: new Date(),
+    financial: buildReportFinancialRows(data), balanceFilters, balanceRows };
+}
+
+function exportReportsFinancialCSV() {
+  if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
+  try {
+    const data = getReportExportData();
+    const { rows, totals } = data.financial;
+    // Currency columns are formatted separately from user text. Do not add
+    // metadata or spacing rows: this remains a rectangular financial table.
+    const csv = [csvRow(REPORT_FINANCIAL_HEADERS), ...[...rows, totals].map(row => csvRow(row, [2, 3, 4], [1]))].join('\r\n') + '\r\n';
+    downloadCSVFile(`SmartHood_Financial_Collections_${data.period.filename}.csv`, csv,
+      rows.length ? 'Financial & Collection CSV report downloaded.' : 'No matching financial records. CSV contains headers and zero totals.');
+  } catch (err) {
+    showToast('error', 'Download Failed', 'Could not generate CSV file: ' + err.message);
+  }
+}
+
+let reportsExcelLibraryPromise = null;
+function loadReportsExcelLibrary() {
+  if (window.ExcelJS) return Promise.resolve(window.ExcelJS);
+  if (!reportsExcelLibraryPromise) {
+    reportsExcelLibraryPromise = new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      const timer = setTimeout(() => fail(), 20000);
+      const fail = () => {
+        clearTimeout(timer);
+        script.remove();
+        reportsExcelLibraryPromise = null;
+        reject(new Error('Excel export library could not be loaded. Retry or choose CSV.'));
+      };
+      script.src = 'public/vendor/exceljs-4.4.0.min.js';
+      script.onload = () => {
+        clearTimeout(timer);
+        if (window.ExcelJS) resolve(window.ExcelJS); else fail();
+      };
+      script.onerror = fail;
+      document.head.appendChild(script);
+    });
+  }
+  return reportsExcelLibraryPromise;
+}
+
+let reportsExportInProgress = false;
+async function exportReportsExcel() {
+  if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
+  if (reportsExportInProgress) return;
+  reportsExportInProgress = true;
+  const button = document.getElementById('reportsDownloadButton');
+  if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
+  try {
+    const data = getReportExportData();
+    showToast('info', 'Preparing Download', 'Creating the Reports & Analytics Excel workbook.');
+    const ExcelJS = await loadReportsExcelLibrary();
+    const logo = await loadReportWorkbookLogo();
+    const workbook = buildReportsWorkbook(ExcelJS, data, logo);
+    const buffer = await workbook.xlsx.writeBuffer();
+    if (!canViewReports()) throw new Error('You no longer have access to financial reports.');
+    downloadReportFile(`SmartHood_Reports_Analytics_${data.period.filename}_Analysis_${data.analysisYear}.xlsx`,
+      new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'XLSX',
+      'Reports & Analytics Excel workbook downloaded.');
+  } catch (err) {
+    console.error('Excel export error:', err);
+    showToast('error', 'Download Failed', 'Could not generate Excel file: ' + (err.message || 'Unknown error'));
+  } finally {
+    reportsExportInProgress = false;
+    if (button) { button.disabled = false; button.removeAttribute('aria-busy'); }
+  }
 }
 
 window.exportReportsFinancialCSV = exportReportsFinancialCSV;
 window.exportReportsCSV = exportReportsFinancialCSV;
 window.exportReportsSummaryCSV = exportReportsFinancialCSV;
+window.exportReportsExcel = exportReportsExcel;
+window.downloadReports = () => document.getElementById('reportsExportFormat')?.value === 'csv'
+  ? exportReportsFinancialCSV() : exportReportsExcel();
 
 // Reports use the date that best represents activity for each record type. Payments
 // prefer their review date, then their submitted/payment date; billings use the date
@@ -1701,9 +1764,7 @@ function getReportBalance(userId, billings, payments) {
   return Math.max(0, Math.round((billed - paid) * 100) / 100);
 }
 
-function renderReports() {
-  if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
-  syncHomeownerBalances();
+function getReportsData() {
   const range = getDateRangeFilter();
   const payments = filterByDateRange(db.get('payments'), getReportPaymentDate, range);
   const billings = filterByDateRange(db.get('billings'), getReportBillingDate, range);
@@ -1722,7 +1783,16 @@ function renderReports() {
   const totalOutstanding = Math.max(0, totalDue - totalPaid);
   const analysisYear = getAnalysisYear(payments, billings);
   const monthlyData = buildMonthlyRevenueData(payments, analysisYear);
-  currentReportsData = { billings, payments, users, reportUsers };
+  return { range, billings, payments, users, reportUsers, complaints, approved, pending, rejected,
+    totalDue, totalPaid, totalOutstanding, analysisYear, monthlyData };
+}
+
+function renderReports() {
+  if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
+  syncHomeownerBalances();
+  currentReportsData = getReportsData();
+  const { complaints, approved, pending, rejected, totalDue, totalPaid, totalOutstanding,
+    analysisYear, monthlyData, reportUsers } = currentReportsData;
 
   const area = document.getElementById('contentArea');
   area.innerHTML = `
@@ -1730,8 +1800,12 @@ function renderReports() {
   <div class="page-header">
     <div class="page-header-left"><h2>Reports & Analytics</h2><p>Financial summaries and collection reports.</p></div>
     <div class="page-header-actions">
-      <button class="btn btn-primary" onclick="exportReportsFinancialCSV()" title="Download Financial & Collection CSV Report">
-        <svg width="15" height="15"><use href="#ico-download"/></svg> Download CSV
+      <select class="filter-select" id="reportsExportFormat" aria-label="Report download format">
+        <option value="xlsx">Excel (.xlsx)</option>
+        <option value="csv">CSV (.csv)</option>
+      </select>
+      <button class="btn btn-primary" id="reportsDownloadButton" onclick="downloadReports()" title="Download the selected report format">
+        <svg width="15" height="15"><use href="#ico-download"/></svg> Download Report
       </button>
       <button class="btn btn-secondary" onclick="window.print()">
         <svg width="15" height="15"><use href="#ico-printer"/></svg> Print Report
@@ -2055,11 +2129,15 @@ function renderHOBalanceReportTable(filtered = null, resetPage = false) {
   });
 }
 
-function filterHOBalanceReport() {
-  const q = (document.getElementById('hoBalanceSearch')?.value || '').toLowerCase().trim();
-  const statusFilter = document.getElementById('hoBalanceStatusFilter')?.value || '';
+function getReportBalanceFilters() {
+  return { search: (document.getElementById('hoBalanceSearch')?.value || '').trim(),
+    status: document.getElementById('hoBalanceStatusFilter')?.value || '' };
+}
 
-  let users = currentReportsData?.reportUsers || getHomeowners();
+function getFilteredReportHomeowners(data, filters) {
+  const q = filters.search.toLowerCase();
+  const statusFilter = filters.status;
+  let users = data?.reportUsers || getHomeowners();
   if (q) {
     users = users.filter(u =>
       (u.name || '').toLowerCase().includes(q)
@@ -2070,12 +2148,15 @@ function filterHOBalanceReport() {
     );
   }
   if (statusFilter === 'due') {
-    users = users.filter(u => getReportBalance(u.id, currentReportsData?.billings || [], currentReportsData?.payments || []) > 0);
+    users = users.filter(u => getReportBalance(u.id, data?.billings || [], data?.payments || []) > 0);
   } else if (statusFilter === 'clear') {
-    users = users.filter(u => getReportBalance(u.id, currentReportsData?.billings || [], currentReportsData?.payments || []) <= 0);
+    users = users.filter(u => getReportBalance(u.id, data?.billings || [], data?.payments || []) <= 0);
   }
+  return users;
+}
 
-  renderHOBalanceReportTable(users, true);
+function filterHOBalanceReport() {
+  renderHOBalanceReportTable(getFilteredReportHomeowners(currentReportsData, getReportBalanceFilters()), true);
 }
 window.filterHOBalanceReport = filterHOBalanceReport;
 
