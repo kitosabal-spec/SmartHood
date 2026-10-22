@@ -29,8 +29,14 @@ const { createIndexController } = require('./controllers/pageController');
 const { createHealthRoutes } = require('./routes/healthRoutes');
 const { registerPageRoutes } = require('./routes');
 const { isBcryptHash, hashPasswordResetToken, isPasswordResetToken } = require('./utils/security');
+const { readLoginSecurityConfig } = require('./config/loginSecurity');
+const { createAuthSecurityRepository } = require('./services/authSecurityStore');
+const { createLoginSecurityAlerts } = require('./services/loginSecurityAlerts');
+const { createLoginRateLimits, loginIdentifier } = require('./middleware/loginRateLimit');
 
 const app = express();
+const loginSecurityConfig = readLoginSecurityConfig();
+app.set('trust proxy', loginSecurityConfig.trustProxy);
 
 let db;
 // Set FILE_ACCESS_SECRET in production so signed file links survive restarts.
@@ -39,6 +45,15 @@ const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toSt
 const SESSION_COOKIE_NAME = 'smarthood_session';
 const PASSWORD_RESET_TTL_MS = 15 * 60 * 1000;
 const PASSWORD_RESET_RESPONSE = 'If an active account is registered with that email address, a password reset link has been sent.';
+const authSecurityRepository = createAuthSecurityRepository(() => db);
+const loginRateLimits = createLoginRateLimits({
+  getPool: () => db,
+  config: loginSecurityConfig,
+  onRestriction: createLoginSecurityAlerts({ repository: authSecurityRepository, findUser: findLoginUser, config: loginSecurityConfig }),
+  forgotPasswordResponse: PASSWORD_RESET_RESPONSE,
+});
+// Unknown accounts perform the same bcrypt work as an incorrect password.
+const dummyLoginPasswordHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
 const LEGAL_POLICY_VERSION = '2026-10-06';
 if (!process.env.FILE_ACCESS_SECRET) console.warn('FILE_ACCESS_SECRET is not set; private file links will expire after a server restart.');
 if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not set; sessions will expire after a server restart.');
@@ -2768,13 +2783,7 @@ app.get('/api/session', asyncHandler(async (req, res) => {
   res.json({ authenticated: true, user });
 }));
 
-app.post('/api/login', asyncHandler(async (req, res) => {
-  const identifier = (req.body.email || req.body.username || '').trim();
-  const password = (req.body.password || '').trim();
-  if (!identifier || !password) {
-    res.status(400).json({ error: 'Email address and password are required.' });
-    return;
-  }
+async function findLoginUser(identifier) {
   const user = await get(
     `SELECT * FROM users
       WHERE ((LOWER(email) = LOWER(?) AND (role <> 'homeowner' OR homeowner_id IS NOT NULL))
@@ -2782,15 +2791,25 @@ app.post('/api/login', asyncHandler(async (req, res) => {
       LIMIT 1`,
     [identifier, identifier]
   );
-  const matchesIdentifier = Boolean(
-    user && (
-      String(user.email || '').toLowerCase() === identifier.toLowerCase() ||
-      (user.role === 'admin' && user.username === identifier)
-    )
-  );
-  if (!user || !matchesIdentifier) {
-    res.status(401).json({ error: 'Invalid email address or password.' });
+  // Keep the original account matching rules for both login and alerts,
+  // including case-sensitive administrator usernames.
+  return user && (
+    String(user.email || '').toLowerCase() === identifier.toLowerCase() ||
+    (user.role === 'admin' && user.username === identifier)
+  ) ? user : undefined;
+}
+
+app.post('/api/login', loginRateLimits.beforeLogin, asyncHandler(async (req, res) => {
+  const identifier = loginIdentifier(req.body);
+  const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
+  if (!identifier || !password) {
+    res.status(400).json({ error: 'Email address and password are required.' });
     return;
+  }
+  const user = await findLoginUser(identifier);
+  if (!user) {
+    await bcrypt.compare(password, dummyLoginPasswordHash);
+    return loginRateLimits.failedLogin(req, res);
   }
 
   let passwordMatches = false;
@@ -2812,13 +2831,14 @@ app.post('/api/login', asyncHandler(async (req, res) => {
   }
 
   if (!passwordMatches) {
-    res.status(401).json({ error: 'Invalid email address or password.' });
-    return;
+    if (!isBcryptHash(user.password)) await bcrypt.compare(password, dummyLoginPasswordHash);
+    return loginRateLimits.failedLogin(req, res);
   }
 
   if (user.status === 'inactive' || user.status === 'deactivated') {
-    res.status(403).json({ error: 'Your account has been deactivated. Please contact the administrator.' });
-    return;
+    return loginRateLimits.failedLogin(req, res, {
+      status: 403, error: 'Your account has been deactivated. Please contact the administrator.',
+    });
   }
   // Deliberately omit maxAge/expires: closing the browser ends the cookie session.
   res.cookie(SESSION_COOKIE_NAME, signedSessionToken(user.id), sessionCookieOptions());
@@ -2826,7 +2846,7 @@ app.post('/api/login', asyncHandler(async (req, res) => {
   res.json(mergeUserWithHomeowner(deserializeRow('users', user), homeowner));
 }));
 
-app.post('/api/forgot-password', asyncHandler(async (req, res) => {
+app.post('/api/forgot-password', loginRateLimits.forgotPassword, asyncHandler(async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
   if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
     res.status(400).json({ error: 'Enter a valid email address.' });
@@ -5313,10 +5333,16 @@ app.use((err, req, res, next) => {
 
 async function initializeApp() {
   await ensureDatabase();
+  await authSecurityRepository.initialize();
   await createTables();
   await seedIfEmpty();
   await migrateLegacyPasswords();
   await ensureAdminUser();
+  const pruneSecurityRecords = () => authSecurityRepository.prune().catch(() => {
+    console.error('Authentication security record cleanup failed.');
+  });
+  await pruneSecurityRecords();
+  setInterval(pruneSecurityRecords, 60 * 60 * 1000).unref();
   return app;
 }
 

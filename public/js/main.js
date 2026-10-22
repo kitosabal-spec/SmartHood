@@ -224,7 +224,12 @@ const api = {
           }
         }
       }
-      throw new Error(errMsg);
+      const requestError = new Error(errMsg);
+      requestError.status = response.status;
+      requestError.warning = err.warning;
+      requestError.attemptsRemaining = err.attemptsRemaining;
+      requestError.retryAfterSeconds = err.retryAfterSeconds;
+      throw requestError;
     }
 
     return response.json();
@@ -567,8 +572,19 @@ async function handleLogin() {
     initApp();
   } catch (error) {
     hideLoading();
-    showLoginError(error.message || 'Invalid email address or password.');
+    showLoginError(loginFailureMessage(error));
   }
+}
+
+function loginFailureMessage(error) {
+  let message = error.message || 'Invalid email address or password.';
+  if (error.status === 429 && Number.isFinite(error.retryAfterSeconds) && error.retryAfterSeconds > 0) {
+    const minutes = Math.max(1, Math.ceil(error.retryAfterSeconds / 60));
+    message += ` Approximately ${minutes} minute${minutes === 1 ? '' : 's'} remaining. You can still use Forgot Password.`;
+  } else if (typeof error.warning === 'string' && error.warning) {
+    message += ` ${error.warning}`;
+  }
+  return message;
 }
 
 function togglePassword() {

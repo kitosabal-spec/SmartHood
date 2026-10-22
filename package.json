@@ -4,6 +4,7 @@
   "description": "San Alfonso Homes resident management system with Node.js, Express, and MySQL.",
   "main": "src/server.js",
   "scripts": {
+    "test": "node --test tests/*.test.cjs",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
     "email:test": "node scripts/send-test-email.js"
@@ -13,6 +14,7 @@
     "dotenv": "^18.0.5",
     "exceljs": "4.4.0",
     "express": "^4.19.2",
+    "express-rate-limit": "8.7.1",
     "multer": "^2.3.0",
     "mysql2": "^3.22.5",
     "nodemailer": "^10.0.13"
