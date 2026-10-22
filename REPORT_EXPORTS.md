@@ -1,5 +1,10 @@
 # Reports & Analytics exports
 
+Audit Log has its own **Export Excel** action and single-sheet builder in
+`public/js/audit-workbook.js`, sharing the ExcelJS loader and Reports palette.
+See [AUDIT_LOG.md](AUDIT_LOG.md#audit-log-excel-export) for filtering, authorization,
+timestamp assumptions and verification. It does not change financial exports.
+
 The Administrator report now offers **Excel (.xlsx)** and **CSV (.csv)** next to
 Download Report. Restart the Node server after installing dependencies with
 `npm ci`, then reload the page.

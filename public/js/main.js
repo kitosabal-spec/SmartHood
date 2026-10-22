@@ -2255,6 +2255,9 @@ async function renderAuditLog() {
         <svg width="14" height="14" style="color:var(--teal-600);"><use href="#ico-log"/></svg>
         <span>Loading...</span>
       </div>
+      <button class="btn btn-primary btn-sm" id="auditLogExportButton" onclick="exportAuditLogExcel()">
+        <svg width="15" height="15"><use href="#ico-download"/></svg> Export Excel
+      </button>
     </div>
   </div>
   <div class="section-card">
@@ -2337,19 +2340,26 @@ function onAuditLogFilterChange() {
 }
 window.onAuditLogFilterChange = onAuditLogFilterChange;
 
-function filterAuditLogs() {
-  const allLogs = [...db.get('auditLog')].reverse();
-  const filterMode = document.getElementById('auditLogFilter')?.value || 'all';
-  const query = (document.getElementById('logSearch')?.value || '').trim().toLowerCase();
-  const now = new Date();
+function getAuditLogFilters() {
+  return {
+    mode: document.getElementById('auditLogFilter')?.value || 'all',
+    search: (document.getElementById('logSearch')?.value || '').trim(),
+    date: document.getElementById('auditLogDate')?.value || '',
+    startDate: document.getElementById('auditLogStartDate')?.value || '',
+    endDate: document.getElementById('auditLogEndDate')?.value || '',
+  };
+}
 
-  const filtered = allLogs.filter(item => {
+function getFilteredAuditLogs(records, filters, now = new Date()) {
+  const filterMode = filters.mode;
+  const query = filters.search.toLowerCase();
+  return [...records].reverse().filter(item => {
     // 1. Text search
     if (query) {
-      const actionMatch = (item.action || '').toLowerCase().includes(query);
-      const performer = getAuditPerformerName(item.adminId).toLowerCase();
-      const performerMatch = performer.includes(query) || (item.adminId || '').toLowerCase().includes(query);
-      const timeMatch = (item.timestamp || '').toLowerCase().includes(query);
+      const actionMatch = String(item.action || '').toLowerCase().includes(query);
+      const performer = String(getAuditPerformerName(item.adminId)).toLowerCase();
+      const performerMatch = performer.includes(query) || String(item.adminId || '').toLowerCase().includes(query);
+      const timeMatch = String(item.timestamp || '').toLowerCase().includes(query);
       if (!actionMatch && !performerMatch && !timeMatch) return false;
     }
 
@@ -2383,7 +2393,7 @@ function filterAuditLogs() {
     }
 
     if (filterMode === 'date') {
-      const dateVal = document.getElementById('auditLogDate')?.value;
+      const dateVal = filters.date;
       if (!dateVal) return true;
       const [y, m, d] = dateVal.split('-').map(Number);
       return (
@@ -2394,8 +2404,8 @@ function filterAuditLogs() {
     }
 
     if (filterMode === 'range') {
-      const startVal = document.getElementById('auditLogStartDate')?.value;
-      const endVal = document.getElementById('auditLogEndDate')?.value;
+      const startVal = filters.startDate;
+      const endVal = filters.endDate;
       if (startVal) {
         const [sy, sm, sd] = startVal.split('-').map(Number);
         const startDate = new Date(sy, sm - 1, sd, 0, 0, 0, 0);
@@ -2411,6 +2421,14 @@ function filterAuditLogs() {
 
     return true;
   });
+}
+
+function filterAuditLogs() {
+  const allLogs = db.get('auditLog');
+  const filters = getAuditLogFilters();
+  const filterMode = filters.mode;
+  const query = filters.search;
+  const filtered = getFilteredAuditLogs(allLogs, filters);
 
   const badge = document.getElementById('auditLogCountBadge');
   if (badge) {
@@ -2424,6 +2442,67 @@ function filterAuditLogs() {
   renderAuditLogRows(filtered, true);
 }
 window.filterAuditLogs = filterAuditLogs;
+
+let auditLogExportInProgress = false;
+async function exportAuditLogExcel() {
+  if (auditLogExportInProgress) return;
+  auditLogExportInProgress = true;
+  const button = document.getElementById('auditLogExportButton');
+  const label = button?.innerHTML;
+  const actorId = currentUser?.id;
+  let url;
+  let link;
+  if (button) {
+    button.disabled = true;
+    button.setAttribute('aria-busy', 'true');
+    button.textContent = 'Preparing Excel…';
+  }
+  try {
+    if (!actorId) throw new Error('Please sign in to export audit logs.');
+    // Never use cached logs as an authorization fallback.
+    const records = await api.request('/api/auditLog', { cache: 'no-store' });
+    if (currentUser?.id !== actorId) throw new Error('Your session changed. Please retry.');
+    // Capture filters, records, names and time together, before workbook awaits.
+    const filters = getAuditLogFilters();
+    const generatedAt = new Date();
+    const rows = getFilteredAuditLogs(records, filters, generatedAt).map(item => ({
+      id: String(item.id ?? ''), action: String(item.action ?? ''),
+      performer: String(getAuditPerformerName(item.adminId)), adminId: String(item.adminId ?? ''),
+      timestamp: formatAuditExportTimestamp(item.timestamp),
+    }));
+    if (!rows.length) {
+      showToast('info', 'No Matching Records', 'No audit logs match the selected filters.');
+      return;
+    }
+    showToast('info', 'Preparing Download', 'Creating the Audit Log Excel workbook.');
+    const ExcelJS = await loadReportsExcelLibrary();
+    const workbook = buildAuditLogWorkbook(ExcelJS, { filters, generatedAt, rows });
+    const buffer = await workbook.xlsx.writeBuffer();
+    // Revalidate with the server after generation, including revoked permissions.
+    await api.request('/api/auditLog', { cache: 'no-store' });
+    if (currentUser?.id !== actorId) throw new Error('Your session changed. Please retry.');
+    url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
+    link = document.createElement('a');
+    link.href = url;
+    link.download = `SmartHood_Audit_Log_${auditExportTime(generatedAt).replace(' ', '_').replace(/:/g, '')}.xlsx`;
+    document.body.appendChild(link);
+    link.click();
+    showToast('success', 'Download Started', 'Your Audit Log Excel file is ready.');
+  } catch (error) {
+    showToast('error', 'Export Failed', error.message || 'Could not create the Audit Log workbook.');
+  } finally {
+    link?.remove();
+    if (url) setTimeout(() => URL.revokeObjectURL(url), 30000);
+    auditLogExportInProgress = false;
+    if (button) { button.disabled = false; button.removeAttribute('aria-busy'); button.innerHTML = label; }
+  }
+}
+window.exportAuditLogExcel = exportAuditLogExcel;
+
+function formatAuditExportTimestamp(value) {
+  const parsed = parseLogTimestamp(value);
+  return parsed ? `${auditExportTime(parsed)} Asia/Manila` : String(value ?? '');
+}
 
 function renderAuditLogRows(filtered = null, resetPage = false) {
   const tbody = document.getElementById('logTableBody');
