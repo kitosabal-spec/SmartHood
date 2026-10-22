@@ -1790,7 +1790,7 @@ function viewPaymentDetail(id) {
         </div>
       </div>
 
-      ${paymentSummary ? `<div class="grid-3 mb-16">
+      ${paymentSummary ? `<div class="payment-summary-grid mb-16">
         <div class="report-summary-item"><div class="r-val">₱${paymentSummary.originalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Original Amount</div></div>
         <div class="report-summary-item"><div class="r-val">₱${paymentSummary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Approved Total</div></div>
         <div class="report-summary-item"><div class="r-val">₱${paymentSummary.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Remaining Balance</div></div>
@@ -2332,7 +2332,7 @@ function openPayNowModal(billingIdOrOpts) {
   const payloadOpts = { billingId, month, amount, title, description, dueDate };
 
   openModal('Pay Bill via GCash', `
-    <div class="payment-flow-modal">
+    <div class="payment-flow-modal resident-payment-modal">
       <div class="payment-bill-summary">
         <div class="payment-bill-meta">
           <h4>${escapeHtml(title)}</h4>
@@ -2345,7 +2345,7 @@ function openPayNowModal(billingIdOrOpts) {
         </div>
       </div>
 
-      <div class="grid-3 mb-16">
+      <div class="payment-summary-grid mb-16">
         <div class="report-summary-item"><div class="r-val">${formattedOriginal}</div><div class="r-lbl">Original Amount</div></div>
         <div class="report-summary-item"><div class="r-val">${formattedPaid}</div><div class="r-lbl">Total Paid</div></div>
         <div class="report-summary-item"><div class="r-val">${formattedAmount}</div><div class="r-lbl">Remaining Balance</div></div>
@@ -2507,7 +2507,7 @@ function openSubmitPaymentForm(billingIdOrOpts) {
   const payloadOpts = { billingId, month, amount, title };
 
   openModal('Submit Payment Proof', `
-    <div class="payment-flow-modal">
+    <div class="payment-flow-modal resident-payment-modal">
       <div class="payment-bill-summary">
         <div class="payment-bill-meta">
           <h4>${escapeHtml(title)}</h4>
@@ -2519,7 +2519,7 @@ function openSubmitPaymentForm(billingIdOrOpts) {
         </div>
       </div>
 
-      <div class="grid-3 mb-16">
+      <div class="payment-summary-grid mb-16">
         <div class="report-summary-item"><div class="r-val">₱${paymentSummary.originalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Original Amount</div></div>
         <div class="report-summary-item"><div class="r-val">₱${paymentSummary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Total Paid</div></div>
         <div class="report-summary-item"><div class="r-val">₱${paymentSummary.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</div><div class="r-lbl">Remaining Balance</div></div>
