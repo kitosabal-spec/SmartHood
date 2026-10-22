@@ -10,7 +10,7 @@ function auditDatabase() {
     users: pool.users, homeowners: [{ id: 'home-1', name: 'Resident', lotArea: 100 }],
     auditLog: [], billings: [], payments: [], complaints: [], amenityBookings: [],
     vehicleRegistrations: [], lostFound: [], announcements: [], appSettings: [],
-    payment_settings: [], notifications: [], announcement_comments: [], board_of_directors: [],
+    payment_settings: [], notifications: [], announcement_comments: [], announcement_reactions: [], board_of_directors: [],
   };
   pool.tables = tables;
   pool.failAudit = false;

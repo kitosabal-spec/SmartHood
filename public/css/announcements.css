@@ -228,7 +228,11 @@
   padding: 10px 20px 8px 20px;
   font-size: 0.82rem;
   color: var(--text-3);
+  gap: 12px;
+  flex-wrap: wrap;
 }
+.community-post-engagement-stats { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.community-post-heart-count { font-weight: 600; }
 
 /* Post Action Bar */
 .community-post-action-bar {
@@ -257,6 +261,11 @@
   background: var(--surface-2);
   color: var(--teal-600);
 }
+.community-post-heart-btn svg { fill: none; stroke: currentColor; stroke-width: 2; transition: transform 0.15s ease; }
+.community-post-heart-btn.is-reacted { color: #dc2626; }
+.community-post-heart-btn.is-reacted svg { fill: currentColor; stroke: currentColor; }
+.community-post-heart-btn:hover svg { transform: scale(1.12); }
+.community-post-action-btn:focus-visible { outline: 3px solid var(--teal-600); outline-offset: -3px; }
 
 /* Comments Section */
 .community-comments-section {

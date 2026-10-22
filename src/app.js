@@ -708,6 +708,11 @@ async function saveRecord(table, item) {
 async function deleteRecord(table, id) {
   const existing = await get(`SELECT * FROM ${tableName(table)} WHERE id = ? FOR UPDATE`, [id]);
   if (!existing) return false;
+  if (table === 'announcements') {
+    await run('DELETE FROM announcement_reactions WHERE announcement_id = ?', [id]);
+  } else if (table === 'users') {
+    await run('DELETE FROM announcement_reactions WHERE user_id = ?', [id]);
+  }
   await run(`DELETE FROM ${tableName(table)} WHERE id = ?`, [id]);
   if (AUDITED_TABLES.has(table)) await recordAuditLog(audit.current().req, { table, id, operation: 'deleted' });
   return true;
@@ -1086,6 +1091,14 @@ async function createTables() {
   await run('ALTER TABLE announcements ADD COLUMN updated_at TEXT').catch(() => {});
   await run('ALTER TABLE announcements ADD COLUMN images LONGTEXT').catch(() => {});
   await run('ALTER TABLE announcements ADD COLUMN is_pinned TINYINT(1) DEFAULT 0').catch(() => {});
+
+  await run(`CREATE TABLE IF NOT EXISTS announcement_reactions (
+    announcement_id VARCHAR(64) NOT NULL,
+    user_id VARCHAR(64) NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY announcement_reaction_account (announcement_id, user_id),
+    KEY announcement_reaction_user (user_id)
+  )`);
 
   await run(`CREATE TABLE IF NOT EXISTS announcement_comments (
     id VARCHAR(64) PRIMARY KEY,
@@ -1651,7 +1664,7 @@ async function checkTableAccess(req, res, table, action = 'read') {
   }
   // These are internal tables. Their dedicated routes below enforce ownership
   // and audience checks; never expose them through the generic CRUD API.
-  if (table === 'notifications' || table === 'announcement_comments') {
+  if (table === 'notifications' || table === 'announcement_comments' || table === 'announcement_reactions') {
     res.status(405).json({ error: 'Use the dedicated API route for this resource.' });
     return null;
   }
@@ -2443,6 +2456,72 @@ app.patch('/api/announcements/:id/pin', auditedHandler(async (req, res) => {
 }));
 
 // ── Announcement Comment Counts ──
+function mayReactToAnnouncement(user) {
+  return user && user.status === 'active' && (
+    user.role === 'admin' ||
+    (user.role === 'homeowner' && userHasPermission(user, 'resident')) ||
+    userHasPermission(user, 'announcements')
+  );
+}
+
+async function reactionState(announcementId, userId) {
+  const row = await get(
+    `SELECT COUNT(*) AS count, MAX(CASE WHEN user_id = ? THEN 1 ELSE 0 END) AS reacted
+     FROM announcement_reactions WHERE announcement_id = ?`,
+    [userId || '', announcementId]
+  );
+  return { count: Number(row.count), reacted: Boolean(row.reacted) };
+}
+
+async function reactionActor(req, res) {
+  const user = await requireAuth(req, res);
+  if (!user) return null;
+  if (!mayReactToAnnouncement(user)) {
+    res.status(403).json({ error: 'Your account cannot react to announcements.' });
+    return null;
+  }
+  return user;
+}
+
+app.get('/api/announcements/reactions', asyncHandler(async (req, res) => {
+  const user = await getRequester(req);
+  const userId = mayReactToAnnouncement(user) ? user.id : '';
+  const rows = await all(
+    `SELECT announcement_id, COUNT(*) AS count,
+            MAX(CASE WHEN user_id = ? THEN 1 ELSE 0 END) AS reacted
+     FROM announcement_reactions GROUP BY announcement_id`,
+    [userId]
+  );
+  const states = {};
+  for (const row of rows) states[row.announcement_id] = { count: Number(row.count), reacted: Boolean(row.reacted) };
+  res.json(states);
+}));
+
+app.get('/api/announcements/:id/reaction', asyncHandler(async (req, res) => {
+  const announcement = await get('SELECT id FROM announcements WHERE id = ?', [req.params.id]);
+  if (!announcement) return res.status(404).json({ error: 'Announcement not found.' });
+  const user = await getRequester(req);
+  res.json(await reactionState(req.params.id, mayReactToAnnouncement(user) ? user.id : ''));
+}));
+
+app.post('/api/announcements/:id/reaction', asyncHandler(async (req, res) => {
+  const user = await reactionActor(req, res);
+  if (!user) return;
+  const announcement = await get('SELECT id FROM announcements WHERE id = ?', [req.params.id]);
+  if (!announcement) return res.status(404).json({ error: 'Announcement not found.' });
+  await run('INSERT IGNORE INTO announcement_reactions (announcement_id, user_id) VALUES (?, ?)', [req.params.id, user.id]);
+  res.json(await reactionState(req.params.id, user.id));
+}));
+
+app.delete('/api/announcements/:id/reaction', asyncHandler(async (req, res) => {
+  const user = await reactionActor(req, res);
+  if (!user) return;
+  const announcement = await get('SELECT id FROM announcements WHERE id = ?', [req.params.id]);
+  if (!announcement) return res.status(404).json({ error: 'Announcement not found.' });
+  await run('DELETE FROM announcement_reactions WHERE announcement_id = ? AND user_id = ?', [req.params.id, user.id]);
+  res.json(await reactionState(req.params.id, user.id));
+}));
+
 app.get('/api/announcements/comment-counts', asyncHandler(async (req, res) => {
   const rows = await all(
     'SELECT announcement_id, COUNT(*) AS count FROM announcement_comments GROUP BY announcement_id'

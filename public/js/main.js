@@ -351,6 +351,22 @@ const api = {
     return this.request('/api/announcements/comment-counts');
   },
 
+  async getAnnouncementReactions() {
+    return this.request('/api/announcements/reactions');
+  },
+
+  async getAnnouncementReaction(id) {
+    return this.request(`/api/announcements/${encodeURIComponent(id)}/reaction`);
+  },
+
+  async addAnnouncementReaction(id) {
+    return this.request(`/api/announcements/${encodeURIComponent(id)}/reaction`, { method: 'POST' });
+  },
+
+  async removeAnnouncementReaction(id) {
+    return this.request(`/api/announcements/${encodeURIComponent(id)}/reaction`, { method: 'DELETE' });
+  },
+
   async getComments(announcementId) {
     return this.request(`/api/announcements/${announcementId}/comments`);
   },

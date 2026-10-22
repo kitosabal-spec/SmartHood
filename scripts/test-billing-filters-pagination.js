@@ -79,7 +79,8 @@ const mockUsers = [
   { id: 'ho003', role: 'homeowner', name: 'Maria Santos', username: 'msantos', email: 'maria@example.com', block: 'Block 3', lot: 'Lot 12' },
 ];
 
-const todayStr = new Date().toISOString().slice(0, 10);
+const today = new Date();
+const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 const pastDateStr = '2026-01-15';
 const futureDateStr = '2026-11-30';
 

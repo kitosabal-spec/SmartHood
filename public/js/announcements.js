@@ -86,7 +86,7 @@ function renderPhotoGridHTML(announcementId, images, title) {
 
   if (count === 1) {
     return `
-    <div class="community-photo-grid count-1" onclick="openAnnouncementLightbox('${announcementId}', 0)">
+    <div class="community-photo-grid count-1" onclick="handleAnnouncementMediaClick(event, '${announcementId}', 0)">
       <div class="photo-item">
         <img src="${escapeHtml(images[0])}" alt="${safeTitle}" loading="lazy" />
       </div>
@@ -96,7 +96,7 @@ function renderPhotoGridHTML(announcementId, images, title) {
   function renderGridItem(img, i, extraOverlay = '') {
     const isVid = isVideoAnnouncementMedia(img);
     return `
-    <div class="photo-item ${isVid ? 'photo-item-video' : ''}" onclick="openAnnouncementLightbox('${announcementId}', ${i})">
+    <div class="photo-item ${isVid ? 'photo-item-video' : ''}" onclick="handleAnnouncementMediaClick(event, '${announcementId}', ${i})">
       ${isVid ? `
         <video src="${escapeHtml(img)}#t=0.5" preload="metadata" muted playsinline class="photo-item-video-el"></video>
         <div class="photo-item-video-overlay">
@@ -759,9 +759,104 @@ function renderAnnouncementCards() {
 
   // Load comment counts for the feed
   loadCommentCounts();
+  loadAnnouncementReactions();
+}
+
+const announcementReactionState = Object.create(null);
+const announcementReactionVersions = Object.create(null);
+const announcementReactionPending = new Set();
+const announcementMediaClickTimers = Object.create(null);
+let announcementReactionAccountId = null;
+
+function paintAnnouncementReaction(id) {
+  const card = document.getElementById(`announcement-card-${id}`);
+  if (!card) return;
+  const state = announcementReactionState[id] || { count: 0, reacted: false };
+  const button = card.querySelector('.community-post-heart-btn');
+  const count = card.querySelector('.community-post-heart-count');
+  if (button) {
+    button.classList.toggle('is-reacted', state.reacted);
+    button.setAttribute('aria-pressed', String(state.reacted));
+    button.setAttribute('aria-label', state.reacted ? 'Remove like from announcement' : 'Like announcement');
+  }
+  if (count) count.textContent = `${state.count} ${state.count === 1 ? 'like' : 'likes'}`;
+}
+
+async function loadAnnouncementReactions() {
+  const versions = { ...announcementReactionVersions };
+  try {
+    const states = await api.getAnnouncementReactions();
+    for (const announcement of db.get('announcements')) {
+      const id = announcement.id;
+      if (announcementReactionPending.has(id) || (announcementReactionVersions[id] || 0) !== (versions[id] || 0)) continue;
+      announcementReactionState[id] = states[id] || { count: 0, reacted: false };
+      paintAnnouncementReaction(id);
+    }
+  } catch (err) {
+    console.error('Could not load announcement reactions:', err);
+  }
+}
+
+async function toggleAnnouncementReaction(id) {
+  if (!currentUser) {
+    showToast('error', 'Sign in required', 'Sign in to like announcements.');
+    return;
+  }
+  const previous = announcementReactionState[id] || { count: 0, reacted: false };
+  const next = { count: Math.max(0, previous.count + (previous.reacted ? -1 : 1)), reacted: !previous.reacted };
+  announcementReactionVersions[id] = (announcementReactionVersions[id] || 0) + 1;
+  announcementReactionState[id] = next;
+  paintAnnouncementReaction(id);
+  if (announcementReactionPending.has(id)) return;
+  let confirmed = previous;
+  announcementReactionPending.add(id);
+  try {
+    while (confirmed.reacted !== announcementReactionState[id].reacted) {
+      confirmed = confirmed.reacted
+        ? await api.removeAnnouncementReaction(id)
+        : await api.addAnnouncementReaction(id);
+      const desired = announcementReactionState[id].reacted;
+      announcementReactionState[id] = desired === confirmed.reacted
+        ? confirmed
+        : { count: Math.max(0, confirmed.count + (desired ? 1 : -1)), reacted: desired };
+      paintAnnouncementReaction(id);
+    }
+  } catch (err) {
+    try {
+      announcementReactionState[id] = await api.getAnnouncementReaction(id);
+    } catch {
+      announcementReactionState[id] = confirmed;
+    }
+    showToast('error', 'Reaction failed', err.message || 'Could not update the like.');
+  } finally {
+    announcementReactionPending.delete(id);
+    paintAnnouncementReaction(id);
+  }
+}
+
+function handleAnnouncementMediaClick(event, id, index) {
+  if (announcementMediaClickTimers[id]) clearTimeout(announcementMediaClickTimers[id]);
+  announcementMediaClickTimers[id] = setTimeout(() => {
+    delete announcementMediaClickTimers[id];
+    openAnnouncementLightbox(id, index);
+  }, 280);
+}
+
+function handleAnnouncementPostDoubleClick(event, id) {
+  if (event.target.closest('button, a, input, textarea, select, video, [contenteditable], .comment-count-link, .community-post-action-bar, .community-post-actions-top, .photo-item-video')) return;
+  if (announcementMediaClickTimers[id]) {
+    clearTimeout(announcementMediaClickTimers[id]);
+    delete announcementMediaClickTimers[id];
+  }
+  toggleAnnouncementReaction(id);
 }
 
 function communityPostCardHTML(a, canManage) {
+  const accountId = currentUser ? currentUser.id : null;
+  if (accountId !== announcementReactionAccountId) {
+    for (const id of Object.keys(announcementReactionState)) delete announcementReactionState[id];
+    announcementReactionAccountId = accountId;
+  }
   const author = db.getOne('users', a.user_id || a.createdBy) || { name: 'Administrator', role: 'admin' };
   const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#177a80', Others: '#7c3aed' };
   const baseCat = (a.category || '').startsWith('Others') ? 'Others' : (a.category || 'General');
@@ -783,6 +878,7 @@ function communityPostCardHTML(a, canManage) {
   const commentIcon = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>`;
 
   const cachedComments = announcementCommentsCache[a.id];
+  const reaction = announcementReactionState[a.id] || { count: 0, reacted: false };
   let initialCommentText = 'Comment';
   if (Array.isArray(cachedComments)) {
     if (cachedComments.length === 1) initialCommentText = '1 Comment';
@@ -790,7 +886,7 @@ function communityPostCardHTML(a, canManage) {
   }
 
   return `
-  <div class="community-post-card" id="announcement-card-${a.id}">
+  <div class="community-post-card" id="announcement-card-${a.id}" ondblclick="handleAnnouncementPostDoubleClick(event, '${a.id}')">
     <div class="community-post-header">
       <div class="community-post-author-row">
         ${avatarHTML(author, 'avatar-md')}
@@ -852,13 +948,20 @@ function communityPostCardHTML(a, canManage) {
     ${renderPhotoGridHTML(a.id, images, a.title)}
 
     <div class="community-post-stats">
-      <span class="comment-count-link" id="comm-count-${a.id}" onclick="openCommentModal('${a.id}')" style="cursor:pointer;" title="View Comments">
-        ${commentIcon}${initialCommentText}
-      </span>
+      <div class="community-post-engagement-stats">
+        <span class="community-post-heart-count">${reaction.count} ${reaction.count === 1 ? 'like' : 'likes'}</span>
+        <span class="comment-count-link" id="comm-count-${a.id}" onclick="openCommentModal('${a.id}')" style="cursor:pointer;" title="View Comments">
+          ${commentIcon}${initialCommentText}
+        </span>
+      </div>
       ${mediaStats}
     </div>
 
     <div class="community-post-action-bar">
+      <button type="button" class="community-post-action-btn community-post-heart-btn ${reaction.reacted ? 'is-reacted' : ''}" onclick="toggleAnnouncementReaction('${a.id}')" aria-label="${reaction.reacted ? 'Remove like from announcement' : 'Like announcement'}" aria-pressed="${reaction.reacted}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 21.35 10.55 20.03C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3.42 6.5 3.42c2.34 0 4.47 1.09 5.5 2.81 1.03-1.72 3.16-2.81 5.5-2.81C19.58 3.42 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35Z"/></svg>
+        <span>Like</span>
+      </button>
       <button type="button" class="community-post-action-btn" onclick="openCommentModal('${a.id}')">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
@@ -1972,6 +2075,7 @@ function renderHOAnnouncements() {
 
   // Load comment counts for the feed
   loadCommentCounts();
+  loadAnnouncementReactions();
 }
 
 
