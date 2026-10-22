@@ -38,8 +38,8 @@ const ASSIGNABLE_PERMISSION_GROUPS = [
     category: 'Management',
     description: 'Operational modules',
     modules: [
-      { id: 'billing', label: 'Billing', icon: 'ico-file', desc: 'Create invoices, auto-generate dues, assign rates' },
-      { id: 'payments', label: 'Payments', icon: 'ico-credit', desc: 'Verify receipts, approve/reject homeowner payments' },
+      { id: 'billing', label: 'Billing', icon: 'ico-file', desc: 'View billing records' },
+      { id: 'payments', label: 'Payments', icon: 'ico-credit', desc: 'View payment records' },
       { id: 'complaints', label: 'Complaints', icon: 'ico-flag', desc: 'Review complaints, post admin responses, resolve' },
       { id: 'vehicles', label: 'Vehicles', icon: 'ico-parking', desc: 'Approve vehicle registrations and RFID stickers' },
       { id: 'lostfound', label: 'Lost & Found', icon: 'ico-search', desc: 'Manage community lost & found listings' },
@@ -62,8 +62,8 @@ const MODULE_PERMISSIONS = [
   { id: 'dashboard',     label: 'Dashboard',            section: 'MAIN',        icon: 'ico-dashboard',  desc: 'Overview stats, collection trends, recent activity' },
   { id: 'homeowners',    label: 'Homeowners',           section: 'MAIN',        icon: 'ico-users',      desc: 'Resident directory, contact details, balance info' },
   { id: 'announcements', label: 'Announcements',        section: 'MANAGEMENT',  icon: 'ico-megaphone',  desc: 'Post notices, multi-photo updates, comments' },
-  { id: 'billing',       label: 'Billing',              section: 'MANAGEMENT',  icon: 'ico-file',       desc: 'Create invoices, auto-generate dues, assign rates' },
-  { id: 'payments',      label: 'Payments',             section: 'MANAGEMENT',  icon: 'ico-credit',     desc: 'Verify receipts, approve/reject homeowner payments' },
+  { id: 'billing',       label: 'Billing',              section: 'MANAGEMENT',  icon: 'ico-file',       desc: 'View billing records' },
+  { id: 'payments',      label: 'Payments',             section: 'MANAGEMENT',  icon: 'ico-credit',     desc: 'View payment records' },
   { id: 'complaints',    label: 'Complaints',           section: 'MANAGEMENT',  icon: 'ico-flag',       desc: 'Review complaints, post admin responses, resolve' },
   { id: 'amenities',     label: 'Amenity Management',   section: 'MANAGEMENT',  icon: 'ico-building',   desc: 'Facility reservation approvals and schedules' },
   { id: 'vehicles',      label: 'Vehicles',             section: 'MANAGEMENT',  icon: 'ico-parking',    desc: 'Approve vehicle registrations and RFID stickers' },
@@ -805,9 +805,9 @@ function userHasModulePermission(moduleId) {
 function isAdmin() { return currentUser?.role === 'admin'; }
 function canManageComplaints() { return isAdmin() || userHasModulePermission('complaints'); }
 function canViewAdminComplaints() { return isAdmin() || userHasModulePermission('complaints'); }
-function canManagePayments() { return isAdmin() || userHasModulePermission('payments'); }
+function canManagePayments() { return isAdmin() && userHasModulePermission('payments'); }
 function canViewPayments() { return isAdmin() || userHasModulePermission('payments'); }
-function canManageBilling() { return isAdmin() || userHasModulePermission('billing'); }
+function canManageBilling() { return isAdmin() && userHasModulePermission('billing'); }
 function canViewBillingStatus() { return isAdmin() || userHasModulePermission('billing'); }
 function canViewReports() { return isAdmin() || userHasModulePermission('reports'); }
 function canManageVehicles() { return isAdmin() || userHasModulePermission('vehicles'); }
@@ -3309,8 +3309,8 @@ async function saveCreateAccount() {
 // ── Unified Edit Account & Permissions Modal ──
 
 const RESIDENT_ASSIGNABLE_MODULES = [
-  { id: 'billing',       label: 'Billing',            icon: 'ico-file',      desc: 'Invoices, auto-dues, rates' },
-  { id: 'payments',      label: 'Payments',           icon: 'ico-credit',    desc: 'Verify & approve payments' },
+  { id: 'billing',       label: 'Billing',            icon: 'ico-file',      desc: 'View billing records' },
+  { id: 'payments',      label: 'Payments',           icon: 'ico-credit',    desc: 'View payment records' },
   { id: 'complaints',    label: 'Complaints',         icon: 'ico-flag',      desc: 'Review & resolve complaints' },
   { id: 'vehicles',      label: 'Vehicles',           icon: 'ico-parking',   desc: 'Vehicle & RFID stickers' },
   { id: 'lostfound',     label: 'Lost & Found',       icon: 'ico-search',    desc: 'Lost & found directory' },

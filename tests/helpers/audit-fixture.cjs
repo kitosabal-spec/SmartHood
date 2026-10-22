@@ -31,7 +31,7 @@ function auditDatabase() {
       tables.auditLog.push({ id: values[0], action: values[1], adminId: values[2], timestamp: values[3] });
       return [{ affectedRows: 1 }];
     }
-    const select = q.match(/^SELECT (.+?) FROM (\w+)(?: WHERE (.*))?$/);
+    const select = q.replace(/ ORDER BY id DESC$/, '').match(/^SELECT (.+?) FROM (\w+)(?: WHERE (.*))?$/);
     if (select && tables[select[2]]) {
       let rows = tables[select[2]];
       let where = select[3] || '';

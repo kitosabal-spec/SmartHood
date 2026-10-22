@@ -742,6 +742,7 @@ function updateBillingAmountForMonthlyDues() {
 }
 
 async function saveAddBilling() {
+  if (!canManageBilling()) return;
   try {
     const billingType = getSelectedBillingType();
     const isMonthlyDues = billingType === BILLING_TYPE_MONTHLY_DUES;
@@ -916,6 +917,7 @@ function confirmDeleteBilling(id) {
 }
 
 async function autoGenerateMonthlyDues() {
+  if (!canManageBilling()) return;
   const month = new Date().toLocaleString('default', { month: 'long' });
   const year = new Date().getFullYear();
   const title = `Monthly Dues – ${month} ${year}`;
@@ -976,6 +978,7 @@ function autoGenerateLotAreaMonthlyDues() {
 }
 
 async function executeAutoGenerateMonthlyDues() {
+  if (!canManageBilling()) return;
   const monthInput = document.getElementById('gen_dues_month');
   const selectedMonth = monthInput ? monthInput.value.trim() : '';
   if (!selectedMonth || !/^\d{4}-\d{2}$/.test(selectedMonth)) {
@@ -1345,7 +1348,7 @@ function manualBillingOptionLabel(billing) {
 }
 
 function openCreateManualPaymentModal() {
-  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only authorized managers can create payments.'); return; }
+  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only administrators can create payments.'); return; }
   manualPaymentSubmitting = false;
   const homeowners = getHomeowners()
     .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
@@ -1709,6 +1712,7 @@ function updateManualPaymentSummary() {
 }
 
 async function executeCreateManualPayment() {
+  if (!canManagePayments()) return;
   if (manualPaymentSubmitting) return;
   const homeownerId = document.getElementById('manual_payment_homeowner')?.value || '';
   const billingId = document.getElementById('manual_payment_billing')?.value || '';
@@ -1863,7 +1867,7 @@ function openReceiptLightbox(imgUrl) {
 // ── ADMIN PAYMENT APPROVAL & REJECTION ──
 
 function confirmApprovePayment(id) {
-  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only authorized managers can approve payments.'); return; }
+  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only administrators can approve payments.'); return; }
   const p = db.getOne('payments', id);
   if (!p) return;
   const ho = getHomeownerById(p.homeownerId);
@@ -1879,6 +1883,7 @@ function confirmApprovePayment(id) {
 }
 
 async function executeApprovePayment(id) {
+  if (!canManagePayments()) return;
   showLoading();
   try {
     await api.approvePayment(id);
@@ -1895,7 +1900,7 @@ async function executeApprovePayment(id) {
 }
 
 function openRejectPaymentModal(id) {
-  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only authorized managers can reject payments.'); return; }
+  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only administrators can reject payments.'); return; }
   const p = db.getOne('payments', id);
   if (!p) return;
   const ho = getHomeownerById(p.homeownerId);
@@ -1946,6 +1951,7 @@ function handleRejectReasonChange() {
 }
 
 async function executeRejectPayment(id) {
+  if (!canManagePayments()) return;
   const sel = document.getElementById('reject_reason_select')?.value || '';
   const notes = (document.getElementById('reject_custom_notes')?.value || '').trim();
 
@@ -1983,7 +1989,7 @@ async function executeRejectPayment(id) {
 // ── ADMIN PAYMENT SETTINGS MODAL ──
 
 async function openPaymentSettingsModal() {
-  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only authorized managers can configure payment settings.'); return; }
+  if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only administrators can configure payment settings.'); return; }
   showLoading();
 
   let setting;
@@ -2064,6 +2070,7 @@ async function openPaymentSettingsModal() {
 }
 
 async function uploadPaymentQrImage(file) {
+  if (!canManagePayments()) return;
   if (!file) return;
   const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
   const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
@@ -2093,6 +2100,7 @@ async function uploadPaymentQrImage(file) {
 }
 
 async function removePaymentQrImage() {
+  if (!canManagePayments()) return;
   openConfirm('Remove QR Code', 'Are you sure you want to remove the GCash QR code image? Residents will not see a QR code until a new one is uploaded.', async () => {
     showLoading();
     try {
@@ -2109,6 +2117,7 @@ async function removePaymentQrImage() {
 }
 
 async function savePaymentSettings() {
+  if (!canManagePayments()) return;
   const account_name = (document.getElementById('ps_account_name')?.value || '').trim();
   const account_number = (document.getElementById('ps_account_number')?.value || '').trim();
   const instructions = (document.getElementById('ps_instructions')?.value || '').trim();

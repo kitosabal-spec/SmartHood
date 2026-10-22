@@ -1695,10 +1695,10 @@ async function checkTableAccess(req, res, table, action = 'read') {
     return null;
   }
 
-  // 2b. Payment Settings (payment_settings table): Read by all authenticated users; manage by admin/payments
+  // 2b. Payment Settings (payment_settings table): Read by all authenticated users; manage by admin only
   if (table === 'payment_settings') {
     if (action === 'read') return requester;
-    if (userHasPermission(requester, 'payments')) return requester;
+
     res.status(403).json({ error: 'Access Denied: You do not have permission to manage payment settings.' });
     return null;
   }
@@ -1710,19 +1710,18 @@ async function checkTableAccess(req, res, table, action = 'read') {
     return null;
   }
 
-  // 4. Billings: Read is accessible for dues view if user has resident or billing permission; manage requires billing permission
+  // 4. Billings: Read is accessible for dues view if user has resident or billing permission; management is administrator-only
   if (table === 'billings') {
     if (action === 'read' && (userHasPermission(requester, 'resident') || userHasPermission(requester, 'billing'))) return requester;
-    if (userHasPermission(requester, 'billing')) return requester;
+
     res.status(403).json({ error: 'Access Denied: You do not have permission to manage billing.' });
     return null;
   }
 
-  // 5. Payments: Read and self-submission require resident permission; managing approvals requires payments permission
+  // 5. Payments: Read with resident/payments permission; writes use administrator or dedicated resident flows
   if (table === 'payments') {
     if (action === 'read' && (userHasPermission(requester, 'resident') || userHasPermission(requester, 'payments'))) return requester;
-    if (action === 'create' && userHasPermission(requester, 'resident')) return requester; // Homeowner submitting payment receipt
-    if (userHasPermission(requester, 'payments')) return requester;
+
     res.status(403).json({ error: 'Access Denied: You do not have permission to manage payments.' });
     return null;
   }
@@ -1785,6 +1784,17 @@ async function checkTableAccess(req, res, table, action = 'read') {
 
   res.status(403).json({ error: `Access Denied: You do not have permission to ${action} ${table}.` });
   return null;
+}
+
+// Financial module permissions grant reads only, including legacy assignments.
+async function requireFinancialAdmin(req, res) {
+  const requester = await requireAuth(req, res);
+  if (!requester) return null;
+  if (requester.role !== 'admin' || requester.status === 'inactive' || requester.status === 'deactivated') {
+    res.status(403).json({ error: 'Only active administrators can manage billing and payments.' });
+    return null;
+  }
+  return requester;
 }
 
 async function requireAdmin(req, res) {
@@ -3085,13 +3095,13 @@ app.get('/api/payment-settings', asyncHandler(async (req, res) => {
       updated_by: requester.id,
       updated_at: new Date().toISOString(),
     };
-    await audit.transaction(req, () => saveRecord('payment_settings', setting));
+    // Return defaults without allowing a read request to mutate financial settings.
   }
   res.json(presentPrivateFiles('payment_settings', deserializeRow('payment_settings', setting), requester));
 }));
 
 app.put('/api/payment-settings', auditedHandler(async (req, res) => {
-  const requester = await requirePermission(req, res, 'payments');
+  const requester = await requireFinancialAdmin(req, res);
   if (!requester) return;
 
   let existing = await get('SELECT * FROM payment_settings WHERE payment_method = "gcash" LIMIT 1');
@@ -3113,7 +3123,9 @@ app.put('/api/payment-settings', auditedHandler(async (req, res) => {
   res.json(presentPrivateFiles('payment_settings', deserializeRow('payment_settings', updated), requester));
 }));
 
-app.post('/api/payment-settings/upload-qr', (req, res) => {
+app.post('/api/payment-settings/upload-qr', asyncHandler(async (req, res, next) => {
+  if (await requireFinancialAdmin(req, res)) next();
+}), (req, res) => {
   qrUpload.single('qr')(req, res, auditedUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE'
@@ -3123,7 +3135,7 @@ app.post('/api/payment-settings/upload-qr', (req, res) => {
     }
 
     try {
-      const requester = await requirePermission(req, res, 'payments');
+      const requester = await requireFinancialAdmin(req, res);
       if (!requester) {
         if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
         return;
@@ -3169,7 +3181,7 @@ app.post('/api/payment-settings/upload-qr', (req, res) => {
 });
 
 app.delete('/api/payment-settings/qr', auditedHandler(async (req, res) => {
-  const requester = await requirePermission(req, res, 'payments');
+  const requester = await requireFinancialAdmin(req, res);
   if (!requester) return;
 
   const existing = await get('SELECT * FROM payment_settings WHERE payment_method = "gcash" LIMIT 1');
@@ -3184,7 +3196,7 @@ app.delete('/api/payment-settings/qr', auditedHandler(async (req, res) => {
 // ── BILLING AUTO-GENERATION APIS ──
 
 app.post('/api/billings/generate-monthly-dues', auditedHandler(async (req, res) => {
-  const requester = await requirePermission(req, res, 'billing');
+  const requester = await requireFinancialAdmin(req, res);
   if (!requester) return;
 
   const month = (req.body.month || req.body.monthly_dues_month || '').trim();
@@ -3342,7 +3354,7 @@ app.post('/api/billings/generate-monthly-dues', auditedHandler(async (req, res) 
 // payments administrator. It intentionally requires an existing assigned billing;
 // advance-payment handling remains exclusive to the resident payment flow.
 app.post('/api/payments/manual', asyncHandler(async (req, res) => {
-  const requester = await requirePermission(req, res, 'payments');
+  const requester = await requireFinancialAdmin(req, res);
   if (!requester) return;
 
   const homeownerId = String(req.body.homeownerId || '').trim();
@@ -3515,7 +3527,9 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
   }
 }));
 
-app.post('/api/payments/submit', (req, res) => {
+app.post('/api/payments/submit', asyncHandler(async (req, res, next) => {
+  if (await requirePermission(req, res, 'resident')) next();
+}), (req, res) => {
   receiptUpload.single('receipt')(req, res, auditedUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE'
@@ -3542,7 +3556,7 @@ app.post('/api/payments/submit', (req, res) => {
         return res.status(403).json({ error: 'Your account has been deactivated. Please contact the administrator.' });
       }
       const homeownerId = requesterHomeownerId(requester);
-      if (!homeownerId) {
+      if (!homeownerId || !userHasPermission(requester, 'resident')) {
         await cleanUpFile();
         return res.status(403).json({ error: 'Only registered homeowners can submit resident payments.' });
       }
@@ -3818,7 +3832,7 @@ app.post('/api/payments/:id/receipt', asyncHandler(async (req, res) => {
         await cleanUpFile();
         return res.status(404).json({ error: 'Payment record not found.' });
       }
-      const mayReplace = requesterHomeownerId(requester) === payment.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'payments');
+      const mayReplace = userHasPermission(requester, 'settings') || (userHasPermission(requester, 'resident') && requesterHomeownerId(requester) === payment.homeownerId);
       if (!mayReplace) {
         await cleanUpFile();
         return res.status(403).json({ error: 'You do not have permission to replace this receipt.' });
@@ -3841,7 +3855,7 @@ app.post('/api/payments/:id/receipt', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
-  const requester = await requirePermission(req, res, 'payments');
+  const requester = await requireFinancialAdmin(req, res);
   if (!requester) return;
 
   const connection = await db.getConnection();
@@ -3953,7 +3967,7 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/payments/:id/reject', auditedHandler(async (req, res) => {
-  const requester = await requirePermission(req, res, 'payments');
+  const requester = await requireFinancialAdmin(req, res);
   if (!requester) return;
 
   const payment = await get('SELECT * FROM payments WHERE id = ? FOR UPDATE', [req.params.id]);
@@ -4020,7 +4034,7 @@ app.get('/api/files/receipts/:id', asyncHandler(async (req, res) => {
   if (!requester) return;
   const payment = await get('SELECT * FROM payments WHERE id = ?', [req.params.id]);
   if (!payment) return res.status(404).json({ error: 'Payment record not found.' });
-  const mayView = requesterHomeownerId(requester) === payment.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'payments');
+  const mayView = userHasPermission(requester, 'payments') || (userHasPermission(requester, 'resident') && requesterHomeownerId(requester) === payment.homeownerId);
   if (!mayView) return res.status(403).json({ error: 'You do not have permission to view this receipt.' });
   const filename = storedPrivateFilename(payment.receipt, 'receipts');
   if (!filename) return res.status(404).json({ error: 'Receipt file not found.' });
@@ -4236,6 +4250,9 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
   let data = await getTableData(table);
   if (table === 'billings' && allowed.role !== 'admin' && !userHasPermission(allowed, 'billing')) {
     data = data.filter(b => getAssignedHomeownerIds(b).includes(requesterHomeownerId(allowed)));
+  }
+  if (table === 'payments' && allowed.role !== 'admin' && !userHasPermission(allowed, 'payments')) {
+    data = data.filter(payment => payment.homeownerId === requesterHomeownerId(allowed));
   }
   if (table === 'lostFound') {
     const isManager = allowed && typeof allowed === 'object' && (allowed.role === 'admin' || userHasPermission(allowed, 'lostfound'));
