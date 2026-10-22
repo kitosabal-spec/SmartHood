@@ -159,20 +159,12 @@ async function seedData(isAuthenticated = false) {
       { id: 'c003', homeownerId: 'u005', category: 'Security', dateOfOccurrence: '2025-04-04', description: 'I noticed an unfamiliar vehicle parked near the back gate for three consecutive nights. The guard on duty did not seem to take action.', status: 'Resolved', adminResponse: 'Security personnel investigated the matter. The vehicle belonged to a guest of a resident. The guard has been reminded to log all overnight visitors properly.', dateFiled: '2025-04-05', updatedAt: '2025-04-07', resolvedAt: '2025-04-07' },
     ];
 
-    const auditLog = [
-      { id: 'l001', action: 'Added homeowner Juan Dela Cruz (u002)', adminId: 'u001', timestamp: '2025-01-01 08:00' },
-      { id: 'l002', action: 'Created billing: Monthly Dues – January', adminId: 'u001', timestamp: '2025-01-01 08:30' },
-      { id: 'l003', action: 'Approved payment p004 from Pedro Parcero', adminId: 'u001', timestamp: '2025-01-16 09:00' },
-      { id: 'l004', action: 'Rejected payment p005 from Juan Dela Cruz — Blurry receipt', adminId: 'u001', timestamp: '2025-01-21 10:15' },
-      { id: 'l005', action: 'Posted announcement: Water Interruption Notice', adminId: 'u001', timestamp: '2025-04-14 14:00' },
-    ];
 
     db.set('users', users);
     db.set('billings', billings);
     db.set('payments', payments);
     db.set('announcements', announcements);
     db.set('complaints', complaints);
-    db.set('auditLog', auditLog);
     localStorage.setItem('sah_seeded', '1');
   }
 
@@ -2241,9 +2233,16 @@ function changeAuditLogPageSize(size) {
 }
 window.changeAuditLogPageSize = changeAuditLogPageSize;
 
-function renderAuditLog() {
+async function renderAuditLog() {
   const area = document.getElementById('contentArea');
   if (!area) return;
+  try {
+    dbCache.auditLog = await api.request('/api/auditLog');
+  } catch (error) {
+    showToast('error', 'Could Not Load Audit Logs', error.message);
+    return;
+  }
+  if (currentView !== 'auditlog') return;
 
   area.innerHTML = `
   <div class="page-header">
@@ -3955,16 +3954,9 @@ async function clearNotifications() {
 // SECTION 21: AUDIT LOG HELPER
 
 
-function logAction(action) {
-  const log = {
-    id: db.newId('l'),
-    action,
-    adminId: currentUser.id,
-    timestamp: new Date().toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' }),
-  };
-  const logs = db.get('auditLog');
-  logs.push(log);
-  db.set('auditLog', logs);
+function logAction() {
+  // Compatibility for module callers: mutations are audited by the server.
+  // Never manufacture a success entry or send an audit write from the browser.
 }
 
 

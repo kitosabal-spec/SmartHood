@@ -34,6 +34,24 @@ const { createAuthSecurityRepository } = require('./services/authSecurityStore')
 const { createLoginSecurityAlerts } = require('./services/loginSecurityAlerts');
 const { createLoginRateLimits, loginIdentifier } = require('./middleware/loginRateLimit');
 
+const { AUDITED_TABLES, changeSummary, createAuditService } = require('./services/auditService');
+const audit = createAuditService({ getPool: () => db, resolveActor: getRequester });
+const auditedHandler = audit.handler;
+// Multer finishes parsing before the transaction starts. Its existing error
+// responses are retained, while success is sent only after a durable commit.
+function auditedUpload(req, res, work) {
+  return uploadErr => auditedHandler(() => {
+    audit.afterRollback(async () => {
+      const files = [req.file, ...(Array.isArray(req.files) ? req.files : Object.values(req.files || {}).flat())].filter(Boolean);
+      await Promise.all(files.map(file => fs.promises.unlink(file.path).catch(() => {})));
+    });
+    return work(uploadErr);
+  })(req, res, error => {
+    console.error('Audited upload failed:', error.message);
+    res.status(500).json({ error: 'Could not save the change and its audit entry.' });
+  });
+}
+
 const app = express();
 const loginSecurityConfig = readLoginSecurityConfig();
 app.set('trust proxy', loginSecurityConfig.trustProxy);
@@ -59,6 +77,14 @@ if (!process.env.FILE_ACCESS_SECRET) console.warn('FILE_ACCESS_SECRET is not set
 if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not set; sessions will expire after a server restart.');
 
 app.use(express.json({ limit: '15mb' }));
+// This precedes every dedicated and generic route, including administrator
+// access. auditlog is a read permission, never a write permission.
+app.use('/api/:table', (req, res, next) => {
+  if (req.params.table.toLowerCase() === 'auditlog' && !['GET', 'HEAD', 'OPTIONS'].includes(req.method)) {
+    return res.status(403).json({ error: 'Audit logs are server written and read only.' });
+  }
+  next();
+});
 // index.html still uses /public for CSS, JS, and images. Block its upload
 // subtree before the broad static mount so it cannot bypass /uploads rules.
 app.use('/public/uploads', (req, res) => res.status(404).end());
@@ -393,12 +419,12 @@ async function ensureDatabase() {
 }
 
 async function run(sql, params = []) {
-  const [result] = await db.execute(sql, params);
+  const [result] = await (audit.current()?.connection || db).execute(sql, params);
   return result;
 }
 
 async function all(sql, params = []) {
-  const [rows] = await db.execute(sql, params);
+  const [rows] = await (audit.current()?.connection || db).execute(sql, params);
   return rows;
 }
 
@@ -642,6 +668,7 @@ function validateTable(req, res) {
 }
 
 async function saveRecord(table, item) {
+  if (table === 'auditLog') throw new Error('Use the server audit writer.');
   if (!item.id) {
     const prefix = table === 'users' ? 'u' : (table === 'billings' ? 'b' : (table === 'payments' ? 'p' : 'id'));
     item.id = prefix + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
@@ -649,7 +676,7 @@ async function saveRecord(table, item) {
 
   const columns = tableConfig[table].columns;
   const sqlTable = tableName(table);
-  const existing = await get(`SELECT \`id\` FROM ${sqlTable} WHERE \`id\` = ?`, [item.id]);
+  const existing = await get(`SELECT * FROM ${sqlTable} WHERE \`id\` = ?${audit.current() ? ' FOR UPDATE' : ''}`, [item.id]);
   const values = columns.map((column) => serializeValue(table, column, item[column]));
 
   if (existing) {
@@ -663,6 +690,25 @@ async function saveRecord(table, item) {
     const columnList = columns.map(quoteIdentifier).join(', ');
     await run(`INSERT INTO ${sqlTable} (${columnList}) VALUES (${placeholders})`, values);
   }
+  const state = audit.current();
+  if (state && AUDITED_TABLES.has(table) && (state.actor || table !== 'lostFound')) {
+    const summary = changeSummary(existing && deserializeRow(table, existing), item, columns);
+    let operation = existing ? 'updated' : 'created';
+    if (!existing && table === 'billings' && state.req.path === '/api/billings/generate-monthly-dues') operation = 'generated monthly dues for';
+    if (!existing && table === 'payments' && state.req.path === '/api/payments/submit') operation = 'submitted';
+    if (existing && table === 'users' && item.password !== undefined) operation = state.req.path.includes('reset-password') ? 'reset password for' : 'updated account/password for';
+    if (!existing || summary) await recordAuditLog(state.req, {
+      table, id: item.id, operation, summary,
+    });
+  }
+}
+
+async function deleteRecord(table, id) {
+  const existing = await get(`SELECT * FROM ${tableName(table)} WHERE id = ? FOR UPDATE`, [id]);
+  if (!existing) return false;
+  await run(`DELETE FROM ${tableName(table)} WHERE id = ?`, [id]);
+  if (AUDITED_TABLES.has(table)) await recordAuditLog(audit.current().req, { table, id, operation: 'deleted' });
+  return true;
 }
 
 async function getTableData(table) {
@@ -1242,10 +1288,17 @@ async function resetDatabase() {
     homeowners: loadHomeownerSeed().map(homeowner => ({ ...homeowner, created_at: now, updated_at: now })),
   };
   for (const table of Object.keys(tableConfig)) {
-    await run(`DELETE FROM ${tableName(table)}`);
+    if (table === 'auditLog') continue;
+    if (AUDITED_TABLES.has(table)) {
+      const records = await getTableData(table);
+      for (const record of records) await deleteRecord(table, record.id);
+    } else {
+      await run(`DELETE FROM ${tableName(table)}`);
+    }
   }
 
   for (const [table, records] of Object.entries(resetSeed)) {
+    if (table === 'auditLog') continue;
     for (const record of records) {
       const resetRecord = { ...record };
       if (table === 'users' && !isBcryptHash(resetRecord.password)) {
@@ -1590,6 +1643,10 @@ const TABLE_PERMISSIONS = {
 };
 
 async function checkTableAccess(req, res, table, action = 'read') {
+  if (table === 'auditLog' && action !== 'read') {
+    res.status(403).json({ error: 'Audit logs are server written and read only.' });
+    return null;
+  }
   // These are internal tables. Their dedicated routes below enforce ownership
   // and audience checks; never expose them through the generic CRUD API.
   if (table === 'notifications' || table === 'announcement_comments') {
@@ -1788,6 +1845,7 @@ function cleanExpiredPrivateUploads(now = Date.now()) {
 setInterval(cleanExpiredPrivateUploads, 5 * 60 * 1000).unref();
 
 function claimStagedPrivateUpload(kind, filename, requester) {
+  if (audit.current()) return audit.afterCommit(() => claimStagedPrivateUpload(kind, filename, requester));
   const key = `${kind}/${filename}`;
   const staged = privateUploadTickets.get(key);
   if (!staged || staged.expires < Date.now() || staged.userId !== requester.id) return false;
@@ -1948,9 +2006,10 @@ function complaintStoredFilenames(record) {
 }
 
 function deletePrivateFiles(kind, filenames) {
+  if (audit.current()) return audit.afterCommit(() => deletePrivateFiles(kind, filenames));
   for (const filename of new Set(filenames.filter(Boolean))) {
     const filePath = privateFilePath(kind, filename);
-    if (filePath) fs.promises.unlink(filePath).catch(() => {});
+    if (filePath) audit.afterCommit(() => fs.promises.unlink(filePath).catch(() => {}));
   }
 }
 
@@ -2005,6 +2064,7 @@ function photoRecordToUrl(value) {
 }
 
 function deleteProfileFile(photoPath) {
+  if (audit.current()) return audit.afterCommit(() => deleteProfileFile(photoPath));
   const filename = storedPrivateFilename(photoPath, 'profile-photos');
   if (filename) deletePrivateFiles('profile-photos', [filename]);
 }
@@ -2030,7 +2090,7 @@ function stripProfilePhotoField(table, body) {
 app.post('/api/users/:id/photo', (req, res) => {
   const requesterId = requireOwnPhotoAccess(req, res);
   if (!requesterId) return;
-  profileUpload.single('photo')(req, res, async (uploadErr) => {
+  profileUpload.single('photo')(req, res, auditedUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE'
         ? 'Photo must be 5 MB or smaller.'
@@ -2060,9 +2120,9 @@ app.post('/api/users/:id/photo', (req, res) => {
       if (target.homeowner_id) {
         const homeowner = await get('SELECT profile_photo FROM homeowners WHERE id = ?', [target.homeowner_id]);
         oldPhoto = homeowner?.profile_photo;
-        await run('UPDATE homeowners SET profile_photo = ?, updated_at = ? WHERE id = ?', [photoPath, new Date().toISOString(), target.homeowner_id]);
+        await saveRecord('homeowners', { id: target.homeowner_id, profile_photo: photoPath, updated_at: new Date().toISOString() });
       } else {
-        await run('UPDATE users SET profile_photo = ? WHERE id = ?', [photoPath, req.params.id]);
+        await saveRecord('users', { id: req.params.id, profile_photo: photoPath });
       }
       deleteProfileFile(oldPhoto);
       res.json({ ok: true, profile_photo: privateFileUrl('profile-photos', target.id, { id: requesterId }) });
@@ -2071,10 +2131,10 @@ app.post('/api/users/:id/photo', (req, res) => {
       console.error(err);
       res.status(500).json({ error: 'Could not save the profile photo.' });
     }
-  });
+  }));
 });
 
-app.delete('/api/users/:id/photo', asyncHandler(async (req, res) => {
+app.delete('/api/users/:id/photo', auditedHandler(async (req, res) => {
   if (!requireOwnPhotoAccess(req, res)) return;
   const target = await get('SELECT id, homeowner_id, profile_photo FROM users WHERE id = ?', [req.params.id]);
   if (!target) {
@@ -2085,9 +2145,9 @@ app.delete('/api/users/:id/photo', asyncHandler(async (req, res) => {
   if (target.homeowner_id) {
     const homeowner = await get('SELECT profile_photo FROM homeowners WHERE id = ?', [target.homeowner_id]);
     oldPhoto = homeowner?.profile_photo;
-    await run('UPDATE homeowners SET profile_photo = NULL, updated_at = ? WHERE id = ?', [new Date().toISOString(), target.homeowner_id]);
+    await saveRecord('homeowners', { id: target.homeowner_id, profile_photo: null, updated_at: new Date().toISOString() });
   } else {
-    await run('UPDATE users SET profile_photo = NULL WHERE id = ?', [req.params.id]);
+    await saveRecord('users', { id: req.params.id, profile_photo: null });
   }
   deleteProfileFile(oldPhoto);
   res.json({ ok: true, profile_photo: null });
@@ -2100,7 +2160,7 @@ app.post('/api/announcements', (req, res) => {
   requirePermission(req, res, 'announcements').then(author => {
     if (!author) return;
 
-    announcementUploadMiddleware(req, res, async (uploadErr) => {
+    announcementUploadMiddleware(req, res, auditedUpload(req, res, async (uploadErr) => {
       if (uploadErr) {
         const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
           ? 'A file exceeds the maximum allowed size (5 MB for photos, 30 MB for videos).'
@@ -2167,6 +2227,7 @@ app.post('/api/announcements', (req, res) => {
           [id, title, contentText, contentText, category, dateStr, urgent, createdBy, createdBy, primaryMedia, mediaJson, nowIso, nowIso]
         );
 
+        await recordAuditLog(req, { table: 'announcements', id, operation: 'created' });
         const created = await get('SELECT * FROM announcements WHERE id = ?', [id]);
         res.status(201).json(deserializeRow('announcements', created));
       } catch (err) {
@@ -2174,7 +2235,7 @@ app.post('/api/announcements', (req, res) => {
         console.error(err);
         res.status(500).json({ error: 'Could not create announcement.' });
       }
-    });
+    }));
   }).catch(err => {
     console.error(err);
     res.status(500).json({ error: 'Server error checking authorization.' });
@@ -2185,7 +2246,7 @@ app.put('/api/announcements/:id', (req, res) => {
   requirePermission(req, res, 'announcements').then(author => {
     if (!author) return;
 
-    announcementUploadMiddleware(req, res, async (uploadErr) => {
+    announcementUploadMiddleware(req, res, auditedUpload(req, res, async (uploadErr) => {
       if (uploadErr) {
         const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
           ? 'A file exceeds the maximum allowed size (5 MB for photos, 30 MB for videos).'
@@ -2249,7 +2310,7 @@ app.put('/api/announcements/:id', (req, res) => {
           for (const imgPath of currentImages) {
             if (imgPath && imgPath.startsWith('/uploads/announcements/')) {
               const oldFile = path.join(PUBLIC_DIR, imgPath);
-              fs.promises.unlink(oldFile).catch(() => {});
+              audit.afterCommit(() => fs.promises.unlink(oldFile).catch(() => {}));
             }
           }
           currentImages = [];
@@ -2263,7 +2324,7 @@ app.put('/api/announcements/:id', (req, res) => {
           for (const oldImg of currentImages) {
             if (!keptImages.includes(oldImg) && oldImg && oldImg.startsWith('/uploads/announcements/')) {
               const oldFile = path.join(PUBLIC_DIR, oldImg);
-              fs.promises.unlink(oldFile).catch(() => {});
+              audit.afterCommit(() => fs.promises.unlink(oldFile).catch(() => {}));
             }
           }
           currentImages = keptImages;
@@ -2293,6 +2354,7 @@ app.put('/api/announcements/:id', (req, res) => {
           [title, contentText, contentText, category, dateStr, urgent, primaryMedia, mediaJson, nowIso, req.params.id]
         );
 
+        await recordAuditLog(req, { table: 'announcements', id: req.params.id, operation: 'updated', summary: changeSummary(existing, { title, content: contentText, category, date: dateStr, urgent, images: mediaJson }, tableConfig.announcements.columns) });
         const updated = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
         res.json(deserializeRow('announcements', updated));
       } catch (err) {
@@ -2300,14 +2362,14 @@ app.put('/api/announcements/:id', (req, res) => {
         console.error(err);
         res.status(500).json({ error: 'Could not update announcement.' });
       }
-    });
+    }));
   }).catch(err => {
     console.error(err);
     res.status(500).json({ error: 'Server error checking authorization.' });
   });
 });
 
-app.delete('/api/announcements/:id', asyncHandler(async (req, res) => {
+app.delete('/api/announcements/:id', auditedHandler(async (req, res) => {
   const requester = await getRequester(req);
   if (!requester || !userHasPermission(requester, 'announcements')) {
     return res.status(403).json({ error: 'Access Denied: You do not have permission to delete announcements.' });
@@ -2332,18 +2394,18 @@ app.delete('/api/announcements/:id', asyncHandler(async (req, res) => {
   for (const imgPath of allImages) {
     if (imgPath && imgPath.startsWith('/uploads/announcements/')) {
       const oldFile = path.join(PUBLIC_DIR, imgPath);
-      fs.promises.unlink(oldFile).catch(() => {});
+      audit.afterCommit(() => fs.promises.unlink(oldFile).catch(() => {}));
     }
   }
 
   await run('DELETE FROM announcement_comments WHERE announcement_id = ?', [req.params.id]);
-  await run('DELETE FROM announcements WHERE id = ?', [req.params.id]);
+  await deleteRecord('announcements', req.params.id);
 
   res.json({ ok: true });
 }));
 
 // ── Pin/Unpin Announcement ──
-app.patch('/api/announcements/:id/pin', asyncHandler(async (req, res) => {
+app.patch('/api/announcements/:id/pin', auditedHandler(async (req, res) => {
   const requester = await getRequester(req);
   if (!requester || !userHasPermission(requester, 'announcements')) {
     return res.status(403).json({ error: 'Access Denied: You do not have permission to pin/unpin announcements.' });
@@ -2362,7 +2424,7 @@ app.patch('/api/announcements/:id/pin', asyncHandler(async (req, res) => {
     newPinned = currentPinned === 1 ? 0 : 1;
   }
 
-  await run('UPDATE announcements SET is_pinned = ? WHERE id = ?', [newPinned, req.params.id]);
+  await saveRecord('announcements', { id: req.params.id, is_pinned: newPinned });
 
   const updated = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
   res.json(deserializeRow('announcements', updated));
@@ -2919,7 +2981,7 @@ app.get('/api/reset-password/validate', asyncHandler(async (req, res) => {
   res.json({ valid: true });
 }));
 
-app.post('/api/reset-password', asyncHandler(async (req, res) => {
+app.post('/api/reset-password', auditedHandler(async (req, res) => {
   const token = String(req.body.token || '').trim();
   const newPassword = String(req.body.newPassword || '').trim();
   if (!isPasswordResetToken(token)) {
@@ -2931,6 +2993,12 @@ app.post('/api/reset-password', asyncHandler(async (req, res) => {
     return;
   }
 
+  const resetOwner = await get(
+    "SELECT * FROM users WHERE reset_token_hash = ? AND reset_token_expires_at > NOW() AND status NOT IN ('inactive', 'deactivated') FOR UPDATE",
+    [hashPasswordResetToken(token)]
+  );
+  if (!resetOwner) return res.status(400).json({ error: 'This password reset link is invalid or has expired.' });
+  audit.current().actor = { id: resetOwner.id, role: resetOwner.role };
   const passwordHash = await bcrypt.hash(newPassword, 10);
   const result = await run(
     `UPDATE users
@@ -2945,6 +3013,7 @@ app.post('/api/reset-password', asyncHandler(async (req, res) => {
     return;
   }
 
+  await recordAuditLog(req, { table: 'users', id: resetOwner.id, operation: 'reset password using verified reset link' });
   res.clearCookie(SESSION_COOKIE_NAME, sessionCookieOptions());
   res.json({ ok: true, message: 'Your password has been reset. You can now sign in with your new password.' });
 }));
@@ -2954,7 +3023,7 @@ app.post('/api/logout', (req, res) => {
   res.json({ ok: true });
 });
 
-app.post('/api/change-password', asyncHandler(async (req, res) => {
+app.post('/api/change-password', auditedHandler(async (req, res) => {
   const requester = await requireAuth(req, res);
   if (!requester) return;
 
@@ -2990,7 +3059,7 @@ app.post('/api/change-password', asyncHandler(async (req, res) => {
   }
 
   const hashedPassword = await bcrypt.hash(newPassword, 10);
-  await run('UPDATE users SET password = ? WHERE id = ?', [hashedPassword, user.id]);
+  await saveRecord('users', { id: user.id, password: hashedPassword });
 
   res.json({ ok: true, message: 'Password updated successfully.' });
 }));
@@ -3011,15 +3080,15 @@ app.get('/api/payment-settings', asyncHandler(async (req, res) => {
       qr_code_path: null,
       instructions: '1. Open GCash.\n2. Scan the QR code or enter the GCash mobile number.\n3. Pay an amount not exceeding the remaining balance.\n4. Save your GCash receipt or take a screenshot.\n5. Submit the payment reference number and receipt in SmartHood.',
       is_active: 1,
-      updated_by: 'u001',
+      updated_by: requester.id,
       updated_at: new Date().toISOString(),
     };
-    await saveRecord('payment_settings', setting);
+    await audit.transaction(req, () => saveRecord('payment_settings', setting));
   }
   res.json(presentPrivateFiles('payment_settings', deserializeRow('payment_settings', setting), requester));
 }));
 
-app.put('/api/payment-settings', asyncHandler(async (req, res) => {
+app.put('/api/payment-settings', auditedHandler(async (req, res) => {
   const requester = await requirePermission(req, res, 'payments');
   if (!requester) return;
 
@@ -3039,29 +3108,11 @@ app.put('/api/payment-settings', asyncHandler(async (req, res) => {
 
   await saveRecord('payment_settings', updated);
 
-  // Detailed audit logging based on changes
-  if (existing) {
-    if (existing.account_name !== updated.account_name) {
-      await recordAuditLog(`Admin changed GCash account name to "${updated.account_name}"`, requester.id);
-    }
-    if (existing.account_number !== updated.account_number) {
-      await recordAuditLog(`Admin changed GCash number to "${updated.account_number}"`, requester.id);
-    }
-    if (Boolean(existing.is_active) !== Boolean(updated.is_active)) {
-      await recordAuditLog(`Admin ${updated.is_active ? 'enabled' : 'disabled'} GCash payment method`, requester.id);
-    }
-    if (existing.instructions !== updated.instructions) {
-      await recordAuditLog('Admin changed payment settings instructions', requester.id);
-    }
-  } else {
-    await recordAuditLog('Admin configured GCash payment settings', requester.id);
-  }
-
   res.json(presentPrivateFiles('payment_settings', deserializeRow('payment_settings', updated), requester));
 }));
 
 app.post('/api/payment-settings/upload-qr', (req, res) => {
-  qrUpload.single('qr')(req, res, async (uploadErr) => {
+  qrUpload.single('qr')(req, res, auditedUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE'
         ? 'QR code image exceeds the 10 MB size limit.'
@@ -3105,7 +3156,6 @@ app.post('/api/payment-settings/upload-qr', (req, res) => {
         updated_at: new Date().toISOString(),
       };
       await saveRecord('payment_settings', record);
-      await recordAuditLog('Admin uploaded/replaced QR code', requester.id);
 
       res.json({ ok: true, qr_code_path: privateFileUrl('payment-qrcodes', record.id, requester), message: 'GCash QR code updated successfully.' });
     } catch (err) {
@@ -3113,10 +3163,10 @@ app.post('/api/payment-settings/upload-qr', (req, res) => {
       console.error(err);
       res.status(500).json({ error: 'Could not upload QR code image.' });
     }
-  });
+  }));
 });
 
-app.delete('/api/payment-settings/qr', asyncHandler(async (req, res) => {
+app.delete('/api/payment-settings/qr', auditedHandler(async (req, res) => {
   const requester = await requirePermission(req, res, 'payments');
   if (!requester) return;
 
@@ -3124,19 +3174,14 @@ app.delete('/api/payment-settings/qr', asyncHandler(async (req, res) => {
   if (existing && existing.qr_code_path) {
     const oldFilename = storedPrivateFilename(existing.qr_code_path, 'payment-qrcodes');
     if (oldFilename) deletePrivateFiles('payment-qrcodes', [oldFilename]);
-    await run('UPDATE payment_settings SET qr_code_path = NULL, updated_by = ?, updated_at = ? WHERE id = ?', [
-      requester.id,
-      new Date().toISOString(),
-      existing.id,
-    ]);
+    await saveRecord('payment_settings', { id: existing.id, qr_code_path: null, updated_by: requester.id, updated_at: new Date().toISOString() });
   }
-  await recordAuditLog('Admin removed GCash QR code', requester.id);
   res.json({ ok: true, message: 'QR code removed successfully.' });
 }));
 
 // ── BILLING AUTO-GENERATION APIS ──
 
-app.post('/api/billings/generate-monthly-dues', asyncHandler(async (req, res) => {
+app.post('/api/billings/generate-monthly-dues', auditedHandler(async (req, res) => {
   const requester = await requirePermission(req, res, 'billing');
   if (!requester) return;
 
@@ -3245,26 +3290,8 @@ app.post('/api/billings/generate-monthly-dues', asyncHandler(async (req, res) =>
 
     // If there is a pending payment for this month that didn't have billingId, link it
     if (pendingPayment && !pendingPayment.billingId) {
-      await run('UPDATE payments SET billingId = ?, updated_at = ? WHERE id = ?', [
-        billId,
-        new Date().toISOString(),
-        pendingPayment.id,
-      ]);
+      await saveRecord('payments', { id: pendingPayment.id, billingId: billId, updated_at: new Date().toISOString() });
     }
-  }
-
-  // Audit Logs
-  await recordAuditLog(
-    `Admin generated monthly dues for ${monthName}: ${createdBillings.length} created, ${excludedHomeowners.length} excluded (advance paid), ${alreadyBilledHomeowners.length} already billed`,
-    requester.id
-  );
-
-  if (excludedHomeowners.length > 0) {
-    const excludedNames = excludedHomeowners.map(h => h.name).join(', ');
-    await recordAuditLog(
-      `Monthly dues generation for ${monthName} excluded ${excludedHomeowners.length} homeowner(s) who already paid: ${excludedNames}`,
-      requester.id
-    );
   }
 
   // Notifications to billed homeowners
@@ -3441,13 +3468,10 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
       columns.map(column => serializeValue('payments', column, paymentRecord[column]))
     );
     const billingStatus = await refreshBillingPaymentStatus(connection, billing);
+    await recordAuditLog(req, { table: 'payments', id: paymentRecord.id, operation: 'manually recorded and approved', summary: `amount: ${amount}; billing: ${billing.id}; billing status: ${billingStatus}` }, connection);
     await connection.commit();
 
     const billingLabel = billing.title || 'Billing';
-    await recordAuditLog(
-      `Created manual payment: Admin ${requester.name || requester.id} recorded ₱${amount.toLocaleString()} via ${paymentMethod} for ${resident.name} — "${billingLabel}" (Payment date: ${paymentDate}${refNum ? `, Reference: ${refNum}` : ''})`,
-      requester.id
-    );
     await createServerNotification(
       'Payment Recorded',
       `A ${paymentMethod} payment of ₱${amount.toLocaleString()} for "${billingLabel}" was recorded by the HOA office and approved.`,
@@ -3490,7 +3514,7 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
 }));
 
 app.post('/api/payments/submit', (req, res) => {
-  receiptUpload.single('receipt')(req, res, async (uploadErr) => {
+  receiptUpload.single('receipt')(req, res, auditedUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE'
         ? 'Receipt image exceeds the 10 MB size limit.'
@@ -3744,15 +3768,6 @@ app.post('/api/payments/submit', (req, res) => {
 
       await saveRecord('payments', paymentRecord);
 
-      // Record in Audit Log
-      const displayDesc = finalMonthlyDuesMonth
-        ? `advance payment for "${billingTitle}" (${finalMonthlyDuesMonth})`
-        : `payment for "${billingTitle}"`;
-      await recordAuditLog(
-        `Resident ${requester.name} submitted ${displayDesc} (Ref: ${refNum}, Amount: ₱${actualAmount.toLocaleString()})`,
-        requester.id
-      );
-
       // Create notifications
       await createServerNotification(
         'Payment Submitted',
@@ -3781,7 +3796,7 @@ app.post('/api/payments/submit', (req, res) => {
       }
       res.status(500).json({ error: 'Could not submit payment. Please try again.' });
     }
-  });
+  }));
 });
 
 // A replacement receipt is kept private and removes the old proof only after
@@ -3789,7 +3804,7 @@ app.post('/api/payments/submit', (req, res) => {
 app.post('/api/payments/:id/receipt', asyncHandler(async (req, res) => {
   const requester = await requireAuth(req, res);
   if (!requester) return;
-  receiptUpload.single('receipt')(req, res, async (uploadErr) => {
+  receiptUpload.single('receipt')(req, res, auditedUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Receipt image exceeds the 10 MB size limit.' : (uploadErr.message || 'Invalid receipt upload.');
       return res.status(400).json({ error: message });
@@ -3812,7 +3827,7 @@ app.post('/api/payments/:id/receipt', asyncHandler(async (req, res) => {
       }
       const oldFilename = storedPrivateFilename(payment.receipt, 'receipts');
       const receipt = privateStorageKey('receipts', req.file.filename);
-      await run('UPDATE payments SET receipt = ?, updated_at = ? WHERE id = ?', [receipt, new Date().toISOString(), payment.id]);
+      await saveRecord('payments', { id: payment.id, receipt, updated_at: new Date().toISOString() });
       if (oldFilename) deletePrivateFiles('receipts', [oldFilename]);
       res.json({ ok: true, payment: presentPrivateFiles('payments', deserializeRow('payments', { ...payment, receipt }), requester) });
     } catch (error) {
@@ -3820,7 +3835,7 @@ app.post('/api/payments/:id/receipt', asyncHandler(async (req, res) => {
       console.error(error);
       res.status(500).json({ error: 'Could not replace the receipt.' });
     }
-  });
+  }));
 }));
 
 app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
@@ -3893,6 +3908,7 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
       [updatedBillingId, requester.id, nowIso, reviewedAt, nowIso, payment.id]
     );
     if (billing) billingSummary.status = await refreshBillingPaymentStatus(connection, billing);
+    await recordAuditLog(req, { table: 'payments', id: payment.id, operation: 'approved', summary: `amount: ${Number(payment.amount)}; billing: ${updatedBillingId || '(advance dues)'}` }, connection);
     await connection.commit();
   } catch (error) {
     await connection.rollback().catch(() => {});
@@ -3909,12 +3925,6 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
     billTitle = `Monthly Dues - ${formatMonthYearDisplay(payment.monthly_dues_month)}`;
   }
   if (!billTitle) billTitle = 'Billing';
-
-  // Audit Log
-  await recordAuditLog(
-    `Admin approved payment from ${hoName} for "${billTitle}" (Ref: ${payment.refNum}, Amount: ₱${Number(payment.amount).toLocaleString()})`,
-    requester.id
-  );
 
   // Notification to resident
   await createServerNotification(
@@ -3940,11 +3950,11 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
   });
 }));
 
-app.post('/api/payments/:id/reject', asyncHandler(async (req, res) => {
+app.post('/api/payments/:id/reject', auditedHandler(async (req, res) => {
   const requester = await requirePermission(req, res, 'payments');
   if (!requester) return;
 
-  const payment = await get('SELECT * FROM payments WHERE id = ?', [req.params.id]);
+  const payment = await get('SELECT * FROM payments WHERE id = ? FOR UPDATE', [req.params.id]);
   if (!payment) {
     return res.status(404).json({ error: 'Payment record not found.' });
   }
@@ -3965,6 +3975,7 @@ app.post('/api/payments/:id/reject', asyncHandler(async (req, res) => {
     `UPDATE payments SET status = 'rejected', rejection_reason = ?, remarks = ?, verified_by = ?, verified_at = ?, reviewedAt = ?, updated_at = ? WHERE id = ?`,
     [reason, reason, requester.id, nowIso, reviewedAt, nowIso, payment.id]
   );
+  await recordAuditLog(req, { table: 'payments', id: payment.id, operation: 'rejected', summary: 'status: pending -> rejected; reason: [redacted]' });
 
   const ho = await get('SELECT name FROM homeowners WHERE id = ?', [payment.homeownerId]);
   const bill = payment.billingId ? await get('SELECT title FROM billings WHERE id = ?', [payment.billingId]) : null;
@@ -3974,12 +3985,6 @@ app.post('/api/payments/:id/reject', asyncHandler(async (req, res) => {
     billTitle = `Monthly Dues - ${formatMonthYearDisplay(payment.monthly_dues_month)}`;
   }
   if (!billTitle) billTitle = 'Billing';
-
-  // Audit Log
-  await recordAuditLog(
-    `Admin rejected payment from ${hoName} for "${billTitle}". Reason: ${reason}`,
-    requester.id
-  );
 
   // Notification to resident with rejection reason
   await createServerNotification(
@@ -4064,7 +4069,7 @@ app.get('/api/files/payment-qrcodes/:id', asyncHandler(async (req, res) => {
 
 // ── LOST & FOUND APPROVE / REJECT APIS ──
 
-app.post(['/api/lostfound/:id/approve', '/api/lost-found/:id/approve'], asyncHandler(async (req, res) => {
+app.post(['/api/lostfound/:id/approve', '/api/lost-found/:id/approve'], auditedHandler(async (req, res) => {
   const requester = await requirePermission(req, res, 'lostfound');
   if (!requester) return;
 
@@ -4103,10 +4108,7 @@ app.post(['/api/lostfound/:id/approve', '/api/lost-found/:id/approve'], asyncHan
     }
   }
 
-  await recordAuditLog(
-    `Admin approved lost and found report for "${report.itemName}" (${report.id})`,
-    requester.id
-  );
+  await recordAuditLog(req, { table: 'lostFound', id: report.id, operation: 'approved' });
 
   const updated = await get('SELECT * FROM lostFound WHERE id = ?', [req.params.id]);
   res.json({
@@ -4116,7 +4118,7 @@ app.post(['/api/lostfound/:id/approve', '/api/lost-found/:id/approve'], asyncHan
   });
 }));
 
-app.post(['/api/lostfound/:id/reject', '/api/lost-found/:id/reject'], asyncHandler(async (req, res) => {
+app.post(['/api/lostfound/:id/reject', '/api/lost-found/:id/reject'], auditedHandler(async (req, res) => {
   const requester = await requirePermission(req, res, 'lostfound');
   if (!requester) return;
 
@@ -4155,10 +4157,7 @@ app.post(['/api/lostfound/:id/reject', '/api/lost-found/:id/reject'], asyncHandl
     }
   }
 
-  await recordAuditLog(
-    `Admin rejected lost and found report for "${report.itemName}" (${report.id}). Reason: ${reason || 'None provided'}`,
-    requester.id
-  );
+  await recordAuditLog(req, { table: 'lostFound', id: report.id, operation: 'rejected', summary: 'reason: [redacted]' });
 
   const updated = await get('SELECT * FROM lostFound WHERE id = ?', [req.params.id]);
   res.json({
@@ -4354,7 +4353,7 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
   res.json(data.map(record => presentPrivateFiles(table, record, allowed)));
 }));
 
-app.put('/api/:table', asyncHandler(async (req, res) => {
+app.put('/api/:table', auditedHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'update');
@@ -4382,7 +4381,11 @@ app.put('/api/:table', asyncHandler(async (req, res) => {
     req.body = complaintReplaceMeta.map(entry => entry.item);
   }
 
-  await run(`DELETE FROM ${tableName(table)}`);
+  const previousRows = await getTableData(table);
+  const nextIds = new Set(req.body.map(item => item.id).filter(Boolean));
+  for (const previous of previousRows) {
+    if (!nextIds.has(previous.id)) await deleteRecord(table, previous.id);
+  }
   for (const item of stripProfilePhotoField(table, req.body)) {
     await saveRecord(table, item);
   }
@@ -4562,7 +4565,7 @@ app.post('/api/lost-found/upload', handleLostFoundUpload);
 
 app.post('/api/complaints', (req, res, next) => {
   if (req.is('multipart/form-data')) {
-    complaintUpload.any()(req, res, async (uploadErr) => {
+    complaintUpload.any()(req, res, auditedUpload(req, res, async (uploadErr) => {
       if (uploadErr) {
         const message = uploadErr.code === 'LIMIT_FILE_SIZE'
           ? 'A file exceeds the maximum allowed size (5 MB for images, 30 MB for videos).'
@@ -4634,7 +4637,7 @@ app.post('/api/complaints', (req, res, next) => {
         console.error(err);
         res.status(500).json({ error: 'Could not save complaint.' });
       }
-    });
+    }));
   } else {
     next();
   }
@@ -4642,17 +4645,18 @@ app.post('/api/complaints', (req, res, next) => {
 
 // ── AUDIT LOG & NOTIFICATION HELPERS ──
 
-async function recordAuditLog(action, adminId = 'u001') {
-  try {
-    const id = 'l' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
-    const timestamp = new Date().toLocaleString('en-PH', { dateStyle: 'short', timeStyle: 'short' });
-    await run('INSERT INTO auditLog (id, action, adminId, timestamp) VALUES (?, ?, ?, ?)', [id, action, adminId, timestamp]);
-  } catch (err) {
-    console.error('Failed to write audit log:', err);
-  }
+async function recordAuditLog(req, event, connection) {
+  return audit.record(req, event, connection);
 }
 
 async function createServerNotification(title, message, options = {}) {
+  // Notification delivery is best-effort. Keep its caught database failures
+  // outside the required business/audit transaction (a MySQL deadlock can
+  // otherwise roll back that transaction behind the caller's back).
+  if (audit.current()) {
+    audit.afterCommit(() => createServerNotification(title, message, options));
+    return;
+  }
   try {
     const id = 'n' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
     const time = new Date().toLocaleTimeString();
@@ -4694,6 +4698,10 @@ async function getHomeownerEmailRecipients(homeownerIds) {
 // Email is deliberately best-effort after the business write succeeds. A mail
 // provider outage must not roll back or misreport a valid HOA transaction.
 async function emailHomeowners(homeownerIds, buildEmail) {
+  if (audit.current()) {
+    audit.afterCommit(() => emailHomeowners(homeownerIds, buildEmail));
+    return { queued: true };
+  }
   if (!isEmailConfigured()) return { sent: 0, skipped: true, failed: 0 };
   try {
     const recipients = await getHomeownerEmailRecipients(homeownerIds);
@@ -4764,10 +4772,11 @@ function importantStatusEmail(table, before, after) {
   };
 }
 
-app.post('/api/reset', asyncHandler(async (req, res) => {
+app.post('/api/reset', auditedHandler(async (req, res) => {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
   await resetDatabase();
+  await recordAuditLog(req, { table: 'appSettings', id: 'database', operation: 'reset application data (audit history preserved)' });
   res.json(await loadAllData(admin));
 }));
 
@@ -4779,7 +4788,7 @@ function isValidMobileNumber(value) {
   return /^[0-9+()\-\s]{7,20}$/.test(String(value || '').trim());
 }
 
-app.post('/api/homeowners/:id/account', asyncHandler(async (req, res) => {
+app.post('/api/homeowners/:id/account', auditedHandler(async (req, res) => {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
 
@@ -4823,13 +4832,13 @@ app.post('/api/homeowners/:id/account', asyncHandler(async (req, res) => {
        ) VALUES (?, NULL, ?, 'homeowner', NULL, ?, ?, ?, ?, 'active', NOW(), ?, NOW(), ?, ?)`,
       [accountId, hashedPassword, email, mobile, homeowner.id, JSON.stringify(permissions), policyVersion, policyVersion, admin.id]
     );
-    await run('UPDATE homeowners SET contact = ?, updated_at = ? WHERE id = ?', [mobile, new Date().toISOString(), homeowner.id]);
+    await saveRecord('homeowners', { id: homeowner.id, contact: mobile, updated_at: new Date().toISOString() });
   } catch (error) {
     if (error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: 'Email address is already registered or this homeowner already has an account.' });
     throw error;
   }
 
-  await recordAuditLog(`Registered SmartHood account for homeowner ${homeowner.name} (${homeowner.id}) with legal policy version ${policyVersion}`, admin.id);
+  await recordAuditLog(req, { table: 'users', id: accountId, operation: 'created account', summary: `homeowner record: ${homeowner.id}; permissions: ${permissions.join(', ')}` });
   res.status(201).json({
     id: accountId,
     homeowner_id: homeowner.id,
@@ -4841,7 +4850,7 @@ app.post('/api/homeowners/:id/account', asyncHandler(async (req, res) => {
   });
 }));
 
-app.post('/api/homeowners/:id/reset-password', asyncHandler(async (req, res) => {
+app.post('/api/homeowners/:id/reset-password', auditedHandler(async (req, res) => {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
   const password = String(req.body.password || '').trim();
@@ -4852,12 +4861,11 @@ app.post('/api/homeowners/:id/reset-password', asyncHandler(async (req, res) => 
     [req.params.id]
   );
   if (!account) return res.status(404).json({ error: 'This homeowner does not have a registered account.' });
-  await run('UPDATE users SET password = ? WHERE id = ?', [await bcrypt.hash(password, 10), account.id]);
-  await recordAuditLog(`Reset password for homeowner account ${account.name} (${req.params.id})`, admin.id);
+  await saveRecord('users', { id: account.id, password: await bcrypt.hash(password, 10) });
   res.json({ ok: true });
 }));
 
-app.post('/api/users', asyncHandler(async (req, res) => {
+app.post('/api/users', auditedHandler(async (req, res) => {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
 
@@ -4937,11 +4945,16 @@ app.post('/api/users', asyncHandler(async (req, res) => {
   res.status(201).json(sanitizeRecord('users', newUserRecord));
 }));
 
-app.post('/api/:table', asyncHandler(async (req, res) => {
+app.post('/api/:table', auditedHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'create');
   if (!allowed) return;
+  // A create permission must not turn a chosen ID into an unlogged/unauthorized
+  // overwrite (in particular, public lost-and-found submissions).
+  if (req.body.id && await get(`SELECT id FROM ${tableName(table)} WHERE id = ?`, [req.body.id])) {
+    return res.status(409).json({ error: 'A record with this ID already exists.' });
+  }
 
   // Payments have dedicated flows so they always receive ownership, amount,
   // duplicate, and billing validation. Do not permit a raw unassigned record.
@@ -5075,7 +5088,7 @@ app.post('/api/:table', asyncHandler(async (req, res) => {
   res.status(201).json(presentPrivateFiles(table, sanitizeRecord(table, body), allowed));
 }));
 
-app.put('/api/:table/:id', asyncHandler(async (req, res) => {
+app.put('/api/:table/:id', auditedHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'update');
@@ -5256,7 +5269,7 @@ app.put('/api/:table/:id', asyncHandler(async (req, res) => {
   res.json(presentPrivateFiles(table, sanitizeRecord(table, item), allowed));
 }));
 
-app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
+app.delete('/api/:table/:id', auditedHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'delete');
@@ -5279,7 +5292,8 @@ app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
     if (payments || complaints || bookings || vehicles || lostFoundRows || hasAssignedBilling) {
       return res.status(409).json({ error: 'This homeowner has related billing or activity records and cannot be deleted.' });
     }
-    await run('DELETE FROM users WHERE homeowner_id = ?', [req.params.id]);
+    const linkedAccounts = await all('SELECT id FROM users WHERE homeowner_id = ?', [req.params.id]);
+    for (const account of linkedAccounts) await deleteRecord('users', account.id);
   }
 
   if (table === 'lostFound') {
@@ -5304,7 +5318,7 @@ app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
       }
       for (const f of filesToDelete) {
         const filePath = path.join(PUBLIC_DIR, f);
-        fs.promises.unlink(filePath).catch(() => {});
+        audit.afterCommit(() => fs.promises.unlink(filePath).catch(() => {}));
       }
     }
   }
@@ -5320,7 +5334,7 @@ app.delete('/api/:table/:id', asyncHandler(async (req, res) => {
     if (filename) deletePrivateFiles('receipts', [filename]);
   }
 
-  await run(`DELETE FROM ${tableName(table)} WHERE \`id\` = ?`, [req.params.id]);
+  if (!await deleteRecord(table, req.params.id)) return res.status(404).json({ error: 'Record not found.' });
   res.json({ ok: true });
 }));
 

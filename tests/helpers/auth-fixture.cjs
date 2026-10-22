@@ -29,6 +29,14 @@ function database() {
     if (state.fail) throw new Error('Database unavailable: secret connection string');
     const q = sql.replace(/\s+/g, ' ').trim();
     const now = Date.now();
+    if (q.startsWith('INSERT INTO auditLog')) {
+      (state.auditLog ||= []).push({ id: values[0], action: values[1], adminId: values[2], timestamp: values[3] });
+      return [{ affectedRows: 1 }];
+    }
+    if (q.startsWith('SELECT * FROM users WHERE reset_token_hash')) {
+      const user = users.find(u => u.reset_token_hash === values[0] && u.reset_token_expires_at > now && !['inactive', 'deactivated'].includes(u.status));
+      return [user ? [{ ...user }] : []];
+    }
     const key = `${values[0]}:${values[1]}`;
     if (q.startsWith('CREATE TABLE')) return [{ affectedRows: 0 }];
     if (q.startsWith('INSERT INTO auth_rate_limits')) {
@@ -137,6 +145,7 @@ async function fixture(t, options = {}) {
     process: { env },
     __testPool: pool,
     require(name) {
+      if (name === './config/paths' && options.paths) return { ...realRequire(name), ...options.paths };
       if (name === './config/environment') return { DB_CONFIG: {} };
       if (name === './config/loginSecurity') return { readLoginSecurityConfig: () => realRequire(name).readLoginSecurityConfig(env) };
       if (name === './services/uploadService') return { ensureUploadDirectories() {}, moveLegacyPrivateUploads() {} };
@@ -168,7 +177,7 @@ async function fixture(t, options = {}) {
     return { status: response.status, headers: response.headers, body: await response.json() };
   }
   return {
-    app, pool, sent, errors, request,
+    app, pool, sent, errors, request, base,
     login: (identifier = 'resident@example.test', pass = 'wrong', ip) => request('/api/login', { email: identifier, password: pass }, ip),
     async settle() { await new Promise(setImmediate); await Promise.all([...pending]); },
   };
