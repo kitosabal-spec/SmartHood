@@ -177,6 +177,10 @@ global.db = {
   }
 };
 
+// Billing reads directory profiles separately from login accounts.
+global.getHomeowners = () => mockUsers;
+global.getHomeownerById = id => mockUsers.find(homeowner => homeowner.id === id) || null;
+
 // Load billing.js
 const billingCode = fs.readFileSync(path.join(__dirname, '..', 'public', 'js', 'billing.js'), 'utf8');
 eval(billingCode);

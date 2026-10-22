@@ -392,8 +392,9 @@ function formatMonthYearDisplay(monthStr) {
 }
 
 async function ensureDatabase() {
+  let setupPool;
   try {
-    const setupPool = mysql.createPool({
+    setupPool = mysql.createPool({
       host: DB_CONFIG.host,
       port: DB_CONFIG.port,
       user: DB_CONFIG.user,
@@ -406,9 +407,10 @@ async function ensureDatabase() {
     await setupPool.query(
       `CREATE DATABASE IF NOT EXISTS ${quoteIdentifier(DB_CONFIG.database)} CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
     );
-    await setupPool.end();
   } catch (err) {
     console.warn(`[Database Notice] Could not run CREATE DATABASE (${err.message}). Connecting directly to ${DB_CONFIG.database}...`);
+  } finally {
+    if (setupPool) await setupPool.end();
   }
 
   db = mysql.createPool({

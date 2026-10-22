@@ -29,6 +29,7 @@ function getMockElement(id) {
 }
 
 global.document = {
+  readyState: 'loading',
   getElementById: (id) => {
     if (id === 'contentArea') {
       return {
@@ -91,11 +92,13 @@ global.db = {
   }
 };
 
-eval(mainJs);
-eval(lfJs);
+// Use a shared browser-like scope so both scripts see the same session/cache.
+const vm = require('node:vm');
+vm.runInThisContext(mainJs);
+vm.runInThisContext(lfJs);
 
 // Set up mock DB data
-global.currentUser = { id: 'u002', role: 'homeowner', name: 'Juan Dela Cruz', contact: '09171234567' };
+currentUser = global.currentUser = { id: 'account-002', homeowner_id: 'u002', role: 'homeowner', name: 'Juan Dela Cruz', contact: '09171234567' };
 
 global.mockLostFound = [
   {
@@ -161,6 +164,9 @@ global.mockLostFound = [
 ];
 
 console.log('\n--- TESTING RESIDENT LOST & FOUND UI ---');
+dbCache.lostFound = global.mockLostFound;
+dbCache.users = global.mockUsers;
+dbCache.homeowners = global.mockUsers.filter(user => user.role === 'homeowner');
 
 // Test renderHOLostFound ('community' tab)
 renderHOLostFound('community');
@@ -185,7 +191,7 @@ if (!myReportsHtml.includes('Duplicate report')) throw new Error('Missing reject
 console.log('✓ My Submitted Reports correctly displays Pending, Approved, and Rejected with rejection reason!');
 
 console.log('\n--- TESTING ADMIN LOST & FOUND UI ---');
-global.currentUser = { id: 'u001', role: 'admin', name: 'Amy Antipolo' };
+currentUser = global.currentUser = { id: 'u001', role: 'admin', name: 'Amy Antipolo' };
 renderLostFoundManagement();
 console.log('✓ renderLostFoundManagement() executed without error');
 if (!lastContentAreaHtml.includes('Pending Lost &amp; Found Reports')) throw new Error('Missing Pending Lost & Found Reports section');

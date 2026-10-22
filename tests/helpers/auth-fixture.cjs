@@ -162,6 +162,7 @@ async function fixture(t, options = {}) {
       return realRequire(name);
     },
   };
+  sandbox.require.resolve = realRequire.resolve;
   vm.runInNewContext(fs.readFileSync(filename, 'utf8') + '\ndb = __testPool;', sandbox, { filename });
   const app = sandbox.module.exports.app;
   const server = await new Promise(resolve => { const server = app.listen(0, '127.0.0.1', () => resolve(server)); });

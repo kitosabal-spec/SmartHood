@@ -14,7 +14,8 @@ function moveLegacyPrivateUploads(legacyDirectory, privateDirectory) {
     const source = path.join(legacyDirectory, entry.name);
     const destination = path.join(privateDirectory, path.basename(entry.name));
     if (!fs.existsSync(destination)) fs.renameSync(source, destination);
-    else fs.unlinkSync(source);
+    else if (fs.readFileSync(source).equals(fs.readFileSync(destination))) fs.unlinkSync(source);
+    else console.warn(`Upload migration skipped a filename collision: ${entry.name}. Both files were preserved.`);
   }
 }
 

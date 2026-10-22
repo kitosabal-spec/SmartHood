@@ -10,7 +10,9 @@ const DB_CONFIG = {
   user: process.env.MYSQL_USER || 'root',
   password: process.env.MYSQL_PASSWORD || '',
   database: process.env.MYSQL_DATABASE || 'san_alfonso_homes',
-  ssl: (process.env.MYSQL_SSL === 'true' || (process.env.MYSQL_HOST && process.env.MYSQL_HOST !== 'localhost'))
+  ssl: (process.env.MYSQL_SSL === 'true' ||
+    (process.env.MYSQL_SSL !== 'false' && process.env.MYSQL_HOST &&
+      !['localhost', '127.0.0.1', '::1'].includes(process.env.MYSQL_HOST)))
     ? { rejectUnauthorized: false }
     : undefined,
 };

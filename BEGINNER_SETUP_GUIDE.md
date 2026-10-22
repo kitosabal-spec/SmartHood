@@ -150,7 +150,7 @@ You should see something like:
 
 ## 9. How Your Forms Save to MySQL
 
-Your forms still use the same buttons in the frontend. The important change is in `script.js`.
+Your forms use the frontend modules in `public/js/`; the API client is in `public/js/main.js`.
 
 Before:
 
@@ -162,14 +162,14 @@ Now:
 
 ```text
 The app sends data to the backend using fetch().
-The routes under src/routes receive requests through /api URLs.
+The API handlers in src/app.js receive requests through /api URLs.
 The backend saves the record into MySQL.
 ```
 
 Examples:
 
 ```text
-Add Homeowner      -> saves to the users table
+Add Homeowner      -> saves to the homeowners table (login accounts are separate users)
 Create Billing     -> saves to the billings table
 Submit Payment     -> saves to the payments table
 File Complaint     -> saves to the complaints table

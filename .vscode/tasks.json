@@ -1,0 +1,9 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    { "label": "SmartHood: start", "type": "npm", "script": "start", "problemMatcher": [] },
+    { "label": "SmartHood: develop", "type": "npm", "script": "dev", "problemMatcher": [] },
+    { "label": "SmartHood: check project", "type": "npm", "script": "check", "problemMatcher": [], "group": "build" },
+    { "label": "SmartHood: test", "type": "npm", "script": "test", "problemMatcher": [], "group": "test" }
+  ]
+}

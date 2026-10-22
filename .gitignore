@@ -10,3 +10,10 @@ logs/
 .env
 .server.pid
 data/homeowner_credentials.csv
+
+# Local recovery archives and database exports are not application source.
+.local-backups/
+data/backups/
+*.log
+.env.*
+!.env.example

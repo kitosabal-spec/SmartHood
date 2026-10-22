@@ -2536,7 +2536,7 @@ function renderSettings() {
 
   <div class="profile-card">
     ${profileAvatarEditableHTML(currentUser)}
-    <div class="profile-info"><h3>${currentUser.name}</h3><p>${currentUser.email}</p><p>Administrator · ${currentUser.username}</p></div>
+    <div class="profile-info"><h3>${escapeHtml(currentUser.name || '')}</h3><p>${escapeHtml(currentUser.email || '')}</p><p>Administrator · ${escapeHtml(currentUser.username || '')}</p></div>
   </div>
 
 
@@ -2544,8 +2544,8 @@ function renderSettings() {
     <div class="settings-section-header"><h4>Admin Profile</h4></div>
     <div class="settings-section-body">
       <div class="grid-2">
-        <div class="form-group"><label>Full Name</label><input id="s_name" value="${currentUser.name}"/></div>
-        <div class="form-group"><label>Email</label><input id="s_email" value="${currentUser.email}"/></div>
+        <div class="form-group"><label>Full Name</label><input id="s_name" value="${escapeHtml(currentUser.name || '')}"/></div>
+        <div class="form-group"><label>Email</label><input id="s_email" value="${escapeHtml(currentUser.email || '')}"/></div>
       </div>
       <button class="btn btn-primary btn-sm" onclick="confirmSaveAdminProfile()">Save Profile</button>
     </div>
@@ -2584,12 +2584,8 @@ function renderSettings() {
         </label>
       </div>
       <div class="settings-row">
-        <div><div class="settings-label">Email Notifications</div><div style="font-size:0.78rem;color:var(--text-3)">Mock setting — no real emails</div></div>
-        <label class="toggle-switch"><input type="checkbox" checked><span class="toggle-slider"></span></label>
-      </div>
-      <div class="settings-row">
-        <div><div class="settings-label">Auto-generate Monthly Dues</div><div style="font-size:0.78rem;color:var(--text-3)">Automatically create dues on the 1st</div></div>
-        <label class="toggle-switch"><input type="checkbox"><span class="toggle-slider"></span></label>
+        <div><div class="settings-label">Monthly Dues</div><div style="font-size:0.78rem;color:var(--text-3)">Generate and review monthly dues in Billing.</div></div>
+        <button class="btn btn-primary btn-sm" onclick="navigate('billing')">Open Billing</button>
       </div>
     </div>
   </div>

@@ -193,6 +193,7 @@ vm.runInThisContext(billingJs);
 
 // Populate db data after scripts are loaded
 dbCache['users'] = mockUsers;
+dbCache['homeowners'] = mockUsers.filter(user => user.role === 'homeowner');
 dbCache['billings'] = mockBillings;
 dbCache['payments'] = mockPayments;
 
