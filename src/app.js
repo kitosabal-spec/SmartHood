@@ -2497,6 +2497,22 @@ app.get('/api/announcements/reactions', asyncHandler(async (req, res) => {
   res.json(states);
 }));
 
+app.get('/api/announcements/:id/likes', asyncHandler(async (req, res) => {
+  const user = await reactionActor(req, res);
+  if (!user) return;
+  const announcement = await get('SELECT id FROM announcements WHERE id = ?', [req.params.id]);
+  if (!announcement) return res.status(404).json({ error: 'Announcement not found.' });
+  const people = await all(
+    `SELECT COALESCE(h.name, u.name, 'Community member') AS name
+     FROM announcement_reactions r
+     JOIN users u ON u.id = r.user_id
+     LEFT JOIN homeowners h ON h.id = u.homeowner_id
+     WHERE r.announcement_id = ? ORDER BY name, u.id`,
+    [req.params.id]
+  );
+  res.json(people.map(person => ({ name: person.name })));
+}));
+
 app.get('/api/announcements/:id/reaction', asyncHandler(async (req, res) => {
   const announcement = await get('SELECT id FROM announcements WHERE id = ?', [req.params.id]);
   if (!announcement) return res.status(404).json({ error: 'Announcement not found.' });

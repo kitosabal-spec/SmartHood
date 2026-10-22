@@ -232,7 +232,11 @@
   flex-wrap: wrap;
 }
 .community-post-engagement-stats { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
-.community-post-heart-count { font-weight: 600; }
+.community-post-heart-count { font: inherit; font-weight: 600; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; text-decoration: none; text-underline-offset: 2px; }
+.community-post-heart-count:hover { text-decoration: underline; }
+.community-post-heart-count:focus-visible { outline: 2px solid var(--teal-700); outline-offset: 3px; }
+.announcement-likes-list { list-style: none; margin: 0; padding: 0; }
+.announcement-likes-list li { padding: 12px 0; border-bottom: 1px solid var(--border); }
 
 /* Post Action Bar */
 .community-post-action-bar {

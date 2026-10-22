@@ -851,6 +851,24 @@ function handleAnnouncementPostDoubleClick(event, id) {
   toggleAnnouncementReaction(id);
 }
 
+let announcementLikesRequest = 0;
+async function openAnnouncementLikes(id) {
+  const request = ++announcementLikesRequest;
+  const close = () => { announcementLikesRequest++; closeModal(); };
+  openModal('People who liked this post', '<p role="status">Loading likes…</p>', [{ label: 'Close', cls: 'btn-secondary', action: close }]);
+  const body = document.getElementById('modalBody');
+  try {
+    const people = await api.getAnnouncementLikes(id);
+    if (request !== announcementLikesRequest || document.getElementById('modalTitle')?.textContent !== 'People who liked this post') return;
+    body.innerHTML = people.length
+      ? `<ul class="announcement-likes-list">${people.map(person => `<li>${escapeHtml(person.name)}</li>`).join('')}</ul>`
+      : '<p>No likes yet.</p>';
+  } catch (error) {
+    if (request !== announcementLikesRequest || document.getElementById('modalTitle')?.textContent !== 'People who liked this post') return;
+    body.innerHTML = `<p role="alert">${escapeHtml(error.message || 'Could not load likes. Please try again.')}</p>`;
+  }
+}
+
 function communityPostCardHTML(a, canManage) {
   const accountId = currentUser ? currentUser.id : null;
   if (accountId !== announcementReactionAccountId) {
@@ -949,7 +967,7 @@ function communityPostCardHTML(a, canManage) {
 
     <div class="community-post-stats">
       <div class="community-post-engagement-stats">
-        <span class="community-post-heart-count">${reaction.count} ${reaction.count === 1 ? 'like' : 'likes'}</span>
+        <button type="button" class="community-post-heart-count" onclick="openAnnouncementLikes('${a.id}')" title="See who liked this post">${reaction.count} ${reaction.count === 1 ? 'like' : 'likes'}</button>
         <span class="comment-count-link" id="comm-count-${a.id}" onclick="openCommentModal('${a.id}')" style="cursor:pointer;" title="View Comments">
           ${commentIcon}${initialCommentText}
         </span>

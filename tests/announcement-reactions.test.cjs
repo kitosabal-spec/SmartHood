@@ -12,6 +12,9 @@ function reactionPool() {
   const announcements = new Set(['post-1']);
   const execute = async (sql, values = []) => {
     const q = sql.replace(/`/g, '').replace(/\s+/g, ' ').trim();
+    if (q.startsWith('SELECT COALESCE(h.name')) {
+      return [base.users.filter(user => reactions.has(`${values[0]}:${user.id}`)).map(user => ({ name: user.name || 'Community member' }))];
+    }
     if (q.startsWith('SELECT id FROM announcements WHERE id')) return [[...announcements.has(values[0]) ? [{ id: values[0] }] : []]];
     if (q.startsWith('SELECT * FROM announcements WHERE id')) return [[...announcements.has(values[0]) ? [{ id: values[0] }] : []]];
     if (q.startsWith('INSERT IGNORE INTO announcement_reactions')) {
@@ -55,6 +58,7 @@ test('reaction API uses sessions, persists state, prevents duplicates, and clean
     return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie') };
   }
   const route = '/api/announcements/post-1/reaction';
+  assert.equal((await call('GET', '/api/announcements/post-1/likes')).status, 401);
   assert.equal((await call('POST', route)).status, 401);
   assert.equal((await call('GET', route)).body.count, 0);
   const residentLogin = await site.login('resident@example.test', 'Correct-test-password!');
@@ -68,6 +72,11 @@ test('reaction API uses sessions, persists state, prevents duplicates, and clean
   const adminLogin = await site.login('registered-admin@example.test', 'Correct-test-password!');
   const adminCookie = adminLogin.headers.get('set-cookie').split(';')[0];
   assert.deepEqual((await call('POST', route, adminCookie)).body, { count: 2, reacted: true });
+  const likes = await call('GET', '/api/announcements/post-1/likes', residentCookie);
+  assert.equal(likes.status, 200);
+  assert.deepEqual(likes.body.map(person => person.name).sort(), ['Administrator', 'Resident']);
+  assert.ok(likes.body.every(person => Object.keys(person).join(',') === 'name'));
+  assert.equal((await call('GET', '/api/announcements/missing/likes', residentCookie)).status, 404);
   assert.deepEqual((await call('DELETE', route, residentCookie)).body, { count: 1, reacted: false });
   assert.deepEqual((await call('DELETE', route, residentCookie)).body, { count: 1, reacted: false });
   assert.equal((await call('POST', route, residentCookie)).body.count, 2);
@@ -95,12 +104,15 @@ test('inactive and unauthorized accounts cannot heart announcements', async t =>
     const cookie = login.headers.get('set-cookie').split(';')[0];
     const response = await fetch(site.base + '/api/announcements/post-1/reaction', { method: 'POST', headers: { cookie } });
     assert.equal(response.status, expected, email);
+    const likes = await fetch(site.base + '/api/announcements/post-1/likes', { headers: { cookie } });
+    assert.equal(likes.status, expected, email);
   }
   const activeLogin = await site.login('registered-admin@example.test', 'Correct-test-password!');
   const cookie = activeLogin.headers.get('set-cookie').split(';')[0];
   pool.users[0].status = 'inactive';
   const inactiveResponse = await fetch(site.base + '/api/announcements/post-1/reaction', { method: 'POST', headers: { cookie } });
   assert.equal(inactiveResponse.status, 403);
+  assert.equal((await fetch(site.base + '/api/announcements/post-1/likes', { headers: { cookie } })).status, 403);
 });
 
 test('shared card and click handlers keep both feeds synchronized', async () => {
@@ -123,6 +135,7 @@ test('shared card and click handlers keep both feeds synchronized', async () => 
   const html = vm.runInContext("communityPostCardHTML({ id: 'post-1', title: 'Update' }, false)", context);
   assert.match(html, /community-post-heart-btn[\s\S]*?<span>Like<\/span>[\s\S]*?<button[^>]*onclick="openCommentModal/);
   assert.match(html, /ondblclick="handleAnnouncementPostDoubleClick/);
+  assert.match(html, /onclick="openAnnouncementLikes\('post-1'\)"/);
   assert.match(source, /announcements\.map\(a => communityPostCardHTML\(a, canManage\)\)/);
   assert.match(source, /loadAnnouncementReactions\(\)/);
   context.renderAnnouncementCards();

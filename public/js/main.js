@@ -359,6 +359,10 @@ const api = {
     return this.request(`/api/announcements/${encodeURIComponent(id)}/reaction`);
   },
 
+  async getAnnouncementLikes(id) {
+    return this.request(`/api/announcements/${encodeURIComponent(id)}/likes`);
+  },
+
   async addAnnouncementReaction(id) {
     return this.request(`/api/announcements/${encodeURIComponent(id)}/reaction`, { method: 'POST' });
   },
