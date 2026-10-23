@@ -142,8 +142,16 @@ async function reconcileDeferredConstraints(pool) {
   }
 }
 
-async function runMigrations(pool, options = {}) {
+async function runMigrationsOnConnection(connection, options = {}) {
+  // Advisory locks belong to a session. Keep the lock, DDL, and release on
+  // this checked-out connection instead of allowing the pool to switch sessions.
+  const pool = connection;
   const directory = options.directory || path.resolve(__dirname, '../../migrations');
+  const [[server]] = await connection.query('SELECT VERSION() AS version');
+  const isTiDB = /tidb/i.test(server.version);
+  if (isTiDB) {
+    console.warn('[Database Migration] TiDB does not support audit immutability triggers. Application audit write protections remain enabled; direct SQL UPDATE/DELETE is not protected by triggers.');
+  }
   await pool.query(`CREATE TABLE IF NOT EXISTS schema_migrations (
     version VARCHAR(32) PRIMARY KEY,
     name VARCHAR(191) NOT NULL,
@@ -185,11 +193,14 @@ async function runMigrations(pool, options = {}) {
         }
         continue;
       }
-      const connection = await pool.getConnection();
       try {
         await connection.beginTransaction();
         const helpers = { tableExists, columnExists, indexExists, constraintExists, addColumn, addIndex, addForeignKey, MigrationDataError };
-        await migration.up(connection, helpers);
+        // Keep historical migration files/checksums intact. This one migration
+        // consists solely of triggers, which TiDB explicitly does not support.
+        if (!(isTiDB && migration.version === '010' && migration.name === 'enforce_audit_immutability')) {
+          await migration.up(connection, helpers);
+        }
         await connection.execute(
           'INSERT INTO schema_migrations (version, name, checksum) VALUES (?, ?, ?)',
           [migration.version, migration.name, migration.checksum]
@@ -200,14 +211,41 @@ async function runMigrations(pool, options = {}) {
         if (error instanceof MigrationDataError && error.issues.length) {
           await persistIssues(pool, migration.version, error.issues);
         }
-        throw new Error(`Database migration ${migration.version}_${migration.name} failed: ${error.message}`, { cause: error });
-      } finally {
-        connection.release();
+        const failure = new Error(`Database migration ${migration.version}_${migration.name} failed: ${error.message}`, { cause: error });
+        failure.migrationVersion = migration.version;
+        throw failure;
       }
     }
     await reconcileDeferredConstraints(pool);
   } finally {
     await pool.query("SELECT RELEASE_LOCK(CONCAT(DATABASE(), ':smarthood:migrations'))").catch(() => {});
+  }
+}
+
+async function runMigrations(pool, options = {}) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    let connection;
+    let retry = false;
+    try {
+      connection = await pool.getConnection();
+      await runMigrationsOnConnection(connection, options);
+      return;
+    } catch (error) {
+      const code = error.cause?.code || error.code;
+      const disconnected = ['PROTOCOL_CONNECTION_LOST', 'ECONNRESET', 'EPIPE', 'ETIMEDOUT'].includes(code);
+      if (disconnected && connection) {
+        connection.destroy();
+        connection = null;
+      }
+      // 008 uses guarded backfills and existence-checked DDL, so it can resume
+      // after a disconnect. Do not blindly replay other data migrations.
+      retry = disconnected && (!error.migrationVersion || error.migrationVersion === '008') && attempt < 3;
+      if (!retry) throw error;
+      console.warn(`[Database Migration] Connection interrupted; reconnecting and resuming migrations (attempt ${attempt + 1}/3).`);
+    } finally {
+      connection?.release();
+    }
+    if (retry) await new Promise(resolve => setTimeout(resolve, attempt * 1000));
   }
 }
 

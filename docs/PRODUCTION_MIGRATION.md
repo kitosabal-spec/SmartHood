@@ -58,6 +58,33 @@ Use `EXPLAIN` in staging for billing-assignment, payment-status, monthly-dues, b
 
 ## Rollback
 
+### TiDB deployments: migration 010 and interrupted migration 008
+
+TiDB speaks the MySQL protocol but does not support triggers:
+https://docs.pingcap.com/tidb/stable/mysql-compatibility/#unsupported-features
+
+The runner detects TiDB with `SELECT VERSION()`. For TiDB only, migration 010
+uses an explicit compatibility path without sending trigger SQL, then records
+the original migration checksum. MySQL/MariaDB still execute the original
+trigger migration. Every TiDB startup logs the limitation: application audit
+mutation protections remain enabled, but direct SQL UPDATE/DELETE is not
+blocked by database triggers. Restrict direct database access accordingly.
+If moving a TiDB database to MySQL later, install and verify the audit triggers
+explicitly; the already-recorded migration will not run again automatically.
+
+Migration 008 can resume after connection-loss errors. The runner discards the
+lost connection, reconnects, reacquires the migration lock, and reloads applied
+checksums before retrying. It allows at most three attempts, with short backoff.
+Other failed data migrations and SQL/validation errors still stop startup.
+The advisory lock and all migration work use one checked-out connection so a
+pool cannot acquire/release the lock on different sessions.
+
+After deploying the updated runner, confirm 010, 011, and 012 are recorded,
+check `/api/health`, and test login and audit reads. Do not manually mark the
+failed migrations applied. The Render "No open ports" message is a consequence
+of initialization failing before the server listens; keep the existing `PORT`
+handling. Missing-secret warnings and dependency advisories are separate issues.
+
 ### Render failure at migration 006: TEXT actor index
 
 If startup reports `ER_BLOB_KEY_WITHOUT_LENGTH` for `idx_audit_actor`, the existing

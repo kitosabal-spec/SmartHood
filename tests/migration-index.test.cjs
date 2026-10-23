@@ -84,7 +84,25 @@ test('real database: all migrations, legacy 006 failure recovery, and restart', 
           const [before] = await pool.query('SELECT version FROM schema_migrations ORDER BY version');
           assert.deepEqual(before.map(row => row.version), ['001', '002', '003', '004', '005']);
         }
+        // Exercise the real 008 SQL with a dropped connection mid-backfill.
+        const getConnection = pool.getConnection.bind(pool);
+        let interrupted = false;
+        pool.getConnection = async () => {
+          const db = await getConnection();
+          const execute = db.execute.bind(db);
+          db.execute = async (sql, ...args) => {
+            if (!interrupted && sql.startsWith('UPDATE `payments` SET `submitted_at`')) {
+              interrupted = true;
+              db.destroy();
+              throw Object.assign(new Error('Connection lost during operational date backfill'), { code: 'PROTOCOL_CONNECTION_LOST' });
+            }
+            return execute(sql, ...args);
+          };
+          return db;
+        };
         await runMigrations(pool);
+        assert.equal(interrupted, true);
+        pool.getConnection = getConnection;
         await runMigrations(pool);
         const [[count]] = await pool.query('SELECT COUNT(*) AS count FROM schema_migrations');
         assert.equal(Number(count.count), 12);
