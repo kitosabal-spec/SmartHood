@@ -52,6 +52,22 @@ async function addColumn(connection, table, column, definition) {
 
 async function addIndex(connection, table, name, columns, { unique = false } = {}) {
   if (!await indexExists(connection, table, name)) {
+    // Legacy tables can retain TEXT columns despite CREATE TABLE IF NOT EXISTS.
+    // Prefix only ordinary lookup indexes: prefixing UNIQUE indexes would change
+    // their constraint semantics. Keep explicit prefixes/expressions untouched.
+    if (!unique) {
+      const [metadata] = await connection.execute(
+        'SELECT COLUMN_NAME AS column_name, DATA_TYPE AS data_type FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ?',
+        [table]
+      );
+      const textColumns = new Set(metadata
+        .filter(row => /^(tiny|medium|long)?(text|blob)$/i.test(row.data_type))
+        .map(row => row.column_name.toLowerCase()));
+      columns = columns.split(',').map(part => {
+        const match = part.trim().match(/^`([A-Za-z0-9_]+)`$/);
+        return match && textColumns.has(match[1].toLowerCase()) ? `${part.trim()}(191)` : part.trim();
+      }).join(', ');
+    }
     await connection.query(`ALTER TABLE \`${table}\` ADD ${unique ? 'UNIQUE ' : ''}INDEX \`${name}\` (${columns})`);
   }
 }
@@ -195,4 +211,4 @@ async function runMigrations(pool, options = {}) {
   }
 }
 
-module.exports = { runMigrations, loadMigrations, MigrationDataError, reconcileDeferredConstraints };
+module.exports = { runMigrations, loadMigrations, MigrationDataError, reconcileDeferredConstraints, addIndex };

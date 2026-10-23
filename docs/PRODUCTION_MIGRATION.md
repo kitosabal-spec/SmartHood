@@ -58,6 +58,42 @@ Use `EXPLAIN` in staging for billing-assignment, payment-status, monthly-dues, b
 
 ## Rollback
 
+### Render failure at migration 006: TEXT actor index
+
+If startup reports `ER_BLOB_KEY_WITHOUT_LENGTH` for `idx_audit_actor`, the existing
+`auditLog.adminId` column has a legacy TEXT type. `CREATE TABLE IF NOT EXISTS` does
+not change an existing column to the newer VARCHAR definition. The migration
+runner now inspects column types and uses a 191-character prefix for ordinary
+TEXT/BLOB lookup indexes. Stored values are not truncated; UNIQUE indexes retain
+their original semantics. Already-applied migration files and checksums remain
+unchanged.
+
+Deploy the updated runner and restart one instance. Migration 006 retries,
+skipping columns and indexes already created before the failure, then proceeds
+to the remaining migrations. Do not delete migration records or audit rows.
+Confirm migrations 001 through 012 are recorded and `/api/health` returns
+`ok: true` before reopening traffic.
+
+Set separate, persistent random `SESSION_SECRET` and `FILE_ACCESS_SECRET` values
+in Render's environment settings to keep sessions and private file links valid
+across restarts. Those missing-secret warnings and npm audit warnings are separate
+from the migration failure.
+
+For a disposable local MariaDB/MySQL regression run (localhost root with no
+password, no application `.env` database access):
+
+```powershell
+$env:TEST_LOCAL_MYSQL = '1'
+node --test tests/migration-index.test.cjs
+Remove-Item Env:TEST_LOCAL_MYSQL
+```
+
+The test creates and removes its own randomly named databases, checks fresh and
+legacy schemas, injects the MySQL failure at migration 006, verifies recovery and
+repeat startup migrations, and checks that long legacy actor IDs remain intact.
+
+### General rollback procedure
+
 Never edit `schema_migrations` to pretend a failed migration succeeded. MySQL can implicitly commit DDL, so rolling back the application alone does not reverse schema changes.
 
 - Before writes resume: stop the app, retain the failed database for investigation, restore the verified pre-migration dump into a new database, point the previous release to it, and validate counts before reopening traffic.
