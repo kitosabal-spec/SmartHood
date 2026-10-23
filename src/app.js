@@ -278,7 +278,10 @@ const seed = {
       updated_at: new Date().toISOString(),
     },
   ],
-  appSettings: [{ id: 'duesRatePerSqm', value: '5.725' }],
+  appSettings: [
+    { id: 'duesRatePerSqm', value: '5.725' },
+    { id: 'boardCurrentTerm', value: '2026 - 2028' },
+  ],
   board_of_directors: [
     {
       id: 'bod-01',
@@ -2885,9 +2888,56 @@ app.delete('/api/announcements/:announcementId/comments/:commentId', asyncHandle
 
 // ── BOARD OF DIRECTORS SECURE APIS ──
 
+const DEFAULT_BOARD_TERM = '2026 - 2028';
+
+function validBoardTerm(value) {
+  return /^\d{4} - \d{4}$/.test(String(value || ''));
+}
+
+async function currentBoardTerm() {
+  const setting = await get('SELECT value FROM appSettings WHERE id = "boardCurrentTerm"').catch(() => null);
+  if (validBoardTerm(setting?.value)) return setting.value;
+
+  const member = await get(
+    "SELECT term_years FROM board_of_directors WHERE term_years IS NOT NULL AND TRIM(term_years) <> '' ORDER BY display_order ASC, created_at ASC LIMIT 1"
+  ).catch(() => null);
+  return validBoardTerm(member?.term_years) ? member.term_years : DEFAULT_BOARD_TERM;
+}
+
 app.get('/api/board', asyncHandler(async (req, res) => {
   const rows = await all('SELECT * FROM board_of_directors ORDER BY display_order ASC, created_at ASC');
   res.json(rows.map(r => deserializeRow('board_of_directors', r)));
+}));
+
+app.get('/api/board/term', asyncHandler(async (req, res) => {
+  res.json({ term_years: await currentBoardTerm() });
+}));
+
+app.put('/api/board/term', auditedHandler(async (req, res) => {
+  const author = await requirePermission(req, res, 'board');
+  if (!author) return;
+
+  const startText = String(req.body.start_year ?? '').trim();
+  const endText = String(req.body.end_year ?? '').trim();
+  if (!/^\d{4}$/.test(startText) || !/^\d{4}$/.test(endText)) {
+    return res.status(400).json({ error: 'Enter a four-digit start year and end year.' });
+  }
+
+  const startYear = Number(startText);
+  const endYear = Number(endText);
+  if (startYear < 1900 || endYear > 2200 || endYear < startYear) {
+    return res.status(400).json({ error: 'The term must be between 1900 and 2200, and the end year cannot be before the start year.' });
+  }
+
+  const termYears = `${startYear} - ${endYear}`;
+  const nowIso = new Date().toISOString();
+  await saveRecord('appSettings', { id: 'boardCurrentTerm', value: termYears });
+  const result = await run(
+    'UPDATE board_of_directors SET term_years = ?, updated_at = ? WHERE term_years <> ? OR term_years IS NULL',
+    [termYears, nowIso, termYears]
+  );
+
+  res.json({ term_years: termYears, updated_count: Number(result.affectedRows) || 0 });
 }));
 
 app.post('/api/board', (req, res) => {
@@ -2906,7 +2956,7 @@ app.post('/api/board', (req, res) => {
         const name = (req.body.name || '').trim();
         const position = (req.body.position || '').trim();
         const contactNumber = (req.body.contact_number || '').trim();
-        const termYears = (req.body.term_years || '2026 - 2028').trim();
+        const termYears = await currentBoardTerm();
         const displayOrder = parseInt(req.body.display_order, 10) || 0;
 
         if (!name || !position) {
@@ -2971,7 +3021,7 @@ app.put('/api/board/:id', (req, res) => {
         const name = req.body.name !== undefined ? req.body.name.trim() : existing.name;
         const position = req.body.position !== undefined ? req.body.position.trim() : existing.position;
         const contactNumber = req.body.contact_number !== undefined ? req.body.contact_number.trim() : existing.contact_number;
-        const termYears = req.body.term_years !== undefined ? req.body.term_years.trim() : existing.term_years;
+        const termYears = await currentBoardTerm();
         const displayOrder = req.body.display_order !== undefined ? (parseInt(req.body.display_order, 10) || 0) : existing.display_order;
 
         if (!name || !position) {
@@ -4472,15 +4522,17 @@ app.post('/api/notifications/dismiss-all', asyncHandler(async (req, res) => {
 
 app.get('/api/public-data', asyncHandler(async (req, res) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-  const [announcements, lostFound, board] = await Promise.all([
+  const [announcements, lostFound, board, boardCurrentTerm] = await Promise.all([
     getTableData('announcements'),
     getTableData('lostFound'),
     getTableData('board_of_directors'),
+    currentBoardTerm(),
   ]);
   res.json({
     announcements,
     lostFound: lostFound.filter(item => ['Approved', 'Posted', 'Claimed'].includes(item.status)),
     board_of_directors: board,
+    board_current_term: boardCurrentTerm,
   });
 }));
 

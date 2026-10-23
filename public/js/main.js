@@ -4165,6 +4165,15 @@ function handleProfileSettings(e) {
   }
 }
 
+function handleProfileHelpFAQ(e) {
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  closeProfileDropdown();
+  navigate('help-faq');
+}
+
 function handleProfileToggleDarkMode(e) {
   if (e) {
     e.preventDefault();

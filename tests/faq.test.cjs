@@ -27,6 +27,12 @@ test('public FAQ uses one dialog and trigger with no navigation link or landing 
   assert.match(html, /id="sidebarFAQ"/);
 });
 
+test('profile menu links every authenticated user to Help & FAQ', () => {
+  assert.match(html, /onclick="handleProfileHelpFAQ\(event\)"[^>]*role="menuitem"/);
+  assert.match(html, /<span class="profile-dropdown-label">Help &amp; FAQ<\/span>/);
+  assert.match(main, /function handleProfileHelpFAQ\(e\)[\s\S]*?navigate\('help-faq'\);\s*\n}/);
+});
+
 test('search matches answers, ignores case and whitespace, and combines with category', () => {
   assert.equal(evaluate("filterFAQItems(FAQ_ITEMS, '  15 MINUTES ', '').length"), 1);
   assert.equal(evaluate("filterFAQItems(FAQ_ITEMS, '15 minutes', 'Billing and Payments').length"), 0);

@@ -6,6 +6,20 @@ function getPositionBadgeClass(pos) {
   return 'pub-board-pos-vp';
 }
 
+const DEFAULT_BOARD_TERM = '2026 - 2028';
+
+function getCurrentBoardTerm(members = null) {
+  const cachedTerm = typeof dbCache !== 'undefined' ? dbCache.board_current_term : '';
+  if (typeof cachedTerm === 'string' && cachedTerm.trim()) return cachedTerm.trim();
+
+  const settings = typeof db !== 'undefined' ? db.get('appSettings') : [];
+  const settingTerm = settings.find(setting => setting.id === 'boardCurrentTerm')?.value;
+  if (typeof settingTerm === 'string' && settingTerm.trim()) return settingTerm.trim();
+
+  const list = members || (typeof db !== 'undefined' ? db.get('board_of_directors') : []);
+  return list.find(member => member.term_years && member.term_years.trim())?.term_years || DEFAULT_BOARD_TERM;
+}
+
 async function renderPublicBoardOfDirectors() {
   const container = document.getElementById('pubBoardContainer');
   if (!container) return;
@@ -36,7 +50,7 @@ async function renderPublicBoardOfDirectors() {
   }
 
   // Update subtitle term years if available
-  const sampleTerm = members.find(m => m.term_years && m.term_years.trim())?.term_years || '2026 - 2028';
+  const sampleTerm = getCurrentBoardTerm(members);
   const termSub = document.getElementById('pubBoardTermSub');
   if (termSub) {
     termSub.innerHTML = `Term ${escapeHtml(sampleTerm)} &bull; Dedicated to serving San Alfonso Homes with integrity, transparency, and unity.`;
@@ -115,7 +129,7 @@ function renderBoardOfDirectorsManagement() {
 
   const allMembers = db.get('board_of_directors') || [];
   const totalCount = allMembers.length;
-  const sampleTerm = allMembers.find(m => m.term_years && m.term_years.trim())?.term_years || '2026 - 2028';
+  const sampleTerm = getCurrentBoardTerm(allMembers);
   const hasPres = allMembers.some(m => (m.position || '').toLowerCase().includes('president') && !(m.position || '').toLowerCase().includes('vice'));
 
   const standardPositions = ['President', 'Vice President', 'Secretary', 'Treasurer', 'Auditor'];
@@ -146,12 +160,15 @@ function renderBoardOfDirectorsManagement() {
           <span class="stat-label">Total Officers</span>
         </div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card bod-current-term-card">
         <div class="stat-icon" style="background:rgba(34,113,195,0.1);color:#1d4ed8;"><svg width="22" height="22"><use href="#ico-clock"/></svg></div>
         <div class="stat-info">
           <span class="stat-value" style="font-size:1.3rem;">${escapeHtml(sampleTerm)}</span>
           <span class="stat-label">Current Term</span>
         </div>
+        <button type="button" class="bod-change-term-btn" onclick="openChangeCurrentTermModal()" aria-label="Change current board term" title="Change current term">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
       </div>
       <div class="stat-card">
         <div class="stat-icon" style="background:rgba(22,163,74,0.1);color:#16a34a;"><svg width="22" height="22"><use href="#ico-shield"/></svg></div>
@@ -241,7 +258,7 @@ function renderBoardMembersTable(filtered = null) {
           <span class="bod-contact-val">${escapeHtml(m.contact_number || '—')}</span>
         </td>
         <td data-label="Term Years" class="bod-td-term">
-          <span class="badge badge-gray bod-term-badge">${escapeHtml(m.term_years || '2026 - 2028')}</span>
+          <span class="badge badge-gray bod-term-badge">${escapeHtml(m.term_years || getCurrentBoardTerm())}</span>
         </td>
         <td data-label="Order" class="bod-td-order">
           <span class="bod-order-val">${m.display_order ?? 0}</span>
@@ -283,6 +300,89 @@ function filterBoardMembers() {
   });
 
   renderBoardMembersTable(filtered);
+}
+
+function boardTermYears(term = getCurrentBoardTerm()) {
+  const match = String(term || '').match(/^(\d{4})\s*[-–—]\s*(\d{4})$/);
+  return match ? { start: match[1], end: match[2] } : { start: '', end: '' };
+}
+
+function openChangeCurrentTermModal() {
+  const years = boardTermYears();
+  openModal('Change Current Term', `
+    <div class="bod-term-modal">
+      <p class="bod-term-modal-copy">Set the term used for the entire Board of Directors. This will update every officer and the public board page.</p>
+      <div class="bod-term-year-grid">
+        <div class="form-group">
+          <label for="bod_term_start_year">Start Year</label>
+          <input type="number" id="bod_term_start_year" value="${escapeHtml(years.start)}" min="1900" max="2200" step="1" inputmode="numeric" placeholder="2026" />
+        </div>
+        <div class="form-group">
+          <label for="bod_term_end_year">End Year</label>
+          <input type="number" id="bod_term_end_year" value="${escapeHtml(years.end)}" min="1900" max="2200" step="1" inputmode="numeric" placeholder="2028" />
+        </div>
+      </div>
+      <div id="bodTermValidation" class="bod-term-validation" role="alert" aria-live="polite"></div>
+    </div>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Update Term', cls: 'btn-primary', action: saveCurrentBoardTerm },
+  ]);
+  setTimeout(() => document.getElementById('bod_term_start_year')?.focus(), 0);
+}
+
+async function saveCurrentBoardTerm() {
+  const startInput = document.getElementById('bod_term_start_year');
+  const endInput = document.getElementById('bod_term_end_year');
+  const validation = document.getElementById('bodTermValidation');
+  const startText = (startInput?.value || '').trim();
+  const endText = (endInput?.value || '').trim();
+  const startYear = Number(startText);
+  const endYear = Number(endText);
+
+  let message = '';
+  if (!/^\d{4}$/.test(startText) || !/^\d{4}$/.test(endText)) {
+    message = 'Enter a four-digit start year and end year.';
+  } else if (startYear < 1900 || endYear > 2200 || endYear < startYear) {
+    message = 'Use years from 1900 to 2200, with the end year on or after the start year.';
+  }
+  if (message) {
+    if (validation) validation.textContent = message;
+    (startYear < 1900 || !/^\d{4}$/.test(startText) ? startInput : endInput)?.focus();
+    return;
+  }
+
+  const saveButton = document.querySelector('#modalFooter .btn-primary');
+  if (saveButton) {
+    saveButton.disabled = true;
+    saveButton.textContent = 'Updating...';
+  }
+
+  try {
+    const result = await api.request('/api/board/term', {
+      method: 'PUT',
+      body: JSON.stringify({ start_year: startYear, end_year: endYear }),
+    });
+    const updatedList = await api.request('/api/board');
+    dbCache.board_of_directors = updatedList;
+    dbCache.board_current_term = result.term_years;
+    const settings = db.get('appSettings');
+    const nextSetting = { id: 'boardCurrentTerm', value: result.term_years };
+    dbCache.appSettings = settings.some(setting => setting.id === 'boardCurrentTerm')
+      ? settings.map(setting => setting.id === 'boardCurrentTerm' ? nextSetting : setting)
+      : [...settings, nextSetting];
+
+    closeModal();
+    showToast('success', 'Current Term Updated', `The Board of Directors term is now ${result.term_years}.`);
+    renderBoardOfDirectorsManagement();
+    renderPublicBoardOfDirectors();
+  } catch (err) {
+    if (validation) validation.textContent = err.message || 'Could not update the current term.';
+    if (saveButton) {
+      saveButton.disabled = false;
+      saveButton.textContent = 'Update Term';
+    }
+  }
 }
 
 let pendingBodPhotoFile = null;
@@ -565,15 +665,10 @@ function openAddBoardMemberModal() {
         <input type="text" id="bod_contact_input" placeholder="e.g. 09125225210" />
       </div>
 
-      <div class="grid-2" style="gap:14px;">
-        <div class="form-group">
-          <label>Term Years</label>
-          <input type="text" id="bod_term_input" value="2026 - 2028" placeholder="e.g. 2026 - 2028" />
-        </div>
-        <div class="form-group">
-          <label>Display Order</label>
-          <input type="number" id="bod_order_input" value="6" min="1" max="99" />
-        </div>
+      <div class="form-group">
+        <label>Display Order</label>
+        <input type="number" id="bod_order_input" value="6" min="1" max="99" />
+        <div class="bod-form-hint">This member will use the current board term: <strong>${escapeHtml(getCurrentBoardTerm())}</strong>.</div>
       </div>
     </div>
   `;
@@ -646,15 +741,10 @@ function openEditBoardMemberModal(memberId) {
         <input type="text" id="bod_contact_input" value="${escapeHtml(m.contact_number || '')}" placeholder="e.g. 09125225210" />
       </div>
 
-      <div class="grid-2" style="gap:14px;">
-        <div class="form-group">
-          <label>Term Years</label>
-          <input type="text" id="bod_term_input" value="${escapeHtml(m.term_years || '2026 - 2028')}" placeholder="e.g. 2026 - 2028" />
-        </div>
-        <div class="form-group">
-          <label>Display Order</label>
-          <input type="number" id="bod_order_input" value="${m.display_order ?? 1}" min="1" max="99" />
-        </div>
+      <div class="form-group">
+        <label>Display Order</label>
+        <input type="number" id="bod_order_input" value="${m.display_order ?? 1}" min="1" max="99" />
+        <div class="bod-form-hint">Term years are managed with the <strong>Change Current Term</strong> action.</div>
       </div>
     </div>
   `;
@@ -670,7 +760,6 @@ async function saveBoardMember(isEdit, memberId = null) {
   const posSelect = document.getElementById('bod_position_select');
   const customPosInput = document.getElementById('bod_custom_position');
   const contactInput = document.getElementById('bod_contact_input');
-  const termInput = document.getElementById('bod_term_input');
   const orderInput = document.getElementById('bod_order_input');
 
   const name = (nameInput?.value || '').trim();
@@ -689,14 +778,13 @@ async function saveBoardMember(isEdit, memberId = null) {
   }
 
   const contact = (contactInput?.value || '').trim();
-  const term = (termInput?.value || '2026 - 2028').trim();
   const order = parseInt(orderInput?.value, 10) || 1;
 
   const formData = new FormData();
   formData.append('name', name);
   formData.append('position', position);
   formData.append('contact_number', contact);
-  formData.append('term_years', term);
+  if (!isEdit) formData.append('term_years', getCurrentBoardTerm());
   formData.append('display_order', order);
 
   if (pendingBodPhotoFile) {

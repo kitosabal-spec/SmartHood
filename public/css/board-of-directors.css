@@ -209,6 +209,68 @@
   overflow: hidden;
 }
 
+.bod-current-term-card {
+  position: relative;
+}
+
+.bod-current-term-card .stat-info {
+  align-items: center;
+  text-align: center;
+}
+
+.bod-change-term-btn {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--teal-700);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.bod-change-term-btn:hover,
+.bod-change-term-btn:focus-visible {
+  background: var(--teal-50);
+  color: var(--teal-800);
+}
+
+.bod-term-modal-copy {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.88rem;
+  line-height: 1.55;
+}
+
+.bod-term-year-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.bod-term-validation {
+  min-height: 20px;
+  margin-top: 8px;
+  color: var(--red-600);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.bod-form-hint {
+  margin-top: 6px;
+  color: var(--text-3);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
 .bod-stats-grid .stat-info,
 .stats-grid.bod-stats-grid .stat-info {
   min-width: 0 !important;
@@ -404,6 +466,11 @@
     flex-direction: column;
     align-items: center;
     text-align: center;
+  }
+
+  .bod-term-year-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 
   .bod-stats-grid,
