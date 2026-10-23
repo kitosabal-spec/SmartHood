@@ -36,7 +36,7 @@ test('financial module permissions preserve reads but deny every management rout
   for(const [user,count] of [['admin-1',2],['officer',2],['resident-officer',2],['resident-1',1],['neither',0]]) {
     for(const table of ['billings','payments']) {
       const r = await f.request('GET',`/api/${table}`,undefined,user);
-      assert.equal(r.status,count ? 200 : 403);
+      assert.equal(r.status,count ? 200 : 403, JSON.stringify({ user, table, response: r, errors: f.errors }));
       if(count) assert.equal(r.body.length,count);
     }
     const data = await f.request('GET','/api/data',undefined,user);

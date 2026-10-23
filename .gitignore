@@ -10,6 +10,9 @@ logs/
 .env
 .server.pid
 data/homeowner_credentials.csv
+data/homeowners.import.*
+data/imports/
+data/migration-reports/
 
 # Local recovery archives and database exports are not application source.
 .local-backups/

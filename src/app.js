@@ -6,6 +6,7 @@ const multer = require('multer');
 const mysql = require('mysql2/promise');
 const bcrypt = require('bcryptjs');
 const { DB_CONFIG } = require('./config/environment');
+const { runMigrations } = require('./db/migrationRunner');
 const {
   PUBLIC_DIR,
   INDEX_FILE,
@@ -32,6 +33,7 @@ const { isBcryptHash, hashPasswordResetToken, isPasswordResetToken } = require('
 const { readLoginSecurityConfig } = require('./config/loginSecurity');
 const { createAuthSecurityRepository } = require('./services/authSecurityStore');
 const { createLoginSecurityAlerts } = require('./services/loginSecurityAlerts');
+const { roundMoney, billingBalance } = require('./services/financialService');
 const { createLoginRateLimits, loginIdentifier } = require('./middleware/loginRateLimit');
 
 const { AUDITED_TABLES, changeSummary, createAuditService } = require('./services/auditService');
@@ -239,16 +241,14 @@ function loadHomeownerSeed() {
   const seedPath = path.join(DATA_DIR, 'homeowners.seed.json');
   try {
     const raw = fs.readFileSync(seedPath, 'utf8').replace(/^\uFEFF/, '');
-    // Seed records are directory data, never credentials.
+    // Repository seeds must contain fictional development data only. Production
+    // homeowner directories are imported through an operator-controlled path.
     return JSON.parse(raw).map(({ password, username, email, role, status, permissions, ...homeowner }) => homeowner);
   } catch (error) {
     console.warn(`Could not load homeowner seed from ${seedPath}. Falling back to demo homeowners.`);
     return [
-      { id: 'u002', name: 'Juan Dela Cruz', block: 'Block 3', lot: 'Lot 7', lotArea: 0, contact: '09171234567', balance: 3500, profile_photo: null },
-      { id: 'u003', name: 'Anna Maria Reyes', block: 'Block 1', lot: 'Lot 2', lotArea: 0, contact: '09281234567', balance: 0, profile_photo: null },
-      { id: 'u004', name: 'Carlos Magno', block: 'Block 2', lot: 'Lot 5', lotArea: 0, contact: '09351234567', balance: 7000, profile_photo: null },
-      { id: 'u005', name: 'Rita Flores', block: 'Block 4', lot: 'Lot 1', lotArea: 0, contact: '09461234567', balance: 1500, profile_photo: null },
-      { id: 'u006', name: 'Pedro Parcero', block: 'Block 1', lot: 'Lot 8', lotArea: 0, contact: '09571234567', balance: 0, profile_photo: null },
+      { id: 'demo-ho-001', name: 'Alex Example', block: 'Demo Block A', lot: 'Demo Lot 1', lotArea: 80, contact: null, balance: 0, profile_photo: null },
+      { id: 'demo-ho-002', name: 'Bailey Sample', block: 'Demo Block A', lot: 'Demo Lot 2', lotArea: 95.5, contact: null, balance: 0, profile_photo: null },
     ];
   }
 }
@@ -364,6 +364,7 @@ function parseMonthFromTitle(title) {
 
 const BILLING_TYPE_MONTHLY_DUES = 'Monthly Association Dues';
 const BILLING_TYPE_OTHER = 'Other Billing';
+const ARCHIVABLE_TABLES = new Set(['users', 'homeowners', 'billings', 'payments', 'complaints', 'amenityBookings', 'vehicleRegistrations', 'lostFound']);
 
 function isMonthlyDuesTitle(title) {
   const text = String(title || '').toLowerCase();
@@ -392,6 +393,14 @@ function formatMonthYearDisplay(monthStr) {
 }
 
 async function ensureDatabase() {
+  if (process.env.MYSQL_CREATE_DATABASE !== 'true') {
+    db = mysql.createPool({
+      ...DB_CONFIG,
+      waitForConnections: true,
+      connectionLimit: 10,
+    });
+    return;
+  }
   let setupPool;
   try {
     setupPool = mysql.createPool({
@@ -469,17 +478,15 @@ function getAssignedHomeownerIds(billing) {
 
 async function findMonthlyDuesBillingForHomeowner(homeownerId, month, excludeBillingId = null) {
   if (!homeownerId || !month) return null;
-  const rows = await all(
-    `SELECT * FROM billings
-      WHERE monthly_dues_month = ?
-        AND (billing_type = ? OR (billing_type IS NULL OR billing_type = '') OR LOWER(title) LIKE '%monthly%dues%')`,
-    [month, BILLING_TYPE_MONTHLY_DUES]
+  return get(
+    `SELECT b.* FROM billings b
+       JOIN billing_assignments ba ON ba.billing_id = b.id
+      WHERE ba.homeowner_id = ? AND ba.status = 'active'
+        AND b.monthly_dues_month = ? AND b.archived_at IS NULL
+        AND (b.billing_type = ? OR (b.billing_type IS NULL OR b.billing_type = '') OR LOWER(b.title) LIKE '%monthly%dues%')
+        AND (? IS NULL OR b.id <> ?) LIMIT 1`,
+    [homeownerId, month, BILLING_TYPE_MONTHLY_DUES, excludeBillingId, excludeBillingId]
   );
-  return rows.find((billing) => {
-    if (excludeBillingId && billing.id === excludeBillingId) return false;
-    if (!isMonthlyAssociationDuesBilling(billing)) return false;
-    return getAssignedHomeownerIds(billing).includes(homeownerId);
-  }) || null;
 }
 
 async function findApprovedMonthlyDuesPayment(homeownerId, month) {
@@ -543,6 +550,16 @@ async function keepResidentModuleBillingRecipients(payload, res) {
 }
 
 async function validateAndPrepareBillingPayload(payload, res, excludeBillingId = null) {
+  const amount = Number(payload.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    res.status(400).json({ error: 'Billing amount must be greater than ₱0.' });
+    return false;
+  }
+  payload.amount = roundMoney(amount);
+  if (payload.dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(payload.dueDate))) {
+    res.status(400).json({ error: 'Due date must use YYYY-MM-DD format.' });
+    return false;
+  }
   const inferredMonth = payload.monthly_dues_month || payload.billingMonth || (payload.title ? parseMonthFromTitle(payload.title) : null);
   const billingType = normalizeBillingType(payload.billing_type || payload.billingType, payload.title, inferredMonth);
   payload.billing_type = billingType;
@@ -692,6 +709,9 @@ async function saveRecord(table, item) {
     const columnList = columns.map(quoteIdentifier).join(', ');
     await run(`INSERT INTO ${sqlTable} (${columnList}) VALUES (${placeholders})`, values);
   }
+  if (table === 'billings' && item.assignedTo !== undefined) {
+    await syncBillingAssignments(item.id, getAssignedHomeownerIds(item));
+  }
   const state = audit.current();
   if (state && AUDITED_TABLES.has(table) && (state.actor || table !== 'lostFound')) {
     const summary = changeSummary(existing && deserializeRow(table, existing), item, columns);
@@ -719,40 +739,73 @@ async function deleteRecord(table, id) {
 }
 
 async function getTableData(table) {
+  if (table === 'billings') {
+    const [rows, assignments] = await Promise.all([
+      all('SELECT * FROM billings WHERE archived_at IS NULL'),
+      all("SELECT billing_id, homeowner_id, assigned_amount, status, monthly_dues_month FROM billing_assignments WHERE status <> 'archived'"),
+    ]);
+    const byBilling = new Map();
+    for (const assignment of assignments) {
+      if (!byBilling.has(assignment.billing_id)) byBilling.set(assignment.billing_id, []);
+      byBilling.get(assignment.billing_id).push(assignment.homeowner_id);
+    }
+    return rows.map(row => ({ ...deserializeRow(table, row), assignedTo: byBilling.get(row.id) || [] }));
+  }
   if (table === 'notifications') {
     const rows = await all('SELECT * FROM notifications ORDER BY id DESC');
     return rows.map((row) => deserializeRow(table, row));
   }
   if (table === 'users') {
     const [userRows, homeownerRows] = await Promise.all([
-      all('SELECT * FROM users'),
-      all('SELECT * FROM homeowners'),
+      all('SELECT * FROM users WHERE archived_at IS NULL'),
+      all(`SELECT h.*, COALESCE(s.remaining_balance, 0) AS balance
+             FROM homeowners h LEFT JOIN homeowner_financial_summary s ON s.homeowner_id = h.id
+            WHERE h.archived_at IS NULL`),
     ]);
     const homeownersById = new Map(homeownerRows.map(homeowner => [homeowner.id, homeowner]));
     return userRows.map((row) => mergeUserWithHomeowner(deserializeRow('users', row), homeownersById.get(row.homeowner_id)));
   }
   if (table === 'homeowners') {
     const [homeownerRows, accountRows] = await Promise.all([
-      all('SELECT * FROM homeowners'),
+      all(`SELECT h.*, COALESCE(s.remaining_balance, 0) AS balance,
+                  COALESCE(s.total_billed, 0) AS total_billed,
+                  COALESCE(s.total_approved_payments, 0) AS total_approved_payments
+             FROM homeowners h LEFT JOIN homeowner_financial_summary s ON s.homeowner_id = h.id
+            WHERE h.archived_at IS NULL`),
       all("SELECT id, homeowner_id, email, mobile, status FROM users WHERE role = 'homeowner' AND homeowner_id IS NOT NULL"),
     ]);
     const accountsByHomeownerId = new Map(accountRows.map(account => [account.homeowner_id, account]));
     return homeownerRows.map((row) => presentHomeownerAccountStatus(deserializeRow('homeowners', row), accountsByHomeownerId.get(row.id)));
   }
-  const rows = await all(`SELECT * FROM ${tableName(table)}`);
+  const rows = await all(`SELECT * FROM ${tableName(table)}${ARCHIVABLE_TABLES.has(table) ? ' WHERE archived_at IS NULL' : ''}`);
   return rows.map((row) => deserializeRow(table, row));
 }
 
-function roundMoney(value) {
-  return Math.round((Number(value) || 0) * 100) / 100;
+async function syncBillingAssignments(billingId, homeownerIds) {
+  const billing = await get('SELECT id, amount, status, monthly_dues_month FROM billings WHERE id = ? FOR UPDATE', [billingId]);
+  if (!billing) throw new Error('Cannot synchronize assignments for a missing billing.');
+  const ids = [...new Set((homeownerIds || []).map(String).filter(Boolean))];
+  const current = await all('SELECT homeowner_id FROM billing_assignments WHERE billing_id = ? FOR UPDATE', [billingId]);
+  for (const row of current) {
+    if (!ids.includes(row.homeowner_id)) {
+      await run('DELETE FROM billing_assignments WHERE billing_id = ? AND homeowner_id = ?', [billingId, row.homeowner_id]);
+    }
+  }
+  for (const homeownerId of ids) {
+    await run(
+      `INSERT INTO billing_assignments (billing_id, homeowner_id, assigned_amount, status, monthly_dues_month)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE assigned_amount = VALUES(assigned_amount), status = VALUES(status), monthly_dues_month = VALUES(monthly_dues_month), updated_at = CURRENT_TIMESTAMP(3)`,
+      [billingId, homeownerId, roundMoney(billing.amount), billing.status === 'inactive' ? 'inactive' : 'active', billing.monthly_dues_month || null]
+    );
+  }
 }
 
 function summarizeBillingPayments(billing, homeownerId, payments) {
-  const originalAmount = roundMoney(billing?.amount);
-  const totalPaid = roundMoney((payments || [])
+  const approvedAmounts = (payments || [])
     .filter(payment => payment.status === 'approved' && payment.homeownerId === homeownerId)
-    .reduce((sum, payment) => sum + roundMoney(payment.amount), 0));
-  const remainingBalance = roundMoney(Math.max(0, originalAmount - totalPaid));
+    .map(payment => payment.amount);
+  const { originalAmount, totalPaid, remainingBalance } = billingBalance(billing?.amount || 0, approvedAmounts);
   return {
     originalAmount,
     totalPaid,
@@ -769,7 +822,11 @@ async function refreshBillingPaymentStatus(connection, billing) {
     `SELECT homeownerId, amount, status FROM payments WHERE billingId = ? AND status = 'approved' FOR UPDATE`,
     [billing.id]
   );
-  const summaries = getAssignedHomeownerIds(billing)
+  const assignedRows = await connection.execute(
+    "SELECT homeowner_id FROM billing_assignments WHERE billing_id = ? AND status = 'active' FOR UPDATE",
+    [billing.id]
+  );
+  const summaries = assignedRows[0].map(row => row.homeowner_id)
     .map(homeownerId => summarizeBillingPayments(billing, homeownerId, rows));
   const nextStatus = summaries.length && summaries.every(summary => summary.status === 'paid')
     ? 'paid'
@@ -812,7 +869,7 @@ function requesterHomeownerId(user) {
 async function loadAllData(requester = null) {
   const data = {};
   for (const table of Object.keys(tableConfig)) {
-    data[table] = await getTableData(table);
+    data[table] = await getScopedTableData(table, requester);
   }
   // Filter table data for non-admins based on permissions
   if (!requester || requester.role !== 'admin') {
@@ -871,6 +928,66 @@ async function loadAllData(requester = null) {
     data.payment_settings = (data.payment_settings || []).map(record => presentPrivateFiles('payment_settings', record, requester));
   }
   return data;
+}
+
+async function getScopedTableData(table, requester) {
+  if (!requester || requester.role === 'admin') return getTableData(table);
+  const homeownerId = requesterHomeownerId(requester);
+  if (table === 'notifications') return getNotificationsForUser(requester.id);
+  if (table === 'auditLog') return userHasPermission(requester, 'auditlog') ? getTableData(table) : [];
+  if (table === 'billings') {
+    if (userHasPermission(requester, 'billing')) return getTableData(table);
+    if (!userHasPermission(requester, 'resident') || !homeownerId) return [];
+    const rows = await all(
+      `SELECT b.* FROM billings b JOIN billing_assignments ba ON ba.billing_id = b.id
+        WHERE ba.homeowner_id = ? AND ba.status = 'active' AND b.archived_at IS NULL`,
+      [homeownerId]
+    );
+    return rows.map(row => ({ ...deserializeRow('billings', row), assignedTo: [homeownerId] }));
+  }
+  const scopes = {
+    payments: ['payments', 'homeownerId', 'payments'],
+    complaints: ['complaints', 'homeownerId', 'complaints'],
+    amenityBookings: ['amenityBookings', 'homeownerId', 'amenities'],
+    vehicleRegistrations: ['vehicleRegistrations', 'homeownerId', 'vehicles'],
+  };
+  if (scopes[table]) {
+    const [sqlTable, column, managePermission] = scopes[table];
+    if (userHasPermission(requester, managePermission)) return getTableData(table);
+    if (!userHasPermission(requester, 'resident') || !homeownerId) return [];
+    const rows = await all(`SELECT * FROM ${sqlTable} WHERE \`${column}\` = ? AND archived_at IS NULL`, [homeownerId]);
+    return rows.map(row => deserializeRow(table, row));
+  }
+  if (table === 'lostFound' && !userHasPermission(requester, 'lostfound')) {
+    const rows = await all(
+      `SELECT * FROM lostFound WHERE archived_at IS NULL
+        AND (status IN ('Approved', 'Posted', 'Claimed') OR homeownerId = ?)`,
+      [homeownerId]
+    );
+    return rows.map(row => deserializeRow(table, row));
+  }
+  if (table === 'users' || table === 'homeowners') {
+    const canViewDirectory = ['billing', 'payments', 'complaints', 'vehicles', 'amenities', 'lostfound']
+      .some(permission => userHasPermission(requester, permission));
+    if (canViewDirectory) return getTableData(table);
+    if (table === 'users') {
+      const row = await get('SELECT * FROM users WHERE id = ? AND archived_at IS NULL', [requester.id]);
+      if (!row) return [];
+      const homeowner = homeownerId ? await get('SELECT * FROM homeowners WHERE id = ? AND archived_at IS NULL', [homeownerId]) : null;
+      return [mergeUserWithHomeowner(deserializeRow('users', row), homeowner)];
+    }
+    if (!homeownerId) return [];
+    const row = await get(
+      `SELECT h.*, COALESCE(s.remaining_balance, 0) AS balance,
+              COALESCE(s.total_billed, 0) AS total_billed,
+              COALESCE(s.total_approved_payments, 0) AS total_approved_payments
+         FROM homeowners h LEFT JOIN homeowner_financial_summary s ON s.homeowner_id = h.id
+        WHERE h.id = ? AND h.archived_at IS NULL`,
+      [homeownerId]
+    );
+    return row ? [presentHomeownerAccountStatus(deserializeRow('homeowners', row), requester)] : [];
+  }
+  return getTableData(table);
 }
 
 async function createTables() {
@@ -3322,22 +3439,17 @@ app.post('/api/billings/generate-monthly-dues', auditedHandler(async (req, res) 
 
   // Retrieve existing Monthly Association Dues billings for this month to prevent duplicate generation.
   const existingBillings = await all(
-    `SELECT * FROM billings
-      WHERE monthly_dues_month = ?
-        AND (billing_type = ? OR (billing_type IS NULL OR billing_type = '') OR LOWER(title) LIKE '%monthly%dues%')`,
+    `SELECT b.*, ba.homeowner_id AS assigned_homeowner_id FROM billings b
+      JOIN billing_assignments ba ON ba.billing_id = b.id AND ba.status = 'active'
+      WHERE b.monthly_dues_month = ? AND b.archived_at IS NULL
+        AND (b.billing_type = ? OR (b.billing_type IS NULL OR b.billing_type = '') OR LOWER(b.title) LIKE '%monthly%dues%')`,
     [month, BILLING_TYPE_MONTHLY_DUES]
   );
 
   const alreadyBilledHomeownerIds = new Set();
   existingBillings.forEach(b => {
     if (!isMonthlyAssociationDuesBilling(b)) return;
-    let assigned = [];
-    try {
-      assigned = typeof b.assignedTo === 'string' ? JSON.parse(b.assignedTo) : b.assignedTo;
-    } catch {}
-    if (Array.isArray(assigned)) {
-      assigned.forEach(id => alreadyBilledHomeownerIds.add(id));
-    }
+    if (b.assigned_homeowner_id) alreadyBilledHomeownerIds.add(b.assigned_homeowner_id);
   });
 
   const createdBillings = [];
@@ -4120,6 +4232,30 @@ app.post('/api/payments/:id/reject', auditedHandler(async (req, res) => {
   });
 }));
 
+app.post('/api/payments/:id/void', auditedHandler(async (req, res) => {
+  const requester = await requireFinancialAdmin(req, res);
+  if (!requester) return;
+  const reason = String(req.body.reason || '').trim();
+  if (reason.length < 5 || reason.length > 500) {
+    return res.status(400).json({ error: 'A void reason between 5 and 500 characters is required.' });
+  }
+  const payment = await get('SELECT * FROM payments WHERE id = ? AND archived_at IS NULL FOR UPDATE', [req.params.id]);
+  if (!payment) return res.status(404).json({ error: 'Payment not found.' });
+  if (payment.status !== 'approved' || payment.voided_at) {
+    return res.status(409).json({ error: 'Only a non-voided approved payment can be voided.' });
+  }
+  await run(
+    "UPDATE payments SET status = 'voided', voided_at = CURRENT_TIMESTAMP(3), voided_by = ?, void_reason = ?, updated_at = CURRENT_TIMESTAMP(3) WHERE id = ?",
+    [requester.id, reason, payment.id]
+  );
+  if (payment.billingId) {
+    const billing = await get('SELECT * FROM billings WHERE id = ? FOR UPDATE', [payment.billingId]);
+    if (billing) await refreshBillingPaymentStatus(audit.current().connection, billing);
+  }
+  await recordAuditLog(req, { table: 'payments', id: payment.id, operation: 'voided', summary: 'reason: [redacted]' });
+  res.json({ ok: true, id: payment.id, status: 'voided' });
+}));
+
 // ── PRIVATE FILE ACCESS ────────────────────────────────────────────────────
 // Receipts and complaint evidence never have public /uploads URLs. The short-
 // lived signed link identifies a logged-in user, then ownership/role checks
@@ -4292,32 +4428,45 @@ function canUserSeeNotification(notification, user) {
 app.get('/api/notifications', asyncHandler(async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
-  const notifications = await getTableData('notifications');
-  res.json(notifications.filter(notification => canUserSeeNotification(notification, user)));
+  res.json(await getNotificationsForUser(user.id));
+}));
+
+app.get('/api/notifications/unread-count', asyncHandler(async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const row = await get(
+    'SELECT COUNT(*) AS count FROM notification_recipients WHERE user_id = ? AND read_at IS NULL AND dismissed_at IS NULL',
+    [user.id]
+  );
+  res.json({ count: Number(row.count) });
+}));
+
+app.patch('/api/notifications/:id/read', asyncHandler(async (req, res) => {
+  const user = await requireAuth(req, res);
+  if (!user) return;
+  const result = await run(
+    'UPDATE notification_recipients SET read_at = COALESCE(read_at, CURRENT_TIMESTAMP(3)) WHERE notification_id = ? AND user_id = ? AND dismissed_at IS NULL',
+    [req.params.id, user.id]
+  );
+  if (!result.affectedRows) return res.status(403).json({ error: 'You cannot read this notification.' });
+  res.json({ ok: true, id: req.params.id });
 }));
 
 app.patch('/api/notifications/:id/dismiss', asyncHandler(async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
-  const notification = await get('SELECT * FROM notifications WHERE id = ?', [req.params.id]);
-  if (!notification) return res.status(404).json({ error: 'Notification not found.' });
-  const record = deserializeRow('notifications', notification);
-  if (!canUserSeeNotification(record, user)) return res.status(403).json({ error: 'You cannot dismiss this notification.' });
-  record.dismissedBy = [...new Set([...(record.dismissedBy || []), user.id])];
-  await saveRecord('notifications', record);
-  res.json({ ok: true, id: record.id });
+  const result = await run(
+    'UPDATE notification_recipients SET dismissed_at = CURRENT_TIMESTAMP(3) WHERE notification_id = ? AND user_id = ? AND dismissed_at IS NULL',
+    [req.params.id, user.id]
+  );
+  if (!result.affectedRows) return res.status(403).json({ error: 'You cannot dismiss this notification.' });
+  res.json({ ok: true, id: req.params.id });
 }));
 
 app.post('/api/notifications/dismiss-all', asyncHandler(async (req, res) => {
   const user = await requireAuth(req, res);
   if (!user) return;
-  const notifications = await getTableData('notifications');
-  await Promise.all(notifications
-    .filter(notification => canUserSeeNotification(notification, user))
-    .map((notification) => saveRecord('notifications', {
-      id: notification.id,
-      dismissedBy: [...new Set([...(notification.dismissedBy || []), user.id])],
-    })));
+  await run('UPDATE notification_recipients SET dismissed_at = CURRENT_TIMESTAMP(3) WHERE user_id = ? AND dismissed_at IS NULL', [user.id]);
   res.json({ ok: true });
 }));
 
@@ -4335,6 +4484,60 @@ app.get('/api/public-data', asyncHandler(async (req, res) => {
   });
 }));
 
+// Opt-in paginated endpoint. The legacy array endpoints remain compatible,
+// while new screens can avoid loading entire operational tables.
+app.get('/api/paged/:table', asyncHandler(async (req, res) => {
+  const table = validateTable(req, res);
+  if (!table) return;
+  const requester = await checkTableAccess(req, res, table, 'read');
+  if (!requester) return;
+  const supported = new Set(['billings', 'payments', 'complaints', 'amenityBookings', 'vehicleRegistrations', 'lostFound', 'auditLog']);
+  if (!supported.has(table)) return res.status(400).json({ error: 'Pagination is not available for this module.' });
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 25));
+  const sortColumns = {
+    billings: new Set(['created_at', 'due_date', 'amount', 'status']), payments: new Set(['created_at', 'payment_date', 'amount', 'status']),
+    complaints: new Set(['dateFiled', 'status']), amenityBookings: new Set(['bookingDate', 'status']),
+    vehicleRegistrations: new Set(['createdAt', 'registrationStatus', 'plateNumber']), lostFound: new Set(['createdAt', 'eventDate', 'status']),
+    auditLog: new Set(['created_at', 'action_type']),
+  };
+  const defaultSort = sortColumns[table].values().next().value;
+  const sort = sortColumns[table].has(req.query.sort) ? req.query.sort : defaultSort;
+  const direction = String(req.query.direction || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  const physicalTable = tableName(table);
+  const clauses = [];
+  const params = [];
+  if (ARCHIVABLE_TABLES.has(table)) clauses.push('archived_at IS NULL');
+  const homeownerColumn = { payments: 'homeownerId', complaints: 'homeownerId', amenityBookings: 'homeownerId', vehicleRegistrations: 'homeownerId', lostFound: 'homeownerId' }[table];
+  const managePermission = { payments: 'payments', complaints: 'complaints', amenityBookings: 'amenities', vehicleRegistrations: 'vehicles', lostFound: 'lostfound' }[table];
+  if (requester.role !== 'admin' && homeownerColumn && !userHasPermission(requester, managePermission)) {
+    if (table === 'lostFound') {
+      clauses.push("(status IN ('Approved', 'Posted', 'Claimed') OR homeownerId = ?)");
+    } else {
+      clauses.push(`\`${homeownerColumn}\` = ?`);
+    }
+    params.push(requesterHomeownerId(requester));
+  }
+  if (table === 'billings' && requester.role !== 'admin' && !userHasPermission(requester, 'billing')) {
+    clauses.push('EXISTS (SELECT 1 FROM billing_assignments ba WHERE ba.billing_id = billings.id AND ba.homeowner_id = ? AND ba.status = \'active\')');
+    params.push(requesterHomeownerId(requester));
+  }
+  const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
+  const [[count]] = await db.execute(`SELECT COUNT(*) AS total FROM ${physicalTable}${where}`, params);
+  const [rows] = await db.execute(
+    `SELECT * FROM ${physicalTable}${where} ORDER BY \`${sort}\` ${direction} LIMIT ? OFFSET ?`,
+    [...params, pageSize, (page - 1) * pageSize]
+  );
+  let items = rows.map(row => deserializeRow(table, row));
+  if (table === 'billings' && items.length) {
+    const ids = items.map(item => item.id);
+    const placeholders = ids.map(() => '?').join(', ');
+    const assignments = await all(`SELECT billing_id, homeowner_id FROM billing_assignments WHERE billing_id IN (${placeholders}) AND status = 'active'`, ids);
+    items = items.map(item => ({ ...item, assignedTo: assignments.filter(row => row.billing_id === item.id).map(row => row.homeowner_id) }));
+  }
+  res.json({ items, page, pageSize, total: Number(count.total), totalPages: Math.ceil(Number(count.total) / pageSize) });
+}));
+
 
 app.get('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
@@ -4342,7 +4545,7 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
   const allowed = await checkTableAccess(req, res, table, 'read');
   if (!allowed) return;
 
-  let data = await getTableData(table);
+  let data = await getScopedTableData(table, allowed);
   if (table === 'billings' && allowed.role !== 'admin' && !userHasPermission(allowed, 'billing')) {
     data = data.filter(b => getAssignedHomeownerIds(b).includes(requesterHomeownerId(allowed)));
   }
@@ -4780,9 +4983,37 @@ async function createServerNotification(title, message, options = {}) {
       'INSERT INTO notifications (id, title, message, time, audience, targetIds, dismissedBy) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [id, title, message, time, audience, JSON.stringify(targetIds), JSON.stringify([])]
     );
+    let recipients = [];
+    if (audience === 'all') {
+      recipients = await all("SELECT id FROM users WHERE status = 'active'");
+    } else if (audience === 'roles' && targetIds.length) {
+      const placeholders = targetIds.map(() => '?').join(', ');
+      recipients = await all(`SELECT id FROM users WHERE status = 'active' AND role IN (${placeholders})`, targetIds);
+    } else if (audience === 'users' && targetIds.length) {
+      const placeholders = targetIds.map(() => '?').join(', ');
+      recipients = await all(
+        `SELECT id FROM users WHERE status = 'active' AND (id IN (${placeholders}) OR homeowner_id IN (${placeholders}))`,
+        [...targetIds, ...targetIds]
+      );
+    }
+    for (const recipient of new Map(recipients.map(row => [row.id, row])).values()) {
+      await run('INSERT INTO notification_recipients (notification_id, user_id) VALUES (?, ?)', [id, recipient.id]);
+    }
   } catch (err) {
     console.error('Failed to write notification:', err);
   }
+}
+
+async function getNotificationsForUser(userId) {
+  const rows = await all(
+    `SELECT n.*, nr.read_at, nr.dismissed_at
+       FROM notification_recipients nr
+       JOIN notifications n ON n.id = nr.notification_id
+      WHERE nr.user_id = ? AND nr.dismissed_at IS NULL
+      ORDER BY n.created_at DESC, n.id DESC`,
+    [userId]
+  );
+  return rows.map(row => deserializeRow('notifications', row));
 }
 
 const IMPORTANT_STATUS_FIELDS = {
@@ -4889,6 +5120,9 @@ function importantStatusEmail(table, before, after) {
 app.post('/api/reset', auditedHandler(async (req, res) => {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
+  if (process.env.NODE_ENV === 'production' || process.env.ALLOW_DESTRUCTIVE_RESET !== 'true') {
+    return res.status(403).json({ error: 'Destructive database reset is disabled.' });
+  }
   await resetDatabase();
   await recordAuditLog(req, { table: 'appSettings', id: 'database', operation: 'reset application data (audit history preserved)' });
   res.json(await loadAllData(admin));
@@ -5393,6 +5627,23 @@ app.delete('/api/:table/:id', auditedHandler(async (req, res) => {
     return res.status(400).json({ error: 'Primary Administrator account cannot be deleted.' });
   }
 
+  if (ARCHIVABLE_TABLES.has(table)) {
+    const existing = await get(`SELECT id FROM ${tableName(table)} WHERE id = ? AND archived_at IS NULL FOR UPDATE`, [req.params.id]);
+    if (!existing) return res.status(404).json({ error: 'Record not found.' });
+    const statusUpdate = table === 'users'
+      ? ", status = 'deactivated'"
+      : (table === 'billings' ? ", status = 'inactive'" : '');
+    await run(
+      `UPDATE ${tableName(table)} SET archived_at = CURRENT_TIMESTAMP(3), archived_by = ?${statusUpdate} WHERE id = ?`,
+      [allowed.id, req.params.id]
+    );
+    if (table === 'billings') {
+      await run("UPDATE billing_assignments SET status = 'archived', updated_at = CURRENT_TIMESTAMP(3) WHERE billing_id = ?", [req.params.id]);
+    }
+    await recordAuditLog(req, { table, id: req.params.id, operation: 'archived' });
+    return res.json({ ok: true, archived: true });
+  }
+
   if (table === 'homeowners') {
     const [payments, complaints, bookings, vehicles, lostFoundRows, billings] = await Promise.all([
       get('SELECT id FROM payments WHERE homeownerId = ? LIMIT 1', [req.params.id]),
@@ -5461,8 +5712,8 @@ app.use((err, req, res, next) => {
 
 async function initializeApp() {
   await ensureDatabase();
+  await runMigrations(db);
   await authSecurityRepository.initialize();
-  await createTables();
   await seedIfEmpty();
   await migrateLegacyPasswords();
   await ensureAdminUser();

@@ -76,7 +76,7 @@ test('homeowner self edits and account lifecycle changes are audited with safe s
   assert.doesNotMatch(JSON.stringify(rows.auditLog), /Private Name|private phone|Secret-password|Changed-password|\$2[aby]\$/);
   response = await f.request('DELETE', '/api/users/new-admin');
   assert.equal(response.status, 200);
-  assert.match(rows.auditLog.at(-1).action, /deleted users \(new-admin\)/);
+  assert.match(rows.auditLog.at(-1).action, /archived users \(new-admin\)/);
 });
 
 test('bulk replacement logs changes and removals atomically without clearing history', async t => {
@@ -181,11 +181,11 @@ test('billing CRUD and monthly generation log each affected record; generation r
   assert.equal(rows.auditLog.length, 3);
   f.pool.failAudit = true;
   assert.equal((await f.request('POST', '/api/billings/generate-monthly-dues', { month: '2026-11' })).status, 500);
-  assert.equal(rows.billings.length, 0);
+  assert.equal(rows.billings.filter(row => row.archived_at == null).length, 0);
   f.pool.failAudit = false;
   result = await f.request('POST', '/api/billings/generate-monthly-dues', { month: '2026-11' });
   assert.equal(result.status, 200, JSON.stringify(result));
-  assert.equal(rows.billings.length, 1);
+  assert.equal(rows.billings.filter(row => row.archived_at == null).length, 1);
   assert.equal(rows.auditLog.length, 4);
   assert.match(rows.auditLog.at(-1).action, /generated monthly dues for billings/);
   assert.match(rows.auditLog.at(-1).action, /2026-11/);

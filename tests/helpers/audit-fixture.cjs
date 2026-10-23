@@ -10,7 +10,8 @@ function auditDatabase() {
     users: pool.users, homeowners: [{ id: 'home-1', name: 'Resident', lotArea: 100 }],
     auditLog: [], billings: [], payments: [], complaints: [], amenityBookings: [],
     vehicleRegistrations: [], lostFound: [], announcements: [], appSettings: [],
-    payment_settings: [], notifications: [], announcement_comments: [], announcement_reactions: [], board_of_directors: [],
+    payment_settings: [], notifications: [], notification_recipients: [], billing_assignments: [],
+    announcement_comments: [], announcement_reactions: [], board_of_directors: [],
   };
   pool.tables = tables;
   pool.failAudit = false;
@@ -25,6 +26,59 @@ function auditDatabase() {
     }
     if (q.startsWith('SELECT u.id, h.name FROM users')) return [tables.users.filter(u => u.homeowner_id === values[0]).map(u => ({ id: u.id }))];
     if (q.startsWith('SELECT p.*, b.amount')) return [[]];
+    if (q.startsWith('SELECT b.* FROM billings b JOIN billing_assignments ba')) {
+      const homeownerId = values[0];
+      return [structuredClone(tables.billings.filter(billing => {
+        let ids = billing.assignedTo || [];
+        if (typeof ids === 'string') { try { ids = JSON.parse(ids); } catch { ids = []; } }
+        return billing.archived_at == null && Array.isArray(ids) && ids.includes(homeownerId);
+      }))];
+    }
+    if (q.startsWith('SELECT b.*, ba.homeowner_id AS assigned_homeowner_id FROM billings b')) {
+      const month = values[0];
+      const rows = [];
+      for (const billing of tables.billings.filter(row => row.monthly_dues_month === month && row.archived_at == null)) {
+        let ids = billing.assignedTo || [];
+        if (typeof ids === 'string') { try { ids = JSON.parse(ids); } catch { ids = []; } }
+        for (const assigned_homeowner_id of Array.isArray(ids) ? ids : []) rows.push({ ...billing, assigned_homeowner_id });
+      }
+      return [structuredClone(rows)];
+    }
+    if (q.startsWith('SELECT billing_id, homeowner_id, assigned_amount, status, monthly_dues_month FROM billing_assignments')) {
+      const derived = tables.billings.flatMap(billing => {
+        let ids = billing.assignedTo || [];
+        if (typeof ids === 'string') { try { ids = JSON.parse(ids); } catch { ids = []; } }
+        return (Array.isArray(ids) ? ids : []).map(homeowner_id => ({ billing_id: billing.id, homeowner_id, assigned_amount: billing.amount, status: billing.status === 'inactive' ? 'inactive' : 'active', monthly_dues_month: billing.monthly_dues_month || null }));
+      });
+      const combined = new Map([...derived, ...tables.billing_assignments].map(row => [`${row.billing_id}:${row.homeowner_id}`, row]));
+      return [structuredClone([...combined.values()].filter(row => row.status !== 'archived'))];
+    }
+    if (q.startsWith('SELECT homeowner_id FROM billing_assignments WHERE billing_id')) {
+      const explicit = tables.billing_assignments.filter(row => row.billing_id === values[0] && (!q.includes("status = 'active'") || row.status === 'active')).map(row => row.homeowner_id);
+      const billing = tables.billings.find(row => row.id === values[0]);
+      let legacy = billing?.assignedTo || [];
+      if (typeof legacy === 'string') { try { legacy = JSON.parse(legacy); } catch { legacy = []; } }
+      return [[...new Set([...explicit, ...(Array.isArray(legacy) ? legacy : [])])].map(homeowner_id => ({ homeowner_id }))];
+    }
+    if (q.startsWith('SELECT n.*, nr.read_at')) return [[]];
+    if (q.startsWith('SELECT h.*, COALESCE(s.remaining_balance')) return [structuredClone(tables.homeowners.map(row => ({ ...row, balance: row.balance || 0, total_billed: 0, total_approved_payments: 0 })))];
+    if (q.startsWith('INSERT INTO billing_assignments')) {
+      const [billing_id, homeowner_id, assigned_amount, status, monthly_dues_month] = values;
+      const existing = tables.billing_assignments.find(row => row.billing_id === billing_id && row.homeowner_id === homeowner_id);
+      if (existing) Object.assign(existing, { assigned_amount, status, monthly_dues_month });
+      else tables.billing_assignments.push({ billing_id, homeowner_id, assigned_amount, status, monthly_dues_month });
+      return [{ affectedRows: 1 }];
+    }
+    if (q.startsWith('DELETE FROM billing_assignments WHERE billing_id')) {
+      const before = tables.billing_assignments.length;
+      tables.billing_assignments.splice(0, tables.billing_assignments.length, ...tables.billing_assignments.filter(row => row.billing_id !== values[0] || row.homeowner_id !== values[1]));
+      return [{ affectedRows: before - tables.billing_assignments.length }];
+    }
+    if (q.startsWith("UPDATE billing_assignments SET status = 'archived'")) {
+      let count = 0;
+      for (const row of tables.billing_assignments) if (row.billing_id === values[0]) { row.status = 'archived'; count++; }
+      return [{ affectedRows: count }];
+    }
     if (q.includes('LOWER(TRIM(refNum))')) return [tables.payments.filter(p => String(p.refNum || '').trim().toLowerCase() === values[0].trim().toLowerCase())];
     if (q.startsWith('INSERT INTO auditLog')) {
       if (pool.failAudit) throw new Error('Injected audit write failure');
@@ -35,6 +89,7 @@ function auditDatabase() {
     if (select && tables[select[2]]) {
       let rows = tables[select[2]];
       let where = select[3] || '';
+      if (where.includes('archived_at IS NULL')) rows = rows.filter(row => row.archived_at == null);
       let i = 0;
       // Extract the simple AND predicates used by the tested routes.
       for (const predicate of where.matchAll(/(?:^| AND )(\w+)\s*(=|!=)\s*(\?|"[^"]*"|'[^']*')/g)) {

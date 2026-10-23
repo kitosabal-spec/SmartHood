@@ -10,7 +10,12 @@
     "test:browser": "node tests/browser-smoke.cjs && node tests/report-exports.test.cjs && node tests/report-exports-browser.cjs",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "email:test": "node scripts/send-test-email.js"
+    "email:test": "node scripts/send-test-email.js",
+    "db:migration-issues": "node scripts/report-migration-issues.js",
+    "db:verify": "node scripts/verify-database-architecture.js",
+    "db:inspect-orphan-payments": "node scripts/inspect-orphan-payments.js",
+    "db:inspect-legacy-dates": "node scripts/inspect-legacy-date-formats.js",
+    "db:migrate": "node scripts/migrate-database.js"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -22,7 +22,9 @@ San/
   public/images/         Versioned images
   public/uploads/        Runtime community media (ignored)
   private_uploads/       Protected resident files (ignored)
-  data/homeowners.seed.json   Initial homeowner directory
+  data/homeowners.seed.json   Fictional development fixtures only
+  migrations/            Versioned, one-time database migrations
+  docs/                  Production migration and recovery runbooks
   data/backups/          Local database exports (ignored; retain for recovery)
   scripts/               Checks, utilities and maintenance commands
   tests/                 Automated tests and isolated browser fixtures
@@ -41,6 +43,11 @@ Set `INITIAL_ADMIN_PASSWORD` to a unique password of at least 12 characters
 before initializing a new database. Set `EMAIL_DISABLED=true` when working
 with test data and no outgoing notifications are wanted.
 
+The repository seed must never contain real homeowner information. Import a
+real production directory only through the protected operator process in
+[`docs/PRODUCTION_MIGRATION.md`](docs/PRODUCTION_MIGRATION.md); import files and
+migration reports are Git-ignored.
+
 ```powershell
 npm.cmd ci
 npm.cmd start
@@ -56,7 +63,12 @@ HTML file.
 ```powershell
 npm.cmd run check
 npm.cmd test
+npm.cmd run db:migration-issues
+npm.cmd run db:verify
 ```
+
+The database verification commands print aggregate counts only. They do not
+print homeowner names, contacts, payment references, or attachment paths.
 
 `check` verifies JavaScript syntax, local page assets, merge markers, and
 nested repositories. `test` runs isolated authentication, audit, export,
@@ -101,4 +113,5 @@ database exports remain in `data/backups/` but are no longer tracked. Their
 old versions still exist in Git history.
 
 See [the setup guide](BEGINNER_SETUP_GUIDE.md), [login security](LOGIN_SECURITY.md),
-[audit logging](AUDIT_LOG.md), and [report exports](REPORT_EXPORTS.md).
+[audit logging](AUDIT_LOG.md), [production migration and recovery](docs/PRODUCTION_MIGRATION.md),
+and [report exports](REPORT_EXPORTS.md).

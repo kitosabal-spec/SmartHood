@@ -90,10 +90,16 @@ function createAuditService({ getPool, resolveActor }) {
       throw new Error('An authenticated actor is required for audit logging.');
     }
     const action = `${actor.role} (${actor.id}) ${operation} ${table} (${recordId})${summary ? ': ' + summary : ''}`;
+    const safeChanges = summary ? JSON.stringify({ summary }) : null;
+    const forwarded = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
+    const ipAddress = (forwarded || req?.ip || null)?.slice(0, 64) || null;
     try {
       await (connection || state?.connection || getPool()).execute(
-        'INSERT INTO auditLog (id, action, adminId, timestamp) VALUES (?, ?, ?, ?)',
-        ['l' + Date.now().toString(36) + crypto.randomBytes(6).toString('hex'), action, actor.id, new Date().toISOString()]
+        `INSERT INTO auditLog
+          (id, action, adminId, timestamp, actor_name, actor_role, action_type, entity_type, entity_id, new_values, ip_address, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3))`,
+        ['l' + Date.now().toString(36) + crypto.randomBytes(6).toString('hex'), action, actor.id, new Date().toISOString(),
+          actor.name || null, actor.role, operation.slice(0, 64), table, String(recordId).slice(0, 64), safeChanges, ipAddress]
       );
     } catch (error) {
       if (state) state.failed = true;
