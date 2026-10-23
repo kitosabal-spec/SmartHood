@@ -661,7 +661,8 @@
 
     <nav class="sidebar-nav" id="sidebarNav"></nav>
     <div class="faq-sidebar-footer">
-      <button type="button" class="nav-item" id="sidebarFAQ" data-view="help-faq" title="Help &amp; FAQ" aria-label="Help &amp; FAQ">
+      <button type="button" class="nav-item" id="sidebarFAQ" title="Help &amp; FAQ" aria-label="Open Help &amp; FAQ"
+        aria-haspopup="dialog" aria-controls="portalFAQModal">
         <span class="nav-icon"><svg width="17" height="17" aria-hidden="true"><use href="#ico-help"/></svg></span>
         <span class="nav-label">Help &amp; FAQ</span>
       </button>
@@ -737,6 +738,19 @@
     <main class="content-area" id="contentArea"></main>
   </div>
 </div>
+
+<!-- AUTHENTICATED FAQ MODAL -->
+<dialog id="portalFAQModal" class="faq-modal" role="dialog" aria-modal="true"
+  aria-labelledby="faq-portal-heading" aria-describedby="faq-portal-description">
+  <div class="faq-modal-card">
+    <div class="faq-modal-toolbar">
+      <button type="button" class="faq-modal-close" aria-label="Close Help and FAQ" autofocus>
+        <svg width="22" height="22" aria-hidden="true"><use href="#ico-x"/></svg>
+      </button>
+    </div>
+    <div id="portalFAQ" class="faq-modal-content"></div>
+  </div>
+</dialog>
 
 <!-- PUBLIC AND AUTHENTICATED LEGAL PAGE -->
 <section id="legalPage" class="legal-page hidden" aria-hidden="true">
@@ -881,7 +895,7 @@
 </div>
 
   <script src="public/js/legal.js?v=1.0.0"></script>
-  <script src="public/js/faq.js?v=1.1.0"></script>
+  <script src="public/js/faq.js?v=1.2.0"></script>
   <script src="public/js/report-workbook.js?v=1.0.0"></script>
   <script src="public/js/audit-workbook.js?v=1.0.0"></script>
   <script src="public/js/main.js?v=2.6.1"></script>

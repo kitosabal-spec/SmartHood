@@ -27,10 +27,13 @@ test('public FAQ uses one dialog and trigger with no navigation link or landing 
   assert.match(html, /id="sidebarFAQ"/);
 });
 
-test('profile menu links every authenticated user to Help & FAQ', () => {
+test('authenticated FAQ entry points open the portal dialog', () => {
   assert.match(html, /onclick="handleProfileHelpFAQ\(event\)"[^>]*role="menuitem"/);
   assert.match(html, /<span class="profile-dropdown-label">Help &amp; FAQ<\/span>/);
-  assert.match(main, /function handleProfileHelpFAQ\(e\)[\s\S]*?navigate\('help-faq'\);\s*\n}/);
+  assert.equal((html.match(/<dialog[^>]*id="portalFAQModal"/g) || []).length, 1);
+  assert.match(html, /id="sidebarFAQ"[^>]*aria-haspopup="dialog"[^>]*aria-controls="portalFAQModal"/);
+  assert.match(main, /function handleProfileHelpFAQ\(e\)[\s\S]*?openPortalFAQ\(document\.getElementById\('topbarUserBtn'\)\);\s*\n}/);
+  assert.match(faq, /sidebarFAQ'[\s\S]*?openPortalFAQ\(event\.currentTarget\)/);
 });
 
 test('search matches answers, ignores case and whitespace, and combines with category', () => {

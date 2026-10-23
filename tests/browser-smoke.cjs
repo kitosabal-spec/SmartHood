@@ -74,8 +74,8 @@ const cleanups = [];
         document.getElementById('appShell').classList.remove('hidden');
       }, { user, tables });
       const navigation = await page.evaluate(() => currentUser.role === 'admin'
-        ? [...ADMIN_NAV.map(item => item.id), 'settings', 'help-faq']
-        : [...HOMEOWNER_NAV.map(item => item.id), 'help-faq']);
+        ? [...ADMIN_NAV.map(item => item.id), 'settings']
+        : [...HOMEOWNER_NAV.map(item => item.id)]);
       for (const view of [...new Set(navigation)]) {
         await page.evaluate(view => navigate(view), view);
         await page.waitForFunction(() => document.getElementById('contentArea').textContent.trim().length > 0);
@@ -84,6 +84,12 @@ const cleanups = [];
         assert.ok(!/\b(?:undefined|NaN)\b/.test(content), `${view}: invalid values in UI`);
         views++;
       }
+      const viewBeforeFAQ = await page.evaluate(() => currentView);
+      await page.locator('#sidebarFAQ').click();
+      assert.equal(await page.locator('#portalFAQModal').evaluate(el => el.open), true);
+      assert.equal(await page.evaluate(() => currentView), viewBeforeFAQ);
+      assert.ok((await page.locator('#portalFAQ .faq-question').count()) >= 25);
+      await page.keyboard.press('Escape');
     }
     assert.deepEqual(errors, []);
     assert.deepEqual(failedAssets, []);

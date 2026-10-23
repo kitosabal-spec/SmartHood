@@ -145,13 +145,105 @@ function renderFAQ(container, location, user = null, onContact = null) {
 }
 
 function renderFAQView() {
-  renderFAQ(document.getElementById('contentArea'), 'portal', currentUser);
+  openPortalFAQ();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
   initializePublicFAQ();
-  document.getElementById('sidebarFAQ')?.addEventListener('click', () => navigate('help-faq'));
+  initializePortalFAQ();
+  document.getElementById('sidebarFAQ')?.addEventListener('click', event => openPortalFAQ(event.currentTarget));
 });
+
+let portalFAQController = null;
+
+function initializePortalFAQ() {
+  const modal = document.getElementById('portalFAQModal');
+  const content = document.getElementById('portalFAQ');
+  if (!modal || !content || portalFAQController) return;
+  const closeButton = modal.querySelector('.faq-modal-close');
+  let returnFocus = null;
+  let bodyStyles = null;
+
+  function restorePage() {
+    if (bodyStyles) {
+      for (const [property, value, priority] of bodyStyles) {
+        if (value) document.body.style.setProperty(property, value, priority);
+        else document.body.style.removeProperty(property);
+      }
+      bodyStyles = null;
+    }
+    if (returnFocus?.getClientRects().length) returnFocus.focus({ preventScroll: true });
+    returnFocus = null;
+  }
+
+  function close() {
+    if (modal.open) modal.close();
+    restorePage();
+  }
+
+  function open(trigger = null) {
+    if (modal.open || !currentUser || !restoreSession()) return;
+    returnFocus = trigger || document.activeElement;
+    renderFAQ(content, 'portal', currentUser);
+    const properties = ['overflow', 'padding-right'];
+    bodyStyles = properties.map(property => [property, document.body.style.getPropertyValue(property),
+      document.body.style.getPropertyPriority(property)]);
+    const scrollbar = window.innerWidth - document.documentElement.clientWidth;
+    const padding = parseFloat(getComputedStyle(document.body).paddingRight) || 0;
+    document.body.style.overflow = 'hidden';
+    document.body.style.paddingRight = `${padding + scrollbar}px`;
+    modal.showModal();
+    content.scrollTop = 0;
+    closeButton.focus({ preventScroll: true });
+  }
+
+  closeButton.addEventListener('click', close);
+  modal.addEventListener('cancel', event => {
+    event.preventDefault();
+    close();
+  });
+  modal.addEventListener('close', () => {
+    if (!modal.open) restorePage();
+  });
+  let backdropPress = false;
+  modal.addEventListener('pointerdown', event => { backdropPress = event.target === modal; });
+  modal.addEventListener('click', event => {
+    if (event.target === modal && backdropPress) close();
+    backdropPress = false;
+  });
+  modal.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (event.key !== 'Tab') return;
+    const focusable = [...modal.querySelectorAll('button:not(:disabled), input:not(:disabled), a[href], [tabindex="0"]')]
+      .filter(element => element.getClientRects().length && getComputedStyle(element).visibility !== 'hidden');
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (event.shiftKey && (document.activeElement === first || document.activeElement === modal)) {
+      event.preventDefault();
+      last.focus();
+    } else if (!event.shiftKey && (document.activeElement === last || document.activeElement === modal)) {
+      event.preventDefault();
+      first.focus();
+    }
+  });
+  new MutationObserver(() => {
+    if (modal.open && document.getElementById('appShell')?.classList.contains('hidden')) close();
+  }).observe(document.getElementById('appShell'), { attributes: true, attributeFilter: ['class'] });
+  portalFAQController = { open, close };
+}
+
+function openPortalFAQ(trigger = null) {
+  initializePortalFAQ();
+  portalFAQController?.open(trigger);
+}
+
+function closePortalFAQ() {
+  portalFAQController?.close();
+}
 
 function initializePublicFAQ() {
   const landing = document.getElementById('landingPage');

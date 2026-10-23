@@ -1038,6 +1038,13 @@ function navigate(viewId, pushHistory = true) {
     renderAccessDenied(viewId);
     return;
   }
+  if (viewId === 'help-faq') {
+    if (!document.getElementById('contentArea')?.hasChildNodes()) {
+      navigate(getDefaultViewForRole(currentUser.role), false);
+    }
+    openPortalFAQ();
+    return;
+  }
   currentView = viewId;
   document.querySelectorAll('.nav-item').forEach(el => {
     el.classList.toggle('active', el.dataset.view === viewId);
@@ -4171,7 +4178,7 @@ function handleProfileHelpFAQ(e) {
     e.stopPropagation();
   }
   closeProfileDropdown();
-  navigate('help-faq');
+  openPortalFAQ(document.getElementById('topbarUserBtn'));
 }
 
 function handleProfileToggleDarkMode(e) {
@@ -4468,6 +4475,7 @@ function updateHeroStat() {
 }
 
 function showLandingPage() {
+  if (typeof closePortalFAQ === 'function') closePortalFAQ();
   document.getElementById('landingPage').classList.remove('hidden');
   document.getElementById('appShell').classList.add('hidden');
   renderPublicAnnouncements();

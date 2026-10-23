@@ -101,7 +101,7 @@
 }
 .faq-modal-close:hover { background: var(--border); transform: rotate(5deg); }
 .faq-modal-content { min-height: 0; min-width: 0; padding: 4px 32px 32px; overflow-y: auto; overscroll-behavior: contain; }
-#landingPage .faq-modal :is(button, input, a):focus-visible { outline: 3px solid var(--teal-600); outline-offset: -3px; }
+.faq-modal :is(button, input, a):focus-visible { outline: 3px solid var(--teal-600); outline-offset: -3px; }
 .faq-modal :is(.faq-clear, .faq-categories button, .faq-contact button) { min-height: 44px; }
 [data-theme="dark"] .faq-modal::backdrop { background: rgba(0, 0, 0, .76); }
 @media (max-width: 560px) {
