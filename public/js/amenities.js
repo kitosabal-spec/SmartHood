@@ -280,8 +280,75 @@ function submitAmenityBooking({ amenity, bookingDate, startTime, endTime, purpos
   renderHOAmenityBooking();
 }
 
+function getAdminAmenityBookingFilters() {
+  return {
+    search: (document.getElementById('amenityBookingSearch')?.value || '').trim(),
+    status: document.getElementById('amenityBookingStatusFilter')?.value || '',
+    amenity: document.getElementById('amenityBookingAmenityFilter')?.value || '',
+  };
+}
+
+function getFilteredAdminAmenityBookings(bookings, filters = {}) {
+  const query = (filters.search || '').trim().toLowerCase();
+  const status = filters.status || '';
+  const amenity = filters.amenity || '';
+
+  return bookings.filter(booking => {
+    const homeowner = getHomeownerById(booking.homeownerId);
+    const haystack = [
+      homeowner?.name,
+      homeowner?.block,
+      homeowner?.lot,
+      booking.amenity,
+      booking.purpose,
+      booking.bookingDate,
+      booking.startTime,
+      booking.endTime,
+      booking.status,
+    ].filter(Boolean).join(' ').toLowerCase();
+
+    return (!query || haystack.includes(query)) &&
+      (!status || booking.status === status) &&
+      (!amenity || booking.amenity === amenity);
+  });
+}
+
+function renderAdminAmenityBookingRows(bookings, hasActiveFilters = false) {
+  return bookings.map(booking => {
+    const homeowner = getHomeownerById(booking.homeownerId);
+    return `<tr>
+      <td><div class="cell-user">${avatarHTML(homeowner, 'avatar-sm')}<strong>${homeowner ? homeowner.name : 'Unknown'}</strong></div></td>
+      <td>${booking.amenity}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.purpose || 'No purpose provided'}</span></td>
+      <td>${formatAmenityDate(booking.bookingDate)}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
+      <td>${amenityStatusBadge(booking.status)}</td>
+      <td><div class="td-actions">
+        ${booking.status === 'Pending' ? `
+          <button class="btn btn-success btn-sm" onclick="confirmApproveAmenityBooking('${booking.id}')">Approve</button>
+          <button class="btn btn-danger btn-sm" onclick="openRejectAmenityBooking('${booking.id}')">Reject</button>
+        ` : `<button class="btn btn-secondary btn-sm" onclick="viewAmenityBooking('${booking.id}')">View</button>`}
+      </div></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5"><div class="no-results">${hasActiveFilters
+    ? 'No booking requests match the selected filters.'
+    : 'No amenity booking requests.'}</div></td></tr>`;
+}
+
+function filterAdminAmenityBookings() {
+  const tbody = document.getElementById('amenityBookingTableBody');
+  if (!tbody) return;
+  const filters = getAdminAmenityBookingFilters();
+  const bookings = [...db.get('amenityBookings')]
+    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  tbody.innerHTML = renderAdminAmenityBookingRows(
+    getFilteredAdminAmenityBookings(bookings, filters),
+    Boolean(filters.search || filters.status || filters.amenity)
+  );
+}
+
 function renderAmenityBookingsAdmin() {
-  const bookings = [...db.get('amenityBookings')].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const filters = getAdminAmenityBookingFilters();
+  const allBookings = [...db.get('amenityBookings')].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+  const bookings = getFilteredAdminAmenityBookings(allBookings, filters);
   const today = getLocalDateValue();
   const currentMonth = today.slice(0, 7);
   const unavailable = getAmenityUnavailableSettings();
@@ -360,28 +427,28 @@ function renderAmenityBookingsAdmin() {
     </div>
   </div>
   <div class="section-card">
-    <div class="section-card-header"><div><h3>Booking Requests</h3><p>Approve or reject submitted amenity requests.</p></div></div>
+    <div class="section-card-header">
+      <div><h3>Booking Requests</h3><p>Approve or reject submitted amenity requests.</p></div>
+      <div class="filters-row">
+        <div class="search-box">
+          <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
+          <input id="amenityBookingSearch" type="search" value="${escapeHtml(filters.search)}" placeholder="Search homeowner, purpose, or date..." aria-label="Search booking requests" oninput="filterAdminAmenityBookings()"/>
+        </div>
+        <select class="filter-select" id="amenityBookingStatusFilter" aria-label="Filter booking requests by status" onchange="filterAdminAmenityBookings()">
+          <option value="">All Statuses</option>
+          ${['Pending', 'Approved', 'Rejected'].map(status => `<option value="${status}" ${filters.status === status ? 'selected' : ''}>${status}</option>`).join('')}
+        </select>
+        <select class="filter-select" id="amenityBookingAmenityFilter" aria-label="Filter booking requests by amenity" onchange="filterAdminAmenityBookings()">
+          <option value="">All Amenities</option>
+          ${AMENITIES.map(amenity => `<option value="${amenity}" ${filters.amenity === amenity ? 'selected' : ''}>${amenity}</option>`).join('')}
+        </select>
+      </div>
+    </div>
     <div class="section-card-body no-pad">
       <div class="table-wrapper">
         <table class="data-table">
           <thead><tr><th>Homeowner</th><th>Amenity</th><th>Date / Time</th><th>Status</th><th>Actions</th></tr></thead>
-          <tbody>
-            ${bookings.map(booking => {
-              const homeowner = getHomeownerById(booking.homeownerId);
-              return `<tr>
-                <td><div class="cell-user">${avatarHTML(homeowner, 'avatar-sm')}<strong>${homeowner ? homeowner.name : 'Unknown'}</strong></div></td>
-                <td>${booking.amenity}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.purpose || 'No purpose provided'}</span></td>
-                <td>${formatAmenityDate(booking.bookingDate)}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
-                <td>${amenityStatusBadge(booking.status)}</td>
-                <td><div class="td-actions">
-                  ${booking.status === 'Pending' ? `
-                    <button class="btn btn-success btn-sm" onclick="confirmApproveAmenityBooking('${booking.id}')">Approve</button>
-                    <button class="btn btn-danger btn-sm" onclick="openRejectAmenityBooking('${booking.id}')">Reject</button>
-                  ` : `<button class="btn btn-secondary btn-sm" onclick="viewAmenityBooking('${booking.id}')">View</button>`}
-                </div></td>
-              </tr>`;
-            }).join('') || '<tr><td colspan="5"><div class="no-results">No amenity booking requests.</div></td></tr>'}
-          </tbody>
+          <tbody id="amenityBookingTableBody">${renderAdminAmenityBookingRows(bookings, Boolean(filters.search || filters.status || filters.amenity))}</tbody>
         </table>
       </div>
     </div>
