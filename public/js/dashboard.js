@@ -184,7 +184,7 @@ function renderAdminDashboard() {
   const payments = db.get('payments');
   const approved = payments.filter(p => p.status === 'approved');
   const pending  = payments.filter(p => p.status === 'pending');
-  const totalCollected = approved.reduce((s, p) => s + p.amount, 0);
+  const totalCollected = approved.reduce((sum, payment) => sum + toMoneyNumber(payment.amount), 0);
   const billings = db.get('billings');
   const totalBilled = billings.reduce((sum, billing) => sum + getBillingTotal(billing), 0);
   const totalOutstanding = homeowners.reduce((sum, user) => sum + toMoneyNumber(user.balance), 0);

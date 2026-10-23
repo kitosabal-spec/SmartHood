@@ -113,8 +113,9 @@ global.db = {
     }
     if (table === 'payments') {
       return [
-        { id: 'p2026', amount: 1500, status: 'approved', monthly_dues_month: '2026-05', payment_date: '2026-05-10', submittedAt: '2026-05-10' },
-        { id: 'p2028', amount: 2500, status: 'approved', monthly_dues_month: '2028-10', payment_date: '2028-10-02', submittedAt: '2028-10-02' }
+        // MySQL DECIMAL values are returned as strings by mysql2.
+        { id: 'p2026', amount: '1500.00', status: 'approved', monthly_dues_month: '2026-05', payment_date: '2026-05-10', submittedAt: '2026-05-10' },
+        { id: 'p2028', amount: '2500.00', status: 'approved', monthly_dues_month: '2028-10', payment_date: '2028-10-02', submittedAt: '2028-10-02' }
       ];
     }
     if (table === 'complaints') return [];
@@ -146,6 +147,7 @@ global.renderMonthlyBarChart = (containerId, monthlyData, year) => {
 window.renderAdminDashboard();
 const contentAreaInitial = getOrCreateElement('contentArea').innerHTML;
 assert(contentAreaInitial.includes('Monthly Revenue'), 'Dashboard should include Monthly Revenue section');
+assert(contentAreaInitial.includes('<div class="stat-value">₱4,000</div>'), 'Total Collected should numerically add DECIMAL strings');
 assert.strictEqual(window.adminRevenueYear, 2028, 'Default year should be 2028 when no localStorage exists');
 assert.strictEqual(renderedChartData.year, 2028, 'Monthly revenue chart must load with default year 2028');
 assert(contentAreaInitial.includes('<span id="revenueYearText">2028</span>'), 'HTML should display default year 2028');
