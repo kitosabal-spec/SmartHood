@@ -20,6 +20,7 @@ function database() {
     { id: 'legacy-1', username: 'legacy', email: 'legacy@example.test', role: 'admin', status: 'active', password },
     { id: 'inactive-1', username: 'inactive', email: 'inactive@example.test', role: 'admin', status: 'inactive', password: passwordHash },
   ];
+  for (const user of users) if (user.role === 'admin') user.admin_email_verified_at = new Date();
   const buckets = new Map();
   const events = new Map();
   const cooldowns = new Map();
@@ -34,7 +35,7 @@ function database() {
       return [{ affectedRows: 1 }];
     }
     if (q.startsWith('SELECT * FROM users WHERE reset_token_hash')) {
-      const user = users.find(u => u.reset_token_hash === values[0] && u.reset_token_expires_at > now && !['inactive', 'deactivated'].includes(u.status));
+      const user = users.find(u => u.reset_token_hash === values[0] && u.reset_token_expires_at > now && (u.role !== 'admin' || u.admin_email_verified_at) && !['inactive', 'deactivated'].includes(u.status));
       return [user ? [{ ...user }] : []];
     }
     const key = `${values[0]}:${values[1]}`;
@@ -70,9 +71,29 @@ function database() {
       events.get(values[pending ? 0 : 1]).email_status = pending ? 'pending' : values[0];
       return [{ affectedRows: 1 }];
     }
-    if (q.startsWith('SELECT * FROM users') && q.includes('LOWER(email)')) {
-      const user = users.find(u => (u.email.toLowerCase() === values[0].toLowerCase() && (u.role !== 'homeowner' || u.homeowner_id)) || (u.role === 'admin' && u.username === values[1]));
+    if (q.startsWith('SELECT * FROM users') && q.includes('LOWER(TRIM(email))')) {
+      const user = users.find(u => u.email?.trim().toLowerCase() === values[0] && (u.role !== 'homeowner' || u.homeowner_id) && (u.role !== 'admin' || u.admin_email_verified_at));
       return [user ? [{ ...user }] : []];
+    }
+    if (q.startsWith("SELECT * FROM users WHERE role = 'admin'")) {
+      const user = users.find(u => u.role === 'admin' && (u.username === values[0] || u.id === values[1]));
+      return [user ? [{ ...user }] : []];
+    }
+    if (q.startsWith('SELECT id FROM users WHERE normalized_email')) {
+      const user = users.find(u => u.email?.trim().toLowerCase() === values[0] && u.id !== values[1]);
+      return [user ? [{ id: user.id }] : []];
+    }
+    if (q.startsWith('SELECT * FROM users WHERE admin_email_token_hash')) {
+      const user = users.find(u => u.admin_email_token_hash === values[0]);
+      return [user ? [{ ...user }] : []];
+    }
+    if (q.startsWith('UPDATE users SET pending_admin_email')) {
+      Object.assign(users.find(u => u.id === values[4]), { pending_admin_email: values[0], admin_email_token_hash: values[1], admin_email_token_expires_at: values[2], admin_email_password_tag: values[3] });
+      return [{ affectedRows: 1 }];
+    }
+    if (q.startsWith('UPDATE users SET email = ?, admin_email_verified_at')) {
+      Object.assign(users.find(u => u.id === values[1]), { email: values[0], admin_email_verified_at: new Date(), pending_admin_email: null, admin_email_token_hash: null, admin_email_token_expires_at: null, admin_email_password_tag: null, reset_token_hash: null, reset_token_expires_at: null });
+      return [{ affectedRows: 1 }];
     }
     if (q.startsWith('SELECT * FROM users WHERE id')) {
       const user = users.find(u => u.id === values[0]);
@@ -84,11 +105,13 @@ function database() {
       return [{ affectedRows: 1 }];
     }
     if (q.startsWith('SELECT u.id, u.email')) {
-      const user = users.find(u => u.email.toLowerCase() === values[0]);
+      const user = users.find(u => u.email?.trim().toLowerCase() === values[0] && (u.role !== 'admin' || u.admin_email_verified_at));
       return [user ? [{ ...user }] : []];
     }
     if (q.startsWith('UPDATE users SET reset_token_hash = ?')) {
-      Object.assign(users.find(u => u.id === values[2]), { reset_token_hash: values[0], reset_token_expires_at: values[1] });
+      const user = users.find(u => u.id === values[2] && (!values[3] || (u.email?.trim().toLowerCase() === values[3] && (u.role !== 'admin' || u.admin_email_verified_at))));
+      if (!user) return [{ affectedRows: 0 }];
+      Object.assign(user, { reset_token_hash: values[0], reset_token_expires_at: values[1] });
       return [{ affectedRows: 1 }];
     }
     if (q.startsWith('UPDATE users SET reset_token_hash = NULL')) {
@@ -98,7 +121,7 @@ function database() {
     }
     if (q.startsWith('SELECT id FROM users WHERE reset_token_hash') || q.startsWith('UPDATE users SET password = ?, reset_token_hash')) {
       const update = q.startsWith('UPDATE');
-      const user = users.find(u => u.reset_token_hash === values[update ? 1 : 0] && u.reset_token_expires_at > now && !['inactive', 'deactivated'].includes(u.status));
+      const user = users.find(u => u.reset_token_hash === values[update ? 1 : 0] && u.reset_token_expires_at > now && (u.role !== 'admin' || u.admin_email_verified_at) && !['inactive', 'deactivated'].includes(u.status));
       if (!update) return [user ? [{ id: user.id }] : []];
       if (user) Object.assign(user, { password: values[0], reset_token_hash: null, reset_token_expires_at: null });
       return [{ affectedRows: user ? 1 : 0 }];
@@ -108,14 +131,18 @@ function database() {
   state.execute = execute;
   state.getConnection = async () => {
     let release;
+    let snapshot;
     return {
       async beginTransaction() {
         const previous = tail;
         tail = new Promise(resolve => { release = resolve; });
         await previous;
+        snapshot = { users: structuredClone(users), auditLog: structuredClone(state.auditLog || []) };
       },
       execute,
-      async commit() {}, async rollback() {},
+      async commit() {}, async rollback() {
+        if (snapshot) { users.splice(0, users.length, ...snapshot.users); state.auditLog = snapshot.auditLog; }
+      },
       release() { release?.(); },
     };
   };
@@ -131,7 +158,7 @@ async function fixture(t, options = {}) {
   const filename = path.resolve(__dirname, '../../src/app.js');
   const realRequire = createRequire(filename);
   const emailService = {
-    isEmailConfigured: () => true,
+    isEmailConfigured: () => options.emailConfigured !== false,
     async sendEmail(message) {
       sent.push(message);
       if (options.deliver) return options.deliver(message);
@@ -179,6 +206,8 @@ async function fixture(t, options = {}) {
   }
   return {
     app, pool, sent, errors, request, base,
+    initialAdminUser: sandbox.initialAdminUser,
+    ensureAdminUser: sandbox.ensureAdminUser,
     login: (identifier = 'resident@example.test', pass = 'wrong', ip) => request('/api/login', { email: identifier, password: pass }, ip),
     async settle() { await new Promise(setImmediate); await Promise.all([...pending]); },
   };

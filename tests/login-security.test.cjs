@@ -67,14 +67,14 @@ test('unknown identifiers have identical failures, warnings and restrictions, wi
   assert.equal([...f.pool.events.values()].filter(e => e.email_status === 'no_account').length, 1);
 });
 
-test('administrator username resolves to registered address and aliases/IPs/instances share the cooldown', async t => {
+test('administrator email variants/IPs/instances share the cooldown', async t => {
   const pool = database();
   const a = await fixture(t, { pool });
   const b = await fixture(t, { pool });
-  await exhaust(a, ' admin ', '203.0.113.12');
+  await exhaust(a, ' REGISTERED-ADMIN@EXAMPLE.TEST ', '203.0.113.12');
   await a.settle();
   assert.equal(a.sent[0].to, 'registered-admin@example.test');
-  assert.equal((await b.login('admin', password, '203.0.113.12')).status, 429);
+  assert.equal((await b.login('registered-admin@example.test', password, '203.0.113.12')).status, 429);
   await exhaust(b, 'registered-admin@example.test', '203.0.113.13');
   await b.settle();
   assert.equal(a.sent.length + b.sent.length, 1);
@@ -93,12 +93,12 @@ test('successful logins do not consume either counter or erase earlier failures'
   assert.equal((await f.login()).status, 429);
 });
 
-test('an unknown username case variant cannot suppress the matched account alert', async t => {
+test('rejected usernames cannot suppress the verified email account alert', async t => {
   const f = await fixture(t);
   assert.equal((await exhaust(f, 'ADMIN')).status, 429);
   await f.settle();
   assert.equal(f.sent.length, 0);
-  assert.equal((await f.login('admin')).status, 429);
+  assert.equal((await exhaust(f, 'registered-admin@example.test')).status, 429);
   await f.settle();
   assert.equal(f.sent.length, 1);
   assert.equal(f.sent[0].to, 'registered-admin@example.test');
@@ -118,7 +118,7 @@ test('50 failed attempts per IP prevent password spraying across accounts', asyn
 
 test('both limits exceeded concurrently still send one email', async t => {
   const f = await fixture(t, { env: { LOGIN_IP_MAX_FAILURES: '8' } });
-  const responses = await Promise.all(Array.from({ length: 12 }, () => f.login('admin')));
+  const responses = await Promise.all(Array.from({ length: 12 }, () => f.login('registered-admin@example.test')));
   assert.equal(responses.filter(r => r.status === 401).length, 8);
   assert.equal(responses.filter(r => r.status === 429).length, 4);
   await f.settle();
@@ -128,12 +128,12 @@ test('both limits exceeded concurrently still send one email', async t => {
 
 test('restrictions expire automatically and a new window can produce a new alert', async t => {
   const f = await fixture(t);
-  await exhaust(f, 'admin');
+  await exhaust(f, 'registered-admin@example.test');
   await f.settle();
   for (const row of f.pool.buckets.values()) row.expires_at_ms = Date.now() - 1;
   for (const key of f.pool.cooldowns.keys()) f.pool.cooldowns.set(key, Date.now() - 1);
-  assert.equal((await f.login('admin', password)).status, 200);
-  await exhaust(f, 'admin');
+  assert.equal((await f.login('registered-admin@example.test', password)).status, 200);
+  await exhaust(f, 'registered-admin@example.test');
   await f.settle();
   assert.equal(f.sent.length, 2);
   assert.equal(f.pool.users[0].status, 'active');
@@ -141,9 +141,9 @@ test('restrictions expire automatically and a new window can produce a new alert
 
 test('SMTP failure is sanitized, audited and does not reset restriction or retry email', async t => {
   const f = await fixture(t, { deliver: () => { throw new Error('secret-password full-cookie reset-token'); } });
-  assert.equal((await exhaust(f, 'admin')).status, 429);
+  assert.equal((await exhaust(f, 'registered-admin@example.test')).status, 429);
   await f.settle();
-  assert.equal((await f.login('admin')).status, 429);
+  assert.equal((await f.login('registered-admin@example.test')).status, 429);
   await f.settle();
   assert.equal(f.sent.length, 1);
   assert.equal([...f.pool.events.values()][0].email_status, 'failed');
@@ -154,9 +154,9 @@ test('SMTP failure is sanitized, audited and does not reset restriction or retry
 test('SMTP delays cannot delay the 429 response', async t => {
   let release;
   const f = await fixture(t, { deliver: () => new Promise(resolve => { release = resolve; }) });
-  assert.equal((await exhaust(f, 'admin')).status, 429);
+  assert.equal((await exhaust(f, 'registered-admin@example.test')).status, 429);
   await new Promise(setImmediate);
-  assert.equal((await f.login('admin')).status, 429);
+  assert.equal((await f.login('registered-admin@example.test')).status, 429);
   assert.equal(f.sent.length, 1);
   release();
   await f.settle();
@@ -164,7 +164,7 @@ test('SMTP delays cannot delay the 429 response', async t => {
 
 test('disabled security emails still record the restriction', async t => {
   const f = await fixture(t, { env: { LOGIN_SECURITY_EMAIL_ENABLED: 'false' } });
-  assert.equal((await exhaust(f, 'admin')).status, 429);
+  assert.equal((await exhaust(f, 'registered-admin@example.test')).status, 429);
   await f.settle();
   assert.equal(f.sent.length, 0);
   assert.equal([...f.pool.events.values()][0].email_status, 'disabled');
@@ -173,33 +173,33 @@ test('disabled security emails still record the restriction', async t => {
 test('store failure fails closed with a generic response', async t => {
   const f = await fixture(t);
   f.pool.fail = true;
-  const response = await f.login('admin', password);
+  const response = await f.login('registered-admin@example.test', password);
   assert.equal(response.status, 503);
   assert.doesNotMatch(JSON.stringify(response.body), /secret|connection/);
 });
 
 test('remaining retry time reflects expiry and blocked requests do not extend it', async t => {
   const f = await fixture(t);
-  for (let i = 0; i < 8; i++) await f.login('admin');
+  for (let i = 0; i < 8; i++) await f.login('registered-admin@example.test');
   const expiry = Date.now() + 60000;
   for (const row of f.pool.buckets.values()) row.expires_at_ms = expiry;
-  const response = await f.login('admin');
+  const response = await f.login('registered-admin@example.test');
   assert.equal(response.status, 429);
   assert.ok(response.body.retryAfterSeconds > 55 && response.body.retryAfterSeconds <= 60);
   assert.equal(Number(response.headers.get('retry-after')), response.body.retryAfterSeconds);
-  await f.login('admin');
+  await f.login('registered-admin@example.test');
   assert.ok([...f.pool.buckets.values()].every(row => row.expires_at_ms === expiry));
 });
 
 test('alert lookup or audit processing failure never changes the 429 response', async t => {
   const f = await fixture(t);
-  for (let i = 0; i < 8; i++) await f.login('admin');
+  for (let i = 0; i < 8; i++) await f.login('registered-admin@example.test');
   const execute = f.pool.execute;
   f.pool.execute = (sql, values) => sql.includes('SELECT * FROM users')
     ? Promise.reject(new Error('private database failure details')) : execute(sql, values);
-  assert.equal((await f.login('admin')).status, 429);
+  assert.equal((await f.login('registered-admin@example.test')).status, 429);
   await f.settle();
-  assert.equal((await f.login('admin')).status, 429);
+  assert.equal((await f.login('registered-admin@example.test')).status, 429);
   await f.settle();
   assert.equal(f.sent.length, 0);
   assert.match(JSON.stringify(f.errors), /event processing failed/);
@@ -208,24 +208,24 @@ test('alert lookup or audit processing failure never changes the 429 response', 
 
 test('bounded proxy handling ignores spoofed leftmost addresses and direct hosting ignores XFF', async t => {
   const f = await fixture(t);
-  for (let i = 0; i < 8; i++) assert.equal((await f.login('admin', 'wrong', `198.51.100.${i}, 203.0.113.20`)).status, 401);
-  assert.equal((await f.login('admin', 'wrong', '192.0.2.250, 203.0.113.20')).status, 429);
+  for (let i = 0; i < 8; i++) assert.equal((await f.login('registered-admin@example.test', 'wrong', `198.51.100.${i}, 203.0.113.20`)).status, 401);
+  assert.equal((await f.login('registered-admin@example.test', 'wrong', '192.0.2.250, 203.0.113.20')).status, 429);
   const direct = await fixture(t, { env: { TRUST_PROXY: '0' } });
-  for (let i = 0; i < 8; i++) await direct.login('admin', 'wrong', `198.51.100.${i}`);
-  assert.equal((await direct.login('admin', 'wrong', '192.0.2.250')).status, 429);
+  for (let i = 0; i < 8; i++) await direct.login('registered-admin@example.test', 'wrong', `198.51.100.${i}`);
+  assert.equal((await direct.login('registered-admin@example.test', 'wrong', '192.0.2.250')).status, 429);
 });
 
 test('IPv4 mapped IPv6 cannot bypass a counter and IPv6 subnet rotation is bounded', async t => {
   const f = await fixture(t);
-  for (let i = 0; i < 8; i++) await f.login('admin', 'wrong', '203.0.113.45');
-  assert.equal((await f.login('admin', 'wrong', '::ffff:203.0.113.45')).status, 429);
-  for (let i = 0; i < 8; i++) await f.login('admin', 'wrong', `2001:db8:1234:5600::${i + 1}`);
-  assert.equal((await f.login('admin', 'wrong', '2001:db8:1234:5600::100')).status, 429);
+  for (let i = 0; i < 8; i++) await f.login('registered-admin@example.test', 'wrong', '203.0.113.45');
+  assert.equal((await f.login('registered-admin@example.test', 'wrong', '::ffff:203.0.113.45')).status, 429);
+  for (let i = 0; i < 8; i++) await f.login('registered-admin@example.test', 'wrong', `2001:db8:1234:5600::${i + 1}`);
+  assert.equal((await f.login('registered-admin@example.test', 'wrong', '2001:db8:1234:5600::100')).status, 429);
 });
 
 test('existing bcrypt, legacy migration, account status, session cookies, restoration and logout', async t => {
   const f = await fixture(t);
-  const login = await f.login('admin', password);
+  const login = await f.login('registered-admin@example.test', password);
   assert.equal(login.status, 200);
   assert.equal(login.body.password, undefined);
   const cookie = login.headers.get('set-cookie');
@@ -239,9 +239,10 @@ test('existing bcrypt, legacy migration, account status, session cookies, restor
   assert.equal(logout.body.ok, true);
   assert.match(logout.headers.get('set-cookie'), /Expires=Thu, 01 Jan 1970/);
   assert.equal((await f.request('/api/session')).body.authenticated, false);
-  assert.equal((await f.login('inactive', password)).status, 403);
-  assert.equal((await f.login('ADMIN', password)).status, 401, 'administrator usernames remain case-sensitive');
-  assert.equal((await f.login('legacy', password)).status, 200);
+  assert.equal((await f.login('inactive@example.test', password)).status, 403);
+  assert.equal((await f.login('ADMIN', password)).status, 401, 'administrator usernames are rejected');
+  assert.equal((await f.login('admin', password)).status, 401);
+  assert.equal((await f.login('legacy@example.test', password)).status, 200);
   assert.ok(await bcrypt.compare(password, f.pool.users.find(u => u.id === 'legacy-1').password));
   assert.match(f.pool.users.find(u => u.id === 'legacy-1').password, /^\$2/);
   assert.equal((await f.login('resident', password)).status, 401, 'homeowner username is not a login identifier');
@@ -266,14 +267,14 @@ test('forgot-password has a separate five-per-hour limit and preserves generic r
   await f.settle();
   assert.equal(f.pool.events.size, 0);
   assert.ok(f.sent.every(mail => mail.subject === 'Reset your SmartHood password'));
-  assert.equal((await f.login('admin', password)).status, 200);
+  assert.equal((await f.login('registered-admin@example.test', password)).status, 200);
   for (const [key, row] of f.pool.buckets) if (key.startsWith('forgot_password:')) row.expires_at_ms = Date.now() - 1;
   assert.equal((await f.request('/api/forgot-password', { email: 'absent@example.test' })).status, 200);
 });
 
 test('login restriction leaves forgot-password and single-use password reset functional', async t => {
   const f = await fixture(t);
-  await exhaust(f, 'admin');
+  await exhaust(f, 'registered-admin@example.test');
   const forgot = await f.request('/api/forgot-password', { email: 'registered-admin@example.test' });
   assert.equal(forgot.status, 200);
   const mail = f.sent.find(message => message.subject === 'Reset your SmartHood password');
@@ -284,8 +285,8 @@ test('login restriction leaves forgot-password and single-use password reset fun
   assert.equal(reset.status, 200);
   assert.equal((await f.request(`/api/reset-password/validate?token=${token}`)).status, 400);
   assert.equal((await f.request('/api/reset-password', { token, newPassword: 'Changed-again-password!' })).status, 400);
-  assert.equal((await f.login('admin', 'Changed-safe-password!', '203.0.113.100')).status, 200);
-  assert.equal((await f.login('admin', 'Changed-safe-password!')).status, 429);
+  assert.equal((await f.login('registered-admin@example.test', 'Changed-safe-password!', '203.0.113.100')).status, 200);
+  assert.equal((await f.login('registered-admin@example.test', 'Changed-safe-password!')).status, 429);
 });
 
 test('config rejects invalid or unbounded values with secure defaults', () => {
@@ -310,7 +311,7 @@ test('shared store increments are atomic and account/event claims have one winne
   const counts = await Promise.all(Array.from({ length: 20 }, (_, i) => (i % 2 ? a : b).increment('key')));
   assert.deepEqual(counts.map(row => row.totalHits), Array.from({ length: 20 }, (_, i) => i + 1));
   const repo = createAuthSecurityRepository(() => pool);
-  const claims = await Promise.all(Array.from({ length: 20 }, (_, i) => repo.claimEvent({ eventKey: `event-${i}`, userId: 'admin', eventType: 'login_identifier_restriction', emailEnabled: true, cooldownMs: 900000 })));
+  const claims = await Promise.all(Array.from({ length: 20 }, (_, i) => repo.claimEvent({ eventKey: `event-${i}`, userId: 'registered-admin@example.test', eventType: 'login_identifier_restriction', emailEnabled: true, cooldownMs: 900000 })));
   assert.equal(claims.filter(Boolean).length, 1);
 });
 

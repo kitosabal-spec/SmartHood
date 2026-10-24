@@ -359,16 +359,72 @@ async function removeProfilePhoto() {
 
 
 function confirmSaveAdminProfile() {
-  const name = document.getElementById('s_name').value.trim() || currentUser.name;
-  openConfirm('Save Profile', `Are you sure you want to update your profile to <strong>${name}</strong>?`, saveAdminProfile);
+  saveAdminProfile();
 }
 
-function saveAdminProfile() {
-  currentUser.name = document.getElementById('s_name').value.trim() || currentUser.name;
-  currentUser.email = document.getElementById('s_email').value.trim() || currentUser.email;
-  db.save('users', currentUser);
-  buildSidebar();
-  showToast('success', 'Saved', 'Profile updated.');
+async function adminEmailPost(route, body) {
+  const response = await fetch(route, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const result = await response.json();
+  if (!response.ok) throw new Error(result.error || 'The email request could not be completed.');
+  return result;
+}
+
+async function saveAdminProfile() {
+  const email = document.getElementById('s_email').value.trim().toLowerCase();
+  const name = document.getElementById('s_name').value.trim() || currentUser.name;
+  const status = document.getElementById('adminEmailStatus');
+  const button = document.getElementById('saveAdminProfileButton');
+  const passwordInput = document.getElementById('s_email_password');
+  button.disabled = true;
+  status.textContent = '';
+  try {
+    const changingEmail = email !== (currentUser.email || '').trim().toLowerCase() || !currentUser.admin_email_verified_at;
+    let message = 'Profile updated.';
+    if (changingEmail) {
+      if (!passwordInput.value) throw new Error('Enter your current password to register or change your email.');
+      const result = await adminEmailPost('/api/admin-email/request', { email, currentPassword: passwordInput.value });
+      message = result.message;
+      status.textContent = message;
+    }
+    const response = await fetch(`/api/users/${encodeURIComponent(currentUser.id)}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error((changingEmail ? message + ' Name update failed: ' : '') + (result.error || 'Profile could not be saved.'));
+    currentUser.name = name;
+    buildSidebar();
+    status.textContent = message;
+    showToast('success', changingEmail ? 'Check your email' : 'Saved', message);
+  } catch (error) {
+    status.textContent = error.message;
+    showToast('error', 'Profile update failed', error.message);
+  } finally {
+    passwordInput.value = '';
+    button.disabled = false;
+  }
+}
+
+function openAdminEmailVerification(token) {
+  // Explicit confirmation prevents mail-scanner GETs from consuming the token.
+  const url = new URL(window.location.href);
+  url.searchParams.delete('admin_email_token');
+  history.replaceState(null, '', url.pathname + url.search + url.hash);
+  openModal('Verify administrator email', '<p>Confirm this address as your administrator sign-in and password-reset email.</p><p id="verifyEmailStatus" role="status" aria-live="polite"></p>', [
+    { label: 'Close', cls: 'btn-secondary', action: closeModal },
+    { label: 'Verify email', cls: 'btn-primary', action: async () => {
+      const status = document.getElementById('verifyEmailStatus');
+      try {
+        const result = await adminEmailPost('/api/admin-email/verify', { token });
+        status.textContent = result.message;
+        const response = await fetch('/api/session');
+        const session = await response.json();
+        if (session.authenticated) {
+          currentUser = session.user;
+          if (typeof api.loadAll === 'function') await api.loadAll();
+        }
+      } catch (error) { status.textContent = error.message; }
+    } },
+  ]);
 }
 
 function confirmChangeAdminPassword() {

@@ -124,7 +124,14 @@ function createLoginRateLimits({ getPool, config, onRestriction, forgotPasswordR
     return next();
   });
 
-  return { beforeLogin, failedLogin, forgotPassword };
+  const emailChangeLimiter = rateLimit({
+    windowMs: 3600000, limit: 10, store: makeStore('admin_email'),
+    keyGenerator: clientKey, standardHeaders: 'draft-6', legacyHeaders: false,
+    handler: (req, res) => res.status(429).json({ error: 'Too many email verification requests. Please try again in an hour.' }),
+    passOnStoreError: false,
+  });
+  const emailChange = (req, res, next) => emailChangeLimiter(req, res, error => error ? unavailable(res) : next());
+  return { beforeLogin, failedLogin, forgotPassword, emailChange };
 }
 
 module.exports = { createLoginRateLimits, loginIdentifier, normalizeIdentifier, INVALID_CREDENTIALS };

@@ -29,7 +29,7 @@ test('legacy assignment and notification arrays parse without losing identifiers
 
 test('migrations are ordered, uniquely versioned, and include relational phases', () => {
   const migrations = loadMigrations(path.join(root, 'migrations'));
-  assert.deepEqual(migrations.map(item => item.version), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012']);
+  assert.deepEqual(migrations.map(item => item.version), ['001', '002', '003', '004', '005', '006', '007', '008', '009', '010', '011', '012', '013']);
   assert.equal(new Set(migrations.map(item => item.version)).size, migrations.length);
   assert.ok(migrations.every(item => typeof item.up === 'function' && /^[a-f0-9]{64}$/.test(item.checksum)));
 });

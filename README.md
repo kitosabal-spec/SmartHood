@@ -39,9 +39,14 @@ Tested with Node.js 24.16.0 and the configured MySQL database. Keep your existin
 checkout, copy `.env.example` to `.env` and configure the database, unique
 session/file secrets, and email settings. For local HTTP, set
 `NODE_ENV=development`, `APP_BASE_URL=http://localhost:3000`, and `TRUST_PROXY=0`.
-Set `INITIAL_ADMIN_PASSWORD` to a unique password of at least 12 characters
-before initializing a new database. Set `EMAIL_DISABLED=true` when working
-with test data and no outgoing notifications are wanted.
+Set `INITIAL_ADMIN_PASSWORD` to a unique password of at least 12 characters and
+`INITIAL_ADMIN_EMAIL` to the first administrator's real email before initializing
+a new database. Verify the email before signing in. Existing installations must
+complete [administrator email enrollment](docs/ADMINISTRATOR_EMAIL.md) before
+deploying email-only login; the guide includes a pre-deployment command that
+preserves the existing account. The preset address is never trusted as verified.
+`EMAIL_DISABLED=true` disables notifications and also prevents email enrollment;
+use isolated test fixtures when no real email delivery is wanted.
 
 The repository seed must never contain real homeowner information. Import a
 real production directory only through the protected operator process in

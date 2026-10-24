@@ -2651,9 +2651,12 @@ function renderSettings() {
     <div class="settings-section-body">
       <div class="grid-2">
         <div class="form-group"><label>Full Name</label><input id="s_name" value="${escapeHtml(currentUser.name || '')}"/></div>
-        <div class="form-group"><label>Email</label><input id="s_email" value="${escapeHtml(currentUser.email || '')}"/></div>
+        <div class="form-group"><label>Email</label><input id="s_email" type="email" autocomplete="email" value="${escapeHtml(currentUser.email || '')}"/></div>
       </div>
-      <button class="btn btn-primary btn-sm" onclick="confirmSaveAdminProfile()">Save Profile</button>
+      <p>Email changes require verification. Your current email stays active until the new address is verified.</p>
+      <div class="form-group"><label for="s_email_password">Current password (required for email changes)</label><input id="s_email_password" type="password" autocomplete="current-password"/></div>
+      <p id="adminEmailStatus" role="status" aria-live="polite"></p>
+      <button id="saveAdminProfileButton" class="btn btn-primary btn-sm" onclick="confirmSaveAdminProfile()">Save Profile</button>
     </div>
   </div>
 
@@ -4572,6 +4575,14 @@ async function init() {
   const currentHash = (window.location.hash || '').replace(/^#/, '');
   const startupLegalPage = typeof legalPageFromPath === 'function' ? legalPageFromPath() : null;
   const passwordResetToken = new URLSearchParams(window.location.search).get('reset_token');
+  const adminEmailToken = new URLSearchParams(window.location.search).get('admin_email_token');
+  if (adminEmailToken) {
+    document.getElementById('appShell').classList.add('hidden');
+    showLandingPage();
+    openAdminEmailVerification(adminEmailToken);
+    finishStartup();
+    return;
+  }
 
   if (passwordResetToken || currentHash === 'reset-password') {
     currentUser = null;

@@ -35,6 +35,8 @@ const { createAuthSecurityRepository } = require('./services/authSecurityStore')
 const { createLoginSecurityAlerts } = require('./services/loginSecurityAlerts');
 const { roundMoney, billingBalance } = require('./services/financialService');
 const { createLoginRateLimits, loginIdentifier } = require('./middleware/loginRateLimit');
+const { normalizeEmail, isValidEmail } = require('./utils/email');
+const { createAdminEmailService, AdminEmailError } = require('./services/adminEmailService');
 
 const { AUDITED_TABLES, changeSummary, createAuditService } = require('./services/auditService');
 const audit = createAuditService({ getPool: () => db, resolveActor: getRequester });
@@ -217,7 +219,7 @@ const adminUser = {
   username: 'admin',
   role: 'admin',
   name: 'Amy Antipolo',
-  email: 'admin@sanalfonsohomes.com',
+  email: null,
   block: null,
   lot: null,
   lotArea: null,
@@ -233,7 +235,9 @@ function initialAdminUser() {
   if (password.length < 12) {
     throw new Error('INITIAL_ADMIN_PASSWORD must be set to a password of at least 12 characters before initializing or resetting the database.');
   }
-  return { ...adminUser, password };
+  const email = normalizeEmail(process.env.INITIAL_ADMIN_EMAIL);
+  if (!isValidEmail(email)) throw new Error('INITIAL_ADMIN_EMAIL must be the first administrator\'s real email address.');
+  return { ...adminUser, password, email };
 }
 
 
@@ -644,6 +648,11 @@ function deserializeRow(table, row) {
     delete output.password;
     delete output.reset_token_hash;
     delete output.reset_token_expires_at;
+    delete output.pending_admin_email;
+    delete output.admin_email_token_hash;
+    delete output.admin_email_token_expires_at;
+    delete output.admin_email_password_tag;
+    delete output.normalized_email;
     if (output.role === 'admin') {
       output.permissions = ['*'];
     } else {
@@ -673,6 +682,11 @@ function sanitizeRecord(table, item) {
   delete output.password;
   delete output.reset_token_hash;
   delete output.reset_token_expires_at;
+  delete output.pending_admin_email;
+  delete output.admin_email_token_hash;
+  delete output.admin_email_token_expires_at;
+  delete output.admin_email_password_tag;
+  delete output.normalized_email;
   output.status = output.status || 'active';
   return output;
 }
@@ -1382,7 +1396,7 @@ async function seedIfEmpty() {
 }
 
 async function ensureAdminUser() {
-  const existing = await get('SELECT id, permissions, status FROM users WHERE username = ?', [adminUser.username]);
+  const existing = await get("SELECT id, permissions, status FROM users WHERE role = 'admin' ORDER BY (id = 'u001') DESC LIMIT 1");
   if (!existing) {
     const adminRecord = initialAdminUser();
     adminRecord.password = await bcrypt.hash(adminRecord.password, 10);
@@ -3120,20 +3134,54 @@ app.get('/api/session', asyncHandler(async (req, res) => {
 }));
 
 async function findLoginUser(identifier) {
+  identifier = normalizeEmail(identifier);
+  if (!isValidEmail(identifier)) return undefined;
   const user = await get(
     `SELECT * FROM users
-      WHERE ((LOWER(email) = LOWER(?) AND (role <> 'homeowner' OR homeowner_id IS NOT NULL))
-         OR (role = 'admin' AND BINARY username = ?))
+      WHERE LOWER(TRIM(email)) = ? AND (role <> 'homeowner' OR homeowner_id IS NOT NULL)
+        AND (role <> 'admin' OR admin_email_verified_at IS NOT NULL)
       LIMIT 1`,
-    [identifier, identifier]
+    [identifier]
   );
-  // Keep the original account matching rules for both login and alerts,
-  // including case-sensitive administrator usernames.
-  return user && (
-    String(user.email || '').toLowerCase() === identifier.toLowerCase() ||
-    (user.role === 'admin' && user.username === identifier)
-  ) ? user : undefined;
+  return user;
 }
+
+const adminEmailService = createAdminEmailService({ get, run, sendEmail, isEmailConfigured,
+  baseUrl: () => String(process.env.APP_BASE_URL || '').trim(),
+  record: async (user, operation) => {
+    audit.current().actor = { id: user.id, role: user.role, name: user.name };
+    await recordAuditLog(audit.current().req, { table: 'users', id: user.id, operation });
+  },
+});
+
+function adminEmailHandler(work) {
+  // Release/roll back the account transaction before the rate-limit store opens
+  // its own transaction. Otherwise concurrent failures can exhaust the pool.
+  return (req, res, next) => auditedHandler(work)(req, res, async error => {
+    if (!(error instanceof AdminEmailError)) return next(error);
+    if (error.status === 401) return loginRateLimits.failedLogin(req, res, { error: error.message });
+    res.status(error.status).json({ error: error.message });
+  });
+}
+
+app.post('/api/admin-email/request', loginRateLimits.beforeLogin, loginRateLimits.emailChange, adminEmailHandler(async (req, res) => {
+  const requester = await requireAuth(req, res);
+  if (!requester) return;
+  res.json(await adminEmailService.request({ userId: requester.id, email: req.body.email, password: req.body.currentPassword }));
+}));
+
+// Enrollment proves the existing password and mailbox without issuing a session
+// or granting administrator access via a username. It closes after verification.
+app.post('/api/admin-email/enroll', loginRateLimits.beforeLogin, loginRateLimits.emailChange, adminEmailHandler(async (req, res) => {
+  const identifier = typeof req.body.account === 'string' ? req.body.account.trim() : '';
+  const user = await get("SELECT * FROM users WHERE role = 'admin' AND (BINARY username = ? OR id = ?) LIMIT 1", [identifier, identifier]);
+  res.json(await adminEmailService.request({ userId: user?.id || '', email: req.body.email,
+    password: req.body.currentPassword, enrollment: true }));
+}));
+
+app.post('/api/admin-email/verify', loginRateLimits.emailChange, adminEmailHandler(async (req, res) => {
+  res.json(await adminEmailService.verify(req.body.token));
+}));
 
 app.post('/api/login', loginRateLimits.beforeLogin, asyncHandler(async (req, res) => {
   const identifier = loginIdentifier(req.body);
@@ -3184,7 +3232,7 @@ app.post('/api/login', loginRateLimits.beforeLogin, asyncHandler(async (req, res
 
 app.post('/api/forgot-password', loginRateLimits.forgotPassword, asyncHandler(async (req, res) => {
   const email = String(req.body.email || '').trim().toLowerCase();
-  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!isValidEmail(email)) {
     res.status(400).json({ error: 'Enter a valid email address.' });
     return;
   }
@@ -3194,10 +3242,11 @@ app.post('/api/forgot-password', loginRateLimits.forgotPassword, asyncHandler(as
   }
 
   const user = await get(
-    `SELECT u.id, u.email, u.name, u.username, u.status, h.name AS homeowner_name
+    `SELECT u.id, u.email, u.name, u.username, u.status, u.role, u.admin_email_verified_at, h.name AS homeowner_name
        FROM users u
        LEFT JOIN homeowners h ON h.id = u.homeowner_id
-      WHERE LOWER(u.email) = ?
+      WHERE LOWER(TRIM(u.email)) = ?
+        AND (u.role <> 'admin' OR u.admin_email_verified_at IS NOT NULL)
       LIMIT 1`,
     [email]
   );
@@ -3206,10 +3255,14 @@ app.post('/api/forgot-password', loginRateLimits.forgotPassword, asyncHandler(as
     const token = crypto.randomBytes(32).toString('hex');
     const tokenHash = hashPasswordResetToken(token);
     const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
-    await run(
-      'UPDATE users SET reset_token_hash = ?, reset_token_expires_at = ? WHERE id = ?',
-      [tokenHash, expiresAt, user.id]
+    const resetRequest = await run(
+      `UPDATE users SET reset_token_hash = ?, reset_token_expires_at = ? WHERE id = ?
+        AND LOWER(TRIM(email)) = ? AND (role <> 'admin' OR admin_email_verified_at IS NOT NULL)`,
+      [tokenHash, expiresAt, user.id, email]
     );
+    // An email verification may have committed after the lookup. Never create
+    // a usable reset token for a retired address in that race.
+    if (resetRequest.affectedRows !== 1) return res.json({ ok: true, message: PASSWORD_RESET_RESPONSE });
 
     try {
       await sendEmail({
@@ -3244,6 +3297,7 @@ app.get('/api/reset-password/validate', asyncHandler(async (req, res) => {
     `SELECT id FROM users
       WHERE reset_token_hash = ?
         AND reset_token_expires_at > NOW()
+        AND (role <> 'admin' OR admin_email_verified_at IS NOT NULL)
         AND status NOT IN ('inactive', 'deactivated')
       LIMIT 1`,
     [hashPasswordResetToken(token)]
@@ -3268,7 +3322,7 @@ app.post('/api/reset-password', auditedHandler(async (req, res) => {
   }
 
   const resetOwner = await get(
-    "SELECT * FROM users WHERE reset_token_hash = ? AND reset_token_expires_at > NOW() AND status NOT IN ('inactive', 'deactivated') FOR UPDATE",
+    "SELECT * FROM users WHERE reset_token_hash = ? AND reset_token_expires_at > NOW() AND (role <> 'admin' OR admin_email_verified_at IS NOT NULL) AND status NOT IN ('inactive', 'deactivated') FOR UPDATE",
     [hashPasswordResetToken(token)]
   );
   if (!resetOwner) return res.status(400).json({ error: 'This password reset link is invalid or has expired.' });
@@ -3279,6 +3333,7 @@ app.post('/api/reset-password', auditedHandler(async (req, res) => {
         SET password = ?, reset_token_hash = NULL, reset_token_expires_at = NULL
       WHERE reset_token_hash = ?
         AND reset_token_expires_at > NOW()
+        AND (role <> 'admin' OR admin_email_verified_at IS NOT NULL)
         AND status NOT IN ('inactive', 'deactivated')`,
     [passwordHash, hashPasswordResetToken(token)]
   );
@@ -4727,6 +4782,7 @@ app.put('/api/:table', auditedHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'update');
   if (!allowed) return;
+  if (table === 'users') return res.status(405).json({ error: 'Bulk account replacement is disabled. Use individual account management and verified administrator email changes.' });
   if (!Array.isArray(req.body)) {
     res.status(400).json({ error: 'Expected an array of records.' });
     return;
@@ -5181,7 +5237,7 @@ app.post('/api/reset', auditedHandler(async (req, res) => {
 }));
 
 function isValidEmailAddress(value) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || '').trim());
+  return isValidEmail(value);
 }
 
 function isValidMobileNumber(value) {
@@ -5268,6 +5324,9 @@ app.post('/api/homeowners/:id/reset-password', auditedHandler(async (req, res) =
 app.post('/api/users', auditedHandler(async (req, res) => {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
+  if (req.body.id && await get('SELECT * FROM users WHERE id = ?', [req.body.id])) {
+    return res.status(409).json({ error: 'A record with this ID already exists.' });
+  }
 
   const name = (req.body.name || '').trim();
   const username = (req.body.username || '').trim();
@@ -5282,6 +5341,7 @@ app.post('/api/users', auditedHandler(async (req, res) => {
   if (!name || !username || !email || !password) {
     return res.status(400).json({ error: 'Name, Username, Email, and Password are all required.' });
   }
+  if (!isValidEmailAddress(email)) return res.status(400).json({ error: 'Enter a valid email address.' });
 
   if (/\s/.test(username)) {
     return res.status(400).json({ error: 'Username cannot contain whitespace.' });
@@ -5516,6 +5576,15 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
     if (!existing) {
       res.status(404).json({ error: 'User not found.' });
       return;
+    }
+
+    // No generic profile/account update may bypass proof of mailbox ownership,
+    // including empty/null email values or administrator-to-administrator edits.
+    if (existing.role === 'admin' && req.body.email !== undefined) {
+      if (normalizeEmail(req.body.email) !== normalizeEmail(existing.email)) {
+        return res.status(400).json({ error: 'Use the profile email verification flow with your current password to change an administrator email.' });
+      }
+      delete req.body.email;
     }
 
     if (allowed.role !== 'admin') {

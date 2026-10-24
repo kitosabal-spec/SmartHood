@@ -10,8 +10,7 @@ function createLoginSecurityAlerts({ repository, findUser, config, deliver = sen
       // Resolve through the same DB lookup as login. No recipient comes from
       // request data, and IP-only restrictions never send login alerts.
       const user = identifierRestricted ? await findUser(identifier) : null;
-      // A non-matching case variant of an administrator username must not
-      // suppress an alert for the actual account sharing its normalized key.
+      // Keep unmatched identifiers separate from matched account events.
       eventKey = crypto.createHash('sha256').update(`${eventKey}\0${user?.id || ''}`).digest('hex');
       const claimed = await repository.claimEvent({
         eventKey,
