@@ -16,7 +16,8 @@ function createLoginSecurityAlerts({ repository, findUser, config, deliver = sen
         eventKey,
         userId: user?.id,
         eventType,
-        emailEnabled: config.emailEnabled && identifierRestricted && Boolean(user?.email),
+        emailEnabled: config.emailEnabled && identifierRestricted && Boolean(user?.email) &&
+          (user.role !== 'admin' || Boolean(user.admin_email_verified_at)),
         cooldownMs: config.cooldownMs,
       });
       if (!claimed) return;

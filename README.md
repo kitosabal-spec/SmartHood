@@ -41,10 +41,10 @@ session/file secrets, and email settings. For local HTTP, set
 `NODE_ENV=development`, `APP_BASE_URL=http://localhost:3000`, and `TRUST_PROXY=0`.
 Set `INITIAL_ADMIN_PASSWORD` to a unique password of at least 12 characters and
 `INITIAL_ADMIN_EMAIL` to the first administrator's real email before initializing
-a new database. Verify the email before signing in. Existing installations must
-complete [administrator email enrollment](docs/ADMINISTRATOR_EMAIL.md) before
-deploying email-only login; the guide includes a pre-deployment command that
-preserves the existing account. The preset address is never trusted as verified.
+a new database. Administrators can sign in with their existing username and
+password. Complete [administrator email enrollment](docs/ADMINISTRATOR_EMAIL.md)
+to also use email sign-in and password resets. Enrollment preserves the existing
+account and username login. The preset address is never trusted as verified.
 `EMAIL_DISABLED=true` disables notifications and also prevents email enrollment;
 use isolated test fixtures when no real email delivery is wanted.
 

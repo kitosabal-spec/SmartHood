@@ -60,7 +60,7 @@ function createAdminEmailService({ get, run, record, sendEmail, isEmailConfigure
       throw error;
     }
     await record(user, 'verify administrator email and change login address');
-    return { ok: true, message: 'Email verified. Sign in with your verified email and existing password. Your previous email and username can no longer sign in.' };
+    return { ok: true, message: 'Email verified. Sign in with your verified email or administrator username and existing password. Your previous email can no longer sign in.' };
   }
   return { request, verify };
 }

@@ -75,6 +75,10 @@ function database() {
       const user = users.find(u => u.email?.trim().toLowerCase() === values[0] && (u.role !== 'homeowner' || u.homeowner_id) && (u.role !== 'admin' || u.admin_email_verified_at));
       return [user ? [{ ...user }] : []];
     }
+    if (q === "SELECT * FROM users WHERE role = 'admin' AND BINARY username = ? LIMIT 1") {
+      const user = users.find(u => u.role === 'admin' && u.username === values[0]);
+      return [user ? [{ ...user }] : []];
+    }
     if (q.startsWith("SELECT * FROM users WHERE role = 'admin'")) {
       const user = users.find(u => u.role === 'admin' && (u.username === values[0] || u.id === values[1]));
       return [user ? [{ ...user }] : []];

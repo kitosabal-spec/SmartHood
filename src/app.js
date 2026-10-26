@@ -3134,6 +3134,13 @@ app.get('/api/session', asyncHandler(async (req, res) => {
 }));
 
 async function findLoginUser(identifier) {
+  // Existing administrators can sign in before enrolling a verified email.
+  // Username matching remains case-sensitive and is restricted to admins.
+  if (typeof identifier !== 'string') return undefined;
+  identifier = identifier.trim();
+  if (identifier && !identifier.includes('@')) {
+    return get("SELECT * FROM users WHERE role = 'admin' AND BINARY username = ? LIMIT 1", [identifier]);
+  }
   identifier = normalizeEmail(identifier);
   if (!isValidEmail(identifier)) return undefined;
   const user = await get(
@@ -3187,7 +3194,7 @@ app.post('/api/login', loginRateLimits.beforeLogin, asyncHandler(async (req, res
   const identifier = loginIdentifier(req.body);
   const password = typeof req.body?.password === 'string' ? req.body.password.trim() : '';
   if (!identifier || !password) {
-    res.status(400).json({ error: 'Email address and password are required.' });
+    res.status(400).json({ error: 'Email address or administrator username and password are required.' });
     return;
   }
   const user = await findLoginUser(identifier);

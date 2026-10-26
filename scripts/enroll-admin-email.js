@@ -1,6 +1,6 @@
 'use strict';
 
-// Run locally by the deployment operator BEFORE switching to email-only login.
+// Run against the target database to enable verified administrator email login.
 // No passwords/tokens in argv, environment, logs, or shell history.
 const readline = require('node:readline/promises');
 const mysql = require('mysql2/promise');
@@ -67,7 +67,7 @@ async function main() {
     try { token = new URL(link).searchParams.get('admin_email_token'); } catch { token = link; }
     const result = await audit.transaction(req, () => service.verify(token));
     console.log(result.message);
-    console.log('Enrollment complete on the SAME account. Deploy the new server to disable username login.');
+    console.log('Enrollment complete on the SAME account. Sign in with the verified email or existing administrator username.');
   } finally { await pool.end(); }
 }
 

@@ -4,7 +4,7 @@ const crypto = require('crypto');
 const { rateLimit, ipKeyGenerator } = require('express-rate-limit');
 const { MySqlRateLimitStore } = require('../services/authSecurityStore');
 
-const INVALID_CREDENTIALS = 'Invalid email address or password.';
+const INVALID_CREDENTIALS = 'Invalid email address, administrator username, or password.';
 const loginIdentifier = body => {
   const value = body?.email || body?.username || '';
   return typeof value === 'string' ? value.trim() : '';

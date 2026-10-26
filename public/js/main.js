@@ -560,7 +560,7 @@ async function handleLogin() {
   if (errEl) errEl.classList.add('hidden');
 
   if (!username || !password) {
-    showLoginError('Please enter both email address and password.');
+    showLoginError('Please enter your email or admin username and password.');
     return;
   }
 
@@ -653,7 +653,7 @@ function openForgotPassword() {
   const loginEmail = document.getElementById('loginUser')?.value.trim() || '';
   const emailInput = document.getElementById('forgotPasswordEmail');
   if (emailInput) {
-    emailInput.value = loginEmail;
+    emailInput.value = loginEmail.includes('@') ? loginEmail : '';
     setTimeout(() => emailInput.focus(), 50);
   }
 }

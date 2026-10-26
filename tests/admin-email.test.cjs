@@ -27,7 +27,7 @@ test('email validation normalizes whitespace/case and rejects malformed or overs
   assert.equal(isValidEmail('Amy+HOA@Example.Test'), true);
 });
 
-test('verified email change keeps the same account and old login/reset until verification, then retires both old identifiers', async t => {
+test('verified email change retires the old email while preserving administrator username login', async t => {
   const f = await fixture(t);
   const before = structuredClone(f.pool.users[0]);
   const headers = await signedIn(f);
@@ -49,7 +49,7 @@ test('verified email change keeps the same account and old login/reset until ver
   assert.equal(after.email, newEmail);
   assert.equal((await f.login(' AMY@EXAMPLE.TEST ', password)).status, 200);
   assert.equal((await f.login(oldEmail, password)).status, 401);
-  assert.equal((await f.login('admin', password)).status, 401);
+  assert.equal((await f.login('admin', password)).status, 200);
   assert.equal((await f.request('/api/reset-password/validate?token=' + resetToken)).status, 400);
   const count = f.sent.length;
   await f.request('/api/forgot-password', { email: oldEmail });
@@ -61,10 +61,10 @@ test('verified email change keeps the same account and old login/reset until ver
   assert.doesNotMatch(JSON.stringify(f.pool.auditLog), new RegExp(token + '|' + newEmail + '|' + password));
 });
 
-test('legacy preset enrollment requires current password and mailbox proof, grants no username session, and closes permanently', async t => {
+test('legacy preset enrollment requires password and mailbox proof while username login remains available', async t => {
   const f = await fixture(t);
   Object.assign(f.pool.users[0], { admin_email_verified_at: null, email: 'admin@sanalfonsohomes.com' });
-  assert.equal((await f.login('admin', password)).status, 401);
+  assert.equal((await f.login('admin', password)).status, 200);
   assert.equal((await f.login('admin@sanalfonsohomes.com', password)).status, 401);
   await f.request('/api/forgot-password', { email: 'admin@sanalfonsohomes.com' });
   assert.equal(f.sent.length, 0);
@@ -77,7 +77,7 @@ test('legacy preset enrollment requires current password and mailbox proof, gran
   assert.equal((await f.request('/api/admin-email/verify', { token: tokenFrom(f.sent[0]) })).status, 200);
   assert.equal((await f.login(newEmail, password)).body.id, 'admin-1');
   assert.equal((await f.request('/api/admin-email/enroll', body)).status, 401);
-  assert.equal((await f.login('admin', password)).status, 401);
+  assert.equal((await f.login('admin', password)).status, 200);
 });
 
 test('request validates authentication, role, current password, syntax and duplicates without changing the account', async t => {

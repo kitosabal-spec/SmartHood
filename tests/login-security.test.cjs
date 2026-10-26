@@ -20,7 +20,7 @@ test('eight failures, warnings from fifth, ninth blocked with standard headers a
   for (let i = 1; i <= 8; i++) {
     const response = await f.login(i % 2 ? '  RESIDENT@EXAMPLE.TEST  ' : 'resident@example.test');
     assert.equal(response.status, 401);
-    assert.equal(response.body.error, 'Invalid email address or password.');
+    assert.equal(response.body.error, 'Invalid email address, administrator username, or password.');
     assert.equal(Number(response.headers.get('ratelimit-remaining')), 8 - i);
     if (i < 5) assert.equal(response.body.warning, undefined);
     else {
@@ -240,13 +240,45 @@ test('existing bcrypt, legacy migration, account status, session cookies, restor
   assert.match(logout.headers.get('set-cookie'), /Expires=Thu, 01 Jan 1970/);
   assert.equal((await f.request('/api/session')).body.authenticated, false);
   assert.equal((await f.login('inactive@example.test', password)).status, 403);
-  assert.equal((await f.login('ADMIN', password)).status, 401, 'administrator usernames are rejected');
-  assert.equal((await f.login('admin', password)).status, 401);
+  assert.equal((await f.login('ADMIN', password)).status, 401, 'administrator usernames are case-sensitive');
+  assert.equal((await f.login('admin', password)).status, 200);
   assert.equal((await f.login('legacy@example.test', password)).status, 200);
   assert.ok(await bcrypt.compare(password, f.pool.users.find(u => u.id === 'legacy-1').password));
   assert.match(f.pool.users.find(u => u.id === 'legacy-1').password, /^\$2/);
   assert.equal((await f.login('resident', password)).status, 401, 'homeowner username is not a login identifier');
   assert.equal((await f.login('resident@example.test', password)).status, 200);
+});
+
+test('administrator username login works before email enrollment and preserves account restrictions', async t => {
+  const f = await fixture(t);
+  f.pool.users[0].admin_email_verified_at = null;
+  const response = await f.login(' admin ', password);
+  assert.equal(response.status, 200);
+  assert.equal(response.body.id, 'admin-1');
+  const cookie = response.headers.get('set-cookie').split(';')[0];
+  assert.equal((await f.request('/api/session', undefined, undefined, { Cookie: cookie })).body.user.id, 'admin-1');
+  assert.equal((await f.request('/api/login', { username: 'admin', password })).status, 200);
+  assert.equal((await f.login('registered-admin@example.test', password)).status, 401);
+  assert.equal((await f.login('u001', password)).status, 401);
+  assert.equal((await f.login('inactive', password)).status, 403);
+  assert.equal((await f.login('resident', password)).status, 401);
+  f.pool.users.push({ id: 'officer-1', username: 'officer', role: 'hoa_officer', status: 'active', password: f.pool.users[0].password });
+  assert.equal((await f.login('officer', password)).status, 401);
+  assert.equal((await exhaust(f, 'admin', '203.0.113.44')).status, 429);
+  assert.equal((await f.login('admin', password, '203.0.113.44')).status, 429);
+  await f.settle();
+  assert.equal(f.sent.length, 0, 'unverified administrator addresses must not receive security emails');
+});
+
+test('verified administrator username and email alerts share the account cooldown', async t => {
+  const f = await fixture(t);
+  await exhaust(f, 'admin', '203.0.113.45');
+  await f.settle();
+  assert.equal(f.sent.length, 1);
+  assert.equal(f.sent[0].to, 'registered-admin@example.test');
+  await exhaust(f, 'registered-admin@example.test', '203.0.113.46');
+  await f.settle();
+  assert.equal(f.sent.length, 1);
 });
 
 test('forgot-password has a separate five-per-hour limit and preserves generic responses', async t => {
