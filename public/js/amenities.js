@@ -369,6 +369,7 @@ function renderAdminAmenityBookingRows(bookings, hasActiveFilters = false) {
           <button class="btn btn-success btn-sm" onclick="confirmApproveAmenityBooking('${booking.id}')">Approve</button>
           <button class="btn btn-danger btn-sm" onclick="openRejectAmenityBooking('${booking.id}')">Reject</button>
         ` : `<button class="btn btn-secondary btn-sm" onclick="viewAmenityBooking('${booking.id}')">View</button>`}
+        ${amenityBillingAction(booking)}
       </div></td>
     </tr>`;
   }).join('') || `<tr><td colspan="5"><div class="no-results">${hasActiveFilters
@@ -566,6 +567,13 @@ async function approveAmenityBooking(id) {
   logAction(`Approved amenity booking: ${booking.amenity} for ${homeowner ? homeowner.name : 'Unknown'}`);
   showToast('success', 'Approved', 'Amenity booking approved.');
   renderAmenityBookingsAdmin();
+  if (currentUser?.role === 'admin') {
+    const hasBilling = Boolean(db.getOne('amenityBookings', id)?.billingId);
+    openModal('Booking Approved', '<p>The date is reserved. Create its billing now or return to this approved booking later.</p>', [
+      { label: 'Later', cls: 'btn-secondary', action: closeModal },
+      { label: hasBilling ? 'View Billing' : 'Create Billing', cls: 'btn-primary', action: () => openAmenityBilling(id) },
+    ]);
+  }
 }
 
 function openRejectAmenityBooking(id) {
@@ -608,6 +616,7 @@ function viewAmenityBooking(id) {
       <tr><td style="padding:6px 0;color:var(--text-3)">Date</td><td>${formatAmenityDate(booking.bookingDate)}</td></tr>
       <tr><td style="padding:6px 0;color:var(--text-3)">Time</td><td>${booking.startTime || ''} - ${booking.endTime || ''}</td></tr>
       <tr><td style="padding:6px 0;color:var(--text-3)">Status</td><td>${amenityStatusBadge(booking.status)}</td></tr>
+      ${currentUser?.role === 'admin' ? `<tr><td>Billing</td><td>${amenityBillingAction(booking) || 'Not available until approved'}</td></tr>` : ''}
       ${booking.adminRemarks ? `<tr><td style="padding:6px 0;color:var(--text-3)">Remarks</td><td>${booking.adminRemarks}</td></tr>` : ''}
     </table>
   `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
@@ -620,4 +629,103 @@ function amenityStatusBadge(status) {
     Rejected: '<span class="badge badge-red">Rejected</span>',
   };
   return map[status] || `<span class="badge badge-gray">${status || 'Unknown'}</span>`;
+}
+
+function amenityBillingAction(booking) {
+  if (currentUser?.role !== 'admin') return '';
+  const id = escapeHtml(JSON.stringify(String(booking.id)));
+  if (booking.billingId) {
+    const status = amenityBillingStatus(booking.billingStatus) + (booking.billingArchivedAt ? ' (Archived)' : '');
+    return `<button class="btn btn-secondary btn-sm" onclick="openAmenityBilling(${id})">View Billing</button><span class="badge badge-gray">${escapeHtml(status)}</span>`;
+  }
+  return booking.status === 'Approved'
+    ? `<button class="btn btn-primary btn-sm" onclick="openAmenityBilling(${id})">Create Billing</button>` : '';
+}
+
+function amenityBillingStatus(status) {
+  return ({ active: 'Unpaid', unpaid: 'Unpaid', paid: 'Paid', partially_paid: 'Partially paid', inactive: 'Inactive', overdue: 'Overdue' })[status] || 'Unpaid';
+}
+
+function amenityBillingReviewDetails(draft) {
+  return `<dl class="amenity-billing-details">
+    <dt>Homeowner</dt><dd>${escapeHtml(draft.homeowner.name)} (${escapeHtml(draft.homeowner.id)})</dd>
+    <dt>Billing type</dt><dd>${escapeHtml(draft.billing_type)}</dd>
+    <dt>Title</dt><dd>${escapeHtml(draft.title)}</dd>
+    <dt>Reservation details</dt><dd>${escapeHtml(draft.description)}</dd>
+  </dl>`;
+}
+
+async function openAmenityBilling(id) {
+  if (currentUser?.role !== 'admin') return;
+  try {
+    const draft = await api.request(`/api/amenityBookings/${encodeURIComponent(id)}/billing`);
+    if (draft.billing) {
+      await api.loadAmenityBookings();
+      filterAdminAmenityBookings();
+      viewBillingDetail(draft.billing.id, draft.billing);
+      return;
+    }
+    showAmenityBillingForm(id, draft);
+  } catch (error) {
+    showToast('error', 'Billing Unavailable', error.message);
+  }
+}
+
+function showAmenityBillingForm(id, draft, values = {}) {
+  const noDueDate = values.noDueDate !== false;
+  openModal('Create Booking Billing', `${amenityBillingReviewDetails(draft)}
+    <form id="amenityBillingForm" onsubmit="return false">
+      <div class="form-group"><label for="ab_bill_amount">Amount (₱)</label><input id="ab_bill_amount" type="number" min="0.01" max="9999999999.99" step="0.01" required value="${escapeHtml(String(values.amount || ''))}"></div>
+      <div class="form-group"><label class="billing-no-due-date"><input id="ab_bill_no_due" type="checkbox" ${noDueDate ? 'checked' : ''} onchange="toggleAmenityBillingDeadline()"> No due date</label>
+        <label for="ab_bill_due">Due date</label><input id="ab_bill_due" type="date" ${noDueDate ? 'disabled' : 'required'} value="${escapeHtml(values.dueDate || '')}"></div>
+      <div class="form-group"><label for="ab_bill_note">Optional note</label><textarea id="ab_bill_note" maxlength="2000">${escapeHtml(values.note || '')}</textarea></div>
+    </form>`, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Review Billing', cls: 'btn-primary', action: () => reviewAmenityBilling(id, draft) },
+  ]);
+}
+
+function toggleAmenityBillingDeadline() {
+  const noDueDate = document.getElementById('ab_bill_no_due').checked;
+  const due = document.getElementById('ab_bill_due');
+  due.disabled = noDueDate;
+  due.required = !noDueDate;
+  if (noDueDate) due.value = '';
+}
+
+function reviewAmenityBilling(id, draft) {
+  if (!document.getElementById('amenityBillingForm').reportValidity()) return;
+  const noDueDate = document.getElementById('ab_bill_no_due').checked;
+  const values = {
+    amount: Number(document.getElementById('ab_bill_amount').value),
+    noDueDate, dueDate: noDueDate ? null : document.getElementById('ab_bill_due').value,
+    note: document.getElementById('ab_bill_note').value.trim(), bookingVersion: draft.bookingVersion,
+  };
+  let submitting = false;
+  openModal('Review Booking Billing', `${amenityBillingReviewDetails(draft)}
+    <dl class="amenity-billing-details"><dt>Amount</dt><dd>₱${values.amount.toFixed(2)}</dd>
+    <dt>Due date</dt><dd>${escapeHtml(values.dueDate || 'No due date')}</dd>
+    <dt>Note</dt><dd style="white-space:pre-wrap">${escapeHtml(values.note || 'None')}</dd></dl>
+    <p>Confirm to create this bill and notify the homeowner.</p>`, [
+    { label: 'Back', cls: 'btn-secondary', action: () => { if (!submitting) showAmenityBillingForm(id, draft, values); } },
+    { label: 'Confirm Creation', cls: 'btn-primary', action: async () => {
+      if (submitting) return;
+      submitting = true;
+      let created = false;
+      try {
+        await api.request(`/api/amenityBookings/${encodeURIComponent(id)}/billing`, { method: 'POST', body: JSON.stringify(values) });
+        created = true;
+        closeModal();
+        await api.loadAll();
+        renderAmenityBookingsAdmin();
+        showToast('success', 'Billing Created', 'Billing has been assigned to the requesting homeowner.');
+      } catch (error) {
+        showToast('error', created ? 'Billing Created; Refresh Needed' : 'Billing Not Created', created ? 'The bill was saved. Reload the page to see the latest details.' : error.message);
+        if (error.status === 409) {
+          closeModal();
+          try { await api.loadAll(); renderAmenityBookingsAdmin(); } catch { /* Keep the original error visible. */ }
+        }
+      } finally { submitting = false; }
+    } },
+  ]);
 }

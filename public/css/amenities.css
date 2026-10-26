@@ -1,3 +1,17 @@
+.amenity-billing-details {
+  display: grid;
+  grid-template-columns: minmax(100px, 1fr) minmax(0, 2fr);
+  gap: 10px 16px;
+  margin: 0 0 20px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  font-size: 0.88rem;
+}
+.amenity-billing-details dt { color: var(--text-3); }
+.amenity-billing-details dd { margin: 0; overflow-wrap: anywhere; }
+
 .amenity-layout {
   display: grid;
   grid-template-columns: minmax(0, 1.25fr) minmax(300px, 0.75fr);

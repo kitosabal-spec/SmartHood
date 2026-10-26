@@ -39,6 +39,7 @@ const { createLoginRateLimits, loginIdentifier } = require('./middleware/loginRa
 const { normalizeEmail, isValidEmail } = require('./utils/email');
 const { createAdminEmailService, AdminEmailError } = require('./services/adminEmailService');
 const { createAmenityService } = require('./services/amenityService');
+const { createAmenityBillingService } = require('./services/amenityBillingService');
 const amenityService = createAmenityService({ get, all });
 
 const { AUDITED_TABLES, changeSummary, createAuditService } = require('./services/auditService');
@@ -151,7 +152,7 @@ const tableConfig = {
     booleanColumns: [],
   },
   billings: {
-    columns: ['id', 'title', 'amount', 'dueDate', 'due_date', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month', 'billing_type'],
+    columns: ['id', 'title', 'amount', 'dueDate', 'due_date', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month', 'billing_type', 'amenity_booking_id'],
     jsonColumns: ['assignedTo'],
     booleanColumns: [],
   },
@@ -770,6 +771,12 @@ async function deleteRecord(table, id) {
 }
 
 async function getTableData(table) {
+  if (table === 'amenityBookings') {
+    const rows = await all(`SELECT a.*, b.id AS billingId, b.status AS billingStatus, b.archived_at AS billingArchivedAt
+      FROM amenityBookings a LEFT JOIN billings b ON b.amenity_booking_id = a.id
+      WHERE a.archived_at IS NULL`);
+    return rows.map(row => deserializeRow(table, row));
+  }
   if (table === 'billings') {
     const [rows, assignments] = await Promise.all([
       all('SELECT * FROM billings WHERE archived_at IS NULL'),
@@ -3533,6 +3540,51 @@ app.delete('/api/payment-settings/qr', auditedHandler(async (req, res) => {
 
 // ── BILLING AUTO-GENERATION APIS ──
 
+const amenityBilling = createAmenityBillingService({
+  get, requireAdmin: requireFinancialAdmin, eligibleIds: getResidentModuleHomeownerIds,
+  validate: validateAndPrepareBillingPayload, save: saveRecord, notify: notifyNewBilling,
+});
+app.get('/api/amenityBookings/:id/billing', auditedHandler(amenityBilling.preview));
+app.post('/api/amenityBookings/:id/billing', auditedHandler(amenityBilling.create));
+
+// The booking link and its original recipient are owned by the dedicated flow.
+function protectAmenityBilling(body, existing, res) {
+  if ((!existing?.amenity_booking_id && body.amenity_booking_id != null) ||
+      (existing?.amenity_booking_id && (
+        (body.amenity_booking_id !== undefined && body.amenity_booking_id !== existing.amenity_booking_id) ||
+        (body.assignedTo !== undefined && JSON.stringify(getAssignedHomeownerIds(body)) !== JSON.stringify(getAssignedHomeownerIds(existing))) ||
+        (body.billing_type !== undefined && body.billing_type !== 'Other Billing')))) {
+    res.status(400).json({ error: 'Booking billing links, recipients, and billing type are managed through Create Billing on the booking.' });
+    return false;
+  }
+  if (existing?.amenity_booking_id) {
+    body.amenity_booking_id = existing.amenity_booking_id;
+    body.billing_type = 'Other Billing';
+    body.monthly_dues_month = null;
+  }
+  return true;
+}
+
+async function notifyNewBilling(body) {
+  const assignedHomeownerIds = getAssignedHomeownerIds(body);
+  if (!assignedHomeownerIds.length) return;
+  await createServerNotification(
+    'New Billing Created',
+    `"${body.title || 'A new billing'}" has been assigned to your account. ${body.dueDate ? `Due date: ${body.dueDate}` : 'No due date'}.`,
+    { userIds: assignedHomeownerIds }
+  );
+  await emailHomeowners(assignedHomeownerIds, () => ({
+    subject: `SmartHood: ${body.title || 'New billing statement'}`,
+    title: 'New Billing Statement',
+    message: 'A new billing statement has been created and assigned to your SmartHood account.',
+    details: [
+      { label: 'Billing', value: body.title || 'Billing' },
+      { label: 'Amount due', value: moneyDisplay(body.amount) },
+      { label: 'Due date', value: body.dueDate || 'No due date' },
+    ],
+  }));
+}
+
 app.post('/api/billings/generate-monthly-dues', auditedHandler(async (req, res) => {
   const requester = await requireFinancialAdmin(req, res);
   if (!requester) return;
@@ -4848,12 +4900,17 @@ app.put('/api/:table', auditedHandler(async (req, res) => {
 
   const previousRows = await getTableData(table);
   const nextIds = new Set(req.body.map(item => item.id).filter(Boolean));
+  if (table === 'billings' && previousRows.some(row => row.amenity_booking_id && !nextIds.has(row.id))) {
+    return res.status(409).json({ error: 'Booking billings must retain their links. Archive individual billings instead.' });
+  }
   for (const previous of previousRows) {
     if (!nextIds.has(previous.id)) await deleteRecord(table, previous.id);
   }
   for (const item of stripProfilePhotoField(table, req.body)) {
     if (table === 'billings') {
-      const previous = previousRows.find(row => row.id === item.id);
+      // Include archived records: a bulk request must not detach their links.
+      const previous = item.id ? await get('SELECT * FROM billings WHERE id = ? FOR UPDATE', [item.id]) : null;
+      if (!protectAmenityBilling(item, previous, res)) return;
       const unchangedMissingDeadline = previous && !previous.dueDate && !item.dueDate && item.noDueDate === undefined;
       if (!await keepResidentModuleBillingRecipients(item, res)) return;
       if (!await validateAndPrepareBillingPayload(item, res, previous?.id || null, unchangedMissingDeadline)) return;
@@ -5512,6 +5569,7 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
   if (table === 'billings') {
     const hasEligibleRecipients = await keepResidentModuleBillingRecipients(req.body, res);
     if (!hasEligibleRecipients) return;
+    if (!protectAmenityBilling(req.body, null, res)) return;
     const validBilling = await validateAndPrepareBillingPayload(req.body, res);
     if (!validBilling) return;
   }
@@ -5586,24 +5644,7 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
   // Notifications are authored here instead of the browser so recipients cannot
   // be forged by an untrusted client.
   if (table === 'billings') {
-    const assignedHomeownerIds = getAssignedHomeownerIds(body);
-    if (assignedHomeownerIds.length > 0) {
-      await createServerNotification(
-        'New Billing Created',
-        `"${body.title || 'A new billing'}" has been assigned to your account. ${body.dueDate ? `Due date: ${body.dueDate}` : 'No due date'}.`,
-        { userIds: assignedHomeownerIds }
-      );
-      await emailHomeowners(assignedHomeownerIds, () => ({
-        subject: `SmartHood: ${body.title || 'New billing statement'}`,
-        title: 'New Billing Statement',
-        message: 'A new billing statement has been created and assigned to your SmartHood account.',
-        details: [
-          { label: 'Billing', value: body.title || 'Billing' },
-          { label: 'Amount due', value: moneyDisplay(body.amount) },
-          { label: 'Due date', value: body.dueDate || 'No due date' },
-        ].filter(Boolean),
-      }));
-    }
+    await notifyNewBilling(body);
   }
   res.status(201).json(presentPrivateFiles(table, sanitizeRecord(table, body), allowed));
 }));
@@ -5750,6 +5791,7 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
       return;
     }
     const merged = { ...deserializeRow('billings', existing), ...req.body };
+    if (!protectAmenityBilling(merged, existing, res)) return;
     const deadlineUntouched = req.body.dueDate === undefined && req.body.noDueDate === undefined;
     if (req.body.noDueDate === true && req.body.dueDate === undefined) merged.dueDate = null;
     const validBilling = await validateAndPrepareBillingPayload(merged, res, req.params.id, deadlineUntouched && !existing.dueDate);

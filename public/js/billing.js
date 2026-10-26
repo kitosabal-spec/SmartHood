@@ -896,8 +896,8 @@ async function saveAddBilling() {
   }
 }
 
-function viewBillingDetail(id) {
-  const b = db.getOne('billings', id);
+function viewBillingDetail(id, record = null) {
+  const b = record || db.getOne('billings', id);
   if (!b) return;
   const users = getHomeowners();
   const assignedIds = getAssignedHomeownerIds(b);
@@ -905,6 +905,7 @@ function viewBillingDetail(id) {
   const amountStr = Number(b.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const monthText = b.monthly_dues_month ? formatBillingMonth(b.monthly_dues_month) : '';
   openModal(b.title, `
+    ${b.amenity_booking_id ? `<p><strong>Booking:</strong> ${escapeHtml(b.amenity_booking_id)} · <strong>Payment status:</strong> ${escapeHtml(amenityBillingStatus(b.status))}${b.archived_at ? ' (Archived)' : ''}</p>` : ''}
     <p style="color:var(--text-2);margin-bottom:16px">${escapeHtml(b.description || 'No description.')}</p>
     ${monthText ? `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center"><span style="color:var(--text-3);font-size:0.84rem">Monthly Dues Month:</span><strong style="color:var(--teal-700)">${escapeHtml(monthText)}</strong></div>` : ''}
     <div class="grid-2 mb-16">

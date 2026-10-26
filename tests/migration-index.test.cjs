@@ -2,7 +2,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { addIndex, runMigrations } = require('../src/db/migrationRunner');
+const { addIndex, runMigrations, loadMigrations } = require('../src/db/migrationRunner');
 
 function connection(metadata, exists = false) {
   const statements = [];
@@ -105,7 +105,7 @@ test('real database: all migrations, legacy 006 failure recovery, and restart', 
         pool.getConnection = getConnection;
         await runMigrations(pool);
         const [[count]] = await pool.query('SELECT COUNT(*) AS count FROM schema_migrations');
-        assert.equal(Number(count.count), 13);
+        assert.equal(Number(count.count), loadMigrations(require('node:path').join(__dirname, '../migrations')).length);
         const [[index]] = await pool.query("SELECT SUB_PART AS prefix FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'auditLog' AND index_name = 'idx_audit_actor'");
         assert.equal(index.prefix, legacy ? 191 : null);
         if (legacy) {
