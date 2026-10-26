@@ -13,3 +13,10 @@ It does not change email values, infer ownership, or create accounts. Reconcile
 reported duplicate addresses before deployment, and follow
 [the pre-deployment enrollment runbook](../docs/ADMINISTRATOR_EMAIL.md) before
 switching to the new server. Do not reset the database.
+
+TiDB uses a runner-scoped compatibility definition for 013's `normalized_email`:
+`CASE ... END` with a virtual generated column and the same full unique index.
+This avoids TiDB's unsupported `NULLIF` and `ALTER TABLE ... ADD ... STORED`
+constructs without editing the historical migration or its checksum. Failed
+partial installs resume through the existing column/index existence checks.
+See [Render/TiDB 013 recovery](../docs/PRODUCTION_MIGRATION.md#rendertidb-failure-at-migration-013-normalized-email-column).

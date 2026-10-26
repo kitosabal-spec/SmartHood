@@ -50,6 +50,18 @@ async function addColumn(connection, table, column, definition) {
   }
 }
 
+async function addAdministratorEmailColumnForTiDB(connection, table, column, definition) {
+  // 013 is already applied on MySQL/MariaDB: retain its file and checksum.
+  // TiDB disallows NULLIF in generated columns and ADD COLUMN ... STORED.
+  // CASE + VIRTUAL preserves NULL/blank handling and indexed uniqueness.
+  if (table === 'users' && column === 'normalized_email') {
+    const original = "VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin GENERATED ALWAYS AS (NULLIF(LOWER(TRIM(email)), '')) STORED";
+    if (definition !== original) throw new Error('Unexpected migration 013 normalized_email definition. Review TiDB compatibility before applying.');
+    definition = "VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin GENERATED ALWAYS AS (CASE WHEN LOWER(TRIM(email)) = '' THEN NULL ELSE LOWER(TRIM(email)) END) VIRTUAL";
+  }
+  return addColumn(connection, table, column, definition);
+}
+
 async function addIndex(connection, table, name, columns, { unique = false } = {}) {
   if (!await indexExists(connection, table, name)) {
     // Legacy tables can retain TEXT columns despite CREATE TABLE IF NOT EXISTS.
@@ -196,6 +208,9 @@ async function runMigrationsOnConnection(connection, options = {}) {
       try {
         await connection.beginTransaction();
         const helpers = { tableExists, columnExists, indexExists, constraintExists, addColumn, addIndex, addForeignKey, MigrationDataError };
+        if (isTiDB && migration.version === '013' && migration.name === 'administrator_email_verification') {
+          helpers.addColumn = addAdministratorEmailColumnForTiDB;
+        }
         // Keep historical migration files/checksums intact. This one migration
         // consists solely of triggers, which TiDB explicitly does not support.
         if (!(isTiDB && migration.version === '010' && migration.name === 'enforce_audit_immutability')) {

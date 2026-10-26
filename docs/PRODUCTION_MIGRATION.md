@@ -58,6 +58,68 @@ Use `EXPLAIN` in staging for billing-assignment, payment-status, monthly-dues, b
 
 ## Rollback
 
+### Render/TiDB failure at migration 013: normalized email column
+
+The build can succeed while startup fails with
+`ER_GENERATED_COLUMN_FUNCTION_IS_NOT_ALLOWED` on `normalized_email`.
+Migration 013's original MySQL expression uses `NULLIF(...)` and `STORED`.
+[TiDB's generated-column documentation](https://docs.pingcap.com/tidbcloud/generated-columns/#limitations)
+states that `NULLIF` is unsupported in generated columns and that a stored
+generated column cannot be added using `ALTER TABLE`.
+
+For TiDB only, the runner now supplies this equivalent definition while
+executing the unchanged migration 013:
+
+```sql
+VARCHAR(255) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin
+GENERATED ALWAYS AS (
+  CASE WHEN LOWER(TRIM(email)) = '' THEN NULL ELSE LOWER(TRIM(email)) END
+) VIRTUAL
+```
+
+The full unique index on `normalized_email` remains enforced by the database.
+Case/outer-space variants of an email still collide; NULL and blank addresses
+remain NULL. Email changes automatically update the generated value. No account,
+email, password, verification status, payment, or audit history is rewritten.
+MySQL/MariaDB keep the original definition. The original migration file and
+checksum are preserved, so already-upgraded installations continue to start.
+
+To recover the failed deployment:
+
+1. Deploy the updated `src/db/migrationRunner.js` from the repository branch
+   Render builds, then redeploy that commit. The runner skips the verification
+   columns already added by the failed attempt and completes the generated
+   column/index before recording migration 013. A new 014 migration alone would
+   not fix this failure because startup stops at 013 first.
+2. Keep the database and migration history intact. Do not drop `users`, delete
+   `schema_migrations`, manually mark 013 applied, or reset application data.
+   If duplicate-email validation fails, reconcile account ownership using the
+   enrollment runbook; the fix intentionally does not bypass uniqueness.
+3. Set distinct, persistent random `SESSION_SECRET` and `FILE_ACCESS_SECRET`
+   environment variables in Render. The missing-secret warnings are not the
+   cause of this SQL error, but missing values invalidate sessions/file links
+   after restart. Do not commit secret values.
+4. Confirm migrations 001–013 are recorded, `/api/health` returns `ok: true`,
+   and administrator email enrollment/login and audit reads work. "No open
+   ports detected" during the failed startup is a consequence of initialization
+   failing; changing `PORT` is not the fix. The npm advisories are also separate;
+   do not run the suggested forced ExcelJS downgrade to address this crash.
+
+Regression tests use the actual 013 migration and check fresh/partial/repeated
+startup, checksum validation, duplicate detection, and failure recovery. The
+opt-in local database test executes CASE/VIRTUAL SQL on disposable MariaDB
+schemas with a version-response shim to select the TiDB branch. It verifies
+insert/update/concurrent uniqueness and unchanged account data. This exercises
+real SQL semantics but does not replace verification on the deployed TiDB
+instance. Run:
+
+```powershell
+node --test tests/migration-email-compatibility.test.cjs
+$env:TEST_LOCAL_MYSQL = '1'
+node --test tests/migration-email-compatibility.test.cjs tests/migration-index.test.cjs
+Remove-Item Env:TEST_LOCAL_MYSQL
+```
+
 ### TiDB deployments: migration 010 and interrupted migration 008
 
 TiDB speaks the MySQL protocol but does not support triggers:
