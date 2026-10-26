@@ -325,7 +325,7 @@ function renderAdminDashboard() {
             return `<tr>
               <td><strong>${b.title}</strong></td>
               <td class="amount-due">₱${toMoneyNumber(b.amount).toLocaleString()}</td>
-              <td>${b.dueDate || 'N/A'}</td>
+              <td>${b.dueDate || 'No due date'}</td>
               <td>${assignedIds.length} homeowner(s)</td>
             </tr>`;
           }).join('') || '<tr><td colspan="4"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings created yet.</div></td></tr>'}

@@ -77,6 +77,44 @@ input[type="date"].filter-select {
   gap: 12px;
 }
 
+.form-group label.billing-no-due-date {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: fit-content;
+  max-width: 100%;
+  margin: 8px 0 0;
+  padding: 4px 0;
+  color: var(--text-2);
+  font-size: 0.85rem;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+  cursor: pointer;
+}
+
+.form-group .billing-no-due-date input[type="checkbox"] {
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  margin: 0;
+  padding: 0;
+  accent-color: var(--teal-600);
+  cursor: pointer;
+}
+
+.form-group .billing-no-due-date span {
+  min-width: 0;
+}
+
+.form-group input[type="date"]:disabled {
+  background-color: var(--surface-2);
+  color: var(--text-3);
+  cursor: not-allowed;
+}
+
 .billing-desc-group {
   margin-bottom: 0;
 }

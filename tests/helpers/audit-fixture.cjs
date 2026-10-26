@@ -36,7 +36,10 @@ function auditDatabase() {
       return [structuredClone(tables.billings.filter(billing => {
         let ids = billing.assignedTo || [];
         if (typeof ids === 'string') { try { ids = JSON.parse(ids); } catch { ids = []; } }
-        return billing.archived_at == null && Array.isArray(ids) && ids.includes(homeownerId);
+        const matchesMonthlyQuery = !q.includes('b.monthly_dues_month = ?') ||
+          (billing.monthly_dues_month === values[1] && billing.id !== values[3] &&
+            (billing.billing_type === values[2] || !billing.billing_type || /monthly.*dues/i.test(billing.title || '')));
+        return billing.archived_at == null && Array.isArray(ids) && ids.includes(homeownerId) && matchesMonthlyQuery;
       }))];
     }
     if (q.startsWith('SELECT b.*, ba.homeowner_id AS assigned_homeowner_id FROM billings b')) {

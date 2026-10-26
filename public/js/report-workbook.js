@@ -126,7 +126,7 @@ function buildReportsWorkbook(ExcelJS, data, logo = null) {
     'This is the complete displayed report snapshot across pagination. Values use existing calculations with two-decimal currency display; no balancing adjustments are applied. Clearance describes the selected report period, not an independently certified all-time clearance.',
   ].forEach(note => mergedLine(summary, note, { height: Math.ceil(note.length / 125) * 15 + 10 }));
 
-  sheetTable('Financial Collections', REPORT_FINANCIAL_HEADERS, [39, 22, 22, 22, 23, 20, 25],
+  sheetTable('Financial Collections', REPORT_FINANCIAL_HEADERS, [39, 22, 22, 22, 23, 20, 25, 20],
     financial.rows, [3, 4, 5],
     'Billing-account counts include repeat homeowners across billings. Not fully paid includes partial payments. Advance dues retain the existing CSV billed/collected treatment. See Summary for reconciliation.', financial.totals);
 

@@ -1560,7 +1560,7 @@ function downloadCSVFile(filename, csvContent, successMessage) {
 const REPORT_FINANCIAL_HEADERS = [
   'Billing Period / Description', 'Billing ID', 'Total Billed (PHP)',
   'Total Collected (PHP)', 'Outstanding Balance (PHP)',
-  'Fully Paid Billing Accounts', 'Not Fully Paid Billing Accounts (Includes Partial)'
+  'Fully Paid Billing Accounts', 'Not Fully Paid Billing Accounts (Includes Partial)', 'Due Date'
 ];
 
 // Preserve the historical collection export rules, including advance dues.
@@ -1579,7 +1579,7 @@ function buildReportFinancialRows({ billings, payments }) {
     const numPaid = paidHomeowners.size;
     const numUnpaid = Math.max(0, assignedIds.length - numPaid);
 
-    return [b.title || 'General Dues', String(b.id ?? ''), totalBilled, totalCollected, outstanding, numPaid, numUnpaid];
+    return [b.title || 'General Dues', String(b.id ?? ''), totalBilled, totalCollected, outstanding, numPaid, numUnpaid, b.dueDate || 'No due date'];
   });
 
   // Account for advance monthly dues payments where homeowner was excluded from billing
@@ -1603,12 +1603,13 @@ function buildReportFinancialRows({ billings, payments }) {
         totalCollected,
         0,
         numPaid,
-        0
+        0,
+        'Advance payment'
       ]);
     });
   }
 
-  const totals = ['Total', '', ...[2, 3, 4, 5, 6].map(i => rows.reduce((sum, row) => sum + row[i], 0))];
+  const totals = ['Total', '', ...[2, 3, 4, 5, 6].map(i => rows.reduce((sum, row) => sum + row[i], 0)), ''];
   return { rows, totals };
 }
 

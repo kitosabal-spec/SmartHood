@@ -85,7 +85,8 @@ async function main() {
   assert.equal(data.reportUsers.length, 2);
   assert.equal(data.analysisYear, 2027, 'analysis year follows the page, including future advance dues');
   assert.equal(data.monthlyData[1].v, 40);
-  assert.deepEqual(plain(data.financial.totals), ['Total', '', 290, 260, 60, 3, 1]);
+  assert.deepEqual(plain(data.financial.totals), ['Total', '', 290, 260, 60, 3, 1, '']);
+  assert.equal(data.financial.rows[0][7], 'No due date');
   assert.equal(data.balanceRows[0][4], 30, 'per-homeowner overpayment offsets another billing per existing rule');
   assert.equal(data.balanceRows[1][4], 0);
   assert.equal(data.financial.rows[0][6], 1, 'partial payments remain not fully paid');
@@ -113,9 +114,10 @@ async function main() {
   assert.equal(bytes.subarray(0, 3).toString('hex'), 'efbbbf');
   const csv = bytes.subarray(3).toString('utf8');
   assert.ok(csv.includes("'0001234567890123456789"), 'CSV identifier text marker retains all digits');
-  assert.ok(csv.includes('290.00,260.00,60.00,3,1\r\n'));
+  assert.ok(csv.includes('290.00,260.00,60.00,3,1,\r\n'));
+  assert.ok(csv.includes('No due date'));
   const parsed = await new ExcelJS.Workbook().csv.read(require('node:stream').Readable.from([csv]));
-  parsed.eachRow(row => assert.equal(row.values.length, 8, 'one consistent seven-column rectangle'));
+  parsed.eachRow(row => assert.equal(row.values.length, row.getCell(1).value === 'Total' ? 8 : 9, 'eight columns; ExcelJS omits the trailing empty total cell'));
   assert.equal(parsed.rowCount, 5);
   assert.match(audit.at(-1), /CSV: SmartHood_Financial_Collections_2026-01-01_to_2026-01-31.csv/);
   assert.ok(notices.some(n => n[1] === 'Download Complete'));
@@ -127,6 +129,7 @@ async function main() {
   await copy.xlsx.load(buffer);
   assert.deepEqual(copy.worksheets.map(s => s.name), ['Summary', 'Financial Collections', 'Monthly Collections', 'Payment Status', 'Complaint Status', 'Homeowner Balances']);
   assert.equal(copy.getWorksheet('Financial Collections').getCell('B8').value, '0001234567890123456789');
+  assert.equal(copy.getWorksheet('Financial Collections').getCell('H8').value, 'No due date');
   assert.equal(copy.getWorksheet('Homeowner Balances').getCell('A8').value, '=1+1');
   assert.equal(copy.getWorksheet('Homeowner Balances').getCell('C8').value, '01');
   assert.equal(copy.getWorksheet('Financial Collections').getCell('C8').type, ExcelJS.ValueType.Number);

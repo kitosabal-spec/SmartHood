@@ -76,7 +76,9 @@ to only two active homeowners. These are deliberately retained differences.
   are integers. IDs, block/lot values, and user text are string cells, never
   formula objects. Individual payment reference numbers are not included in
   these aggregate schedules.
-- CSV contains one header, financial rows, and one totals row, all seven
+- Financial CSV and Excel append a Due Date column. Undated bills show
+  **No due date**; unlinked advance payments show **Advance payment**.
+- CSV contains one header, financial rows, and one totals row, all eight
   columns wide, with a UTF-8 BOM and CRLF record endings. Quoting handles commas,
   quotes, and embedded line breaks. Currency values have two decimal places.
   Formula-like text and identifiers receive an apostrophe text marker. Some CSV

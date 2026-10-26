@@ -34,6 +34,7 @@ const { readLoginSecurityConfig } = require('./config/loginSecurity');
 const { createAuthSecurityRepository } = require('./services/authSecurityStore');
 const { createLoginSecurityAlerts } = require('./services/loginSecurityAlerts');
 const { roundMoney, billingBalance } = require('./services/financialService');
+const { resolveBillingDeadline } = require('./utils/billingDeadline');
 const { createLoginRateLimits, loginIdentifier } = require('./middleware/loginRateLimit');
 const { normalizeEmail, isValidEmail } = require('./utils/email');
 const { createAdminEmailService, AdminEmailError } = require('./services/adminEmailService');
@@ -150,7 +151,7 @@ const tableConfig = {
     booleanColumns: [],
   },
   billings: {
-    columns: ['id', 'title', 'amount', 'dueDate', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month', 'billing_type'],
+    columns: ['id', 'title', 'amount', 'dueDate', 'due_date', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month', 'billing_type'],
     jsonColumns: ['assignedTo'],
     booleanColumns: [],
   },
@@ -558,15 +559,18 @@ async function keepResidentModuleBillingRecipients(payload, res) {
   return false;
 }
 
-async function validateAndPrepareBillingPayload(payload, res, excludeBillingId = null) {
+async function validateAndPrepareBillingPayload(payload, res, excludeBillingId = null, allowMissingDeadline = false) {
   const amount = Number(payload.amount);
   if (!Number.isFinite(amount) || amount <= 0) {
     res.status(400).json({ error: 'Billing amount must be greater than ₱0.' });
     return false;
   }
   payload.amount = roundMoney(amount);
-  if (payload.dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(String(payload.dueDate))) {
-    res.status(400).json({ error: 'Due date must use YYYY-MM-DD format.' });
+  try {
+    payload.dueDate = resolveBillingDeadline(payload, { allowMissing: allowMissingDeadline });
+    delete payload.noDueDate;
+  } catch (error) {
+    res.status(400).json({ error: error.message });
     return false;
   }
   const inferredMonth = payload.monthly_dues_month || payload.billingMonth || (payload.title ? parseMonthFromTitle(payload.title) : null);
@@ -574,12 +578,16 @@ async function validateAndPrepareBillingPayload(payload, res, excludeBillingId =
   payload.billing_type = billingType;
 
   if (billingType !== BILLING_TYPE_MONTHLY_DUES) {
+    if (!String(payload.title || '').trim()) {
+      res.status(400).json({ error: 'Billing Title is required for Other Billing.' });
+      return false;
+    }
     payload.billing_type = BILLING_TYPE_OTHER;
     payload.monthly_dues_month = null;
     return true;
   }
 
-  const rawMonth = String(inferredMonth || '').trim();
+  const rawMonth = String(payload.monthly_dues_month || payload.billingMonth || (excludeBillingId ? inferredMonth : '') || '').trim();
   if (!rawMonth || !/^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonth)) {
     res.status(400).json({ error: 'Billing Month is required for Monthly Association Dues.' });
     return false;
@@ -707,6 +715,10 @@ function validateTable(req, res) {
 
 async function saveRecord(table, item) {
   if (table === 'auditLog') throw new Error('Use the server audit writer.');
+  if (table === 'billings' && item.dueDate !== undefined) {
+    item.dueDate = item.dueDate || null;
+    item.due_date = item.dueDate;
+  }
   if (!item.id) {
     const prefix = table === 'users' ? 'u' : (table === 'billings' ? 'b' : (table === 'payments' ? 'p' : 'id'));
     item.id = prefix + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
@@ -3537,7 +3549,12 @@ app.post('/api/billings/generate-monthly-dues', auditedHandler(async (req, res) 
   const monthName = monthDate.toLocaleString('default', { month: 'long', year: 'numeric' });
   const lastDayDate = new Date(yr, mo, 0);
   const defaultDueDate = `${yr}-${String(mo).padStart(2, '0')}-${String(lastDayDate.getDate()).padStart(2, '0')}`;
-  const dueDate = (req.body.dueDate || defaultDueDate).trim();
+  let dueDate;
+  try {
+    dueDate = resolveBillingDeadline(req.body, { defaultDueDate });
+  } catch (error) {
+    return res.status(400).json({ error: error.message });
+  }
   const today = new Date().toISOString().slice(0, 10);
 
   const rateSetting = await get('SELECT value FROM appSettings WHERE id = "duesRatePerSqm"');
@@ -3634,7 +3651,7 @@ app.post('/api/billings/generate-monthly-dues', auditedHandler(async (req, res) 
     const billedUserIds = createdBillings.map(b => b.assignedTo[0]);
     await createServerNotification(
       'Monthly Dues Billing',
-      `Monthly Dues for ${monthName} have been generated and assigned to your account.`,
+      `Monthly Dues for ${monthName} have been generated and assigned to your account. ${dueDate ? `Due date: ${dueDate}` : 'No due date'}.`,
       { userIds: billedUserIds }
     );
     const billingsByHomeowner = new Map(createdBillings.map(billing => [billing.assignedTo[0], billing]));
@@ -3647,7 +3664,7 @@ app.post('/api/billings/generate-monthly-dues', auditedHandler(async (req, res) 
         details: [
           { label: 'Billing', value: billing.title },
           { label: 'Amount due', value: moneyDisplay(billing.amount) },
-          { label: 'Due date', value: billing.dueDate },
+          { label: 'Due date', value: billing.dueDate || 'No due date' },
         ],
       };
     });
@@ -4835,6 +4852,12 @@ app.put('/api/:table', auditedHandler(async (req, res) => {
     if (!nextIds.has(previous.id)) await deleteRecord(table, previous.id);
   }
   for (const item of stripProfilePhotoField(table, req.body)) {
+    if (table === 'billings') {
+      const previous = previousRows.find(row => row.id === item.id);
+      const unchangedMissingDeadline = previous && !previous.dueDate && !item.dueDate && item.noDueDate === undefined;
+      if (!await keepResidentModuleBillingRecipients(item, res)) return;
+      if (!await validateAndPrepareBillingPayload(item, res, previous?.id || null, unchangedMissingDeadline)) return;
+    }
     await saveRecord(table, item);
   }
   if (complaintReplaceMeta) {
@@ -5567,7 +5590,7 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
     if (assignedHomeownerIds.length > 0) {
       await createServerNotification(
         'New Billing Created',
-        `"${body.title || 'A new billing'}" has been assigned to your account.`,
+        `"${body.title || 'A new billing'}" has been assigned to your account. ${body.dueDate ? `Due date: ${body.dueDate}` : 'No due date'}.`,
         { userIds: assignedHomeownerIds }
       );
       await emailHomeowners(assignedHomeownerIds, () => ({
@@ -5577,7 +5600,7 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
         details: [
           { label: 'Billing', value: body.title || 'Billing' },
           { label: 'Amount due', value: moneyDisplay(body.amount) },
-          body.dueDate ? { label: 'Due date', value: body.dueDate } : null,
+          { label: 'Due date', value: body.dueDate || 'No due date' },
         ].filter(Boolean),
       }));
     }
@@ -5727,7 +5750,9 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
       return;
     }
     const merged = { ...deserializeRow('billings', existing), ...req.body };
-    const validBilling = await validateAndPrepareBillingPayload(merged, res, req.params.id);
+    const deadlineUntouched = req.body.dueDate === undefined && req.body.noDueDate === undefined;
+    if (req.body.noDueDate === true && req.body.dueDate === undefined) merged.dueDate = null;
+    const validBilling = await validateAndPrepareBillingPayload(merged, res, req.params.id, deadlineUntouched && !existing.dueDate);
     if (!validBilling) return;
     req.body = merged;
   }

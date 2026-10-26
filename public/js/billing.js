@@ -187,7 +187,7 @@ function filterBillings(resetPage = true) {
       const monthText = b.monthly_dues_month ? formatBillingMonth(b.monthly_dues_month) : '';
       const billingMatch = (b.title || '').toLowerCase().includes(q)
         || (b.description || '').toLowerCase().includes(q)
-        || (b.dueDate || '').toLowerCase().includes(q)
+        || (b.dueDate || 'No due date').toLowerCase().includes(q)
         || (b.createdAt || '').toLowerCase().includes(q)
         || (b.billing_type || '').toLowerCase().includes(q)
         || (b.id || '').toLowerCase().includes(q)
@@ -204,7 +204,7 @@ function filterBillings(resetPage = true) {
     if (statusFilter && statusFilter !== 'all') {
       const colStatus = getBillingCollectionStatus(b);
       const isPaid = colStatus === 'paid' || b.status === 'paid';
-      const isOverdue = colStatus === 'overdue' || (b.dueDate && b.dueDate < getLocalDateValue() && !isPaid);
+      const isOverdue = Boolean(b.dueDate && b.dueDate < getLocalDateValue() && !isPaid);
 
       if (statusFilter === 'paid') {
         if (!isPaid) return false;
@@ -404,7 +404,7 @@ function renderBillingTable(billings = null, resetPage = false) {
         ${monthText ? `<div style="font-size:0.75rem;color:var(--teal-700);font-weight:600;margin-top:2px">Monthly Dues: ${escapeHtml(monthText)}</div>` : ''}
       </td>
       <td class="amount-due">₱${amountStr}</td>
-      <td>${escapeHtml(b.dueDate || '—')}</td>
+      <td>${escapeHtml(b.dueDate || 'No due date')}</td>
       <td>${assignedIds.length} homeowner(s)</td>
       <td>${badgeHtml(collectionStatus)}</td>
       <td><div class="td-actions">
@@ -429,6 +429,34 @@ function renderBillingTable(billings = null, resetPage = false) {
 }
 if (typeof window !== 'undefined') window.renderBillingTable = renderBillingTable;
 
+function billingDeadlineFields(prefix, defaultDueDate) {
+  return `<label for="${prefix}_due">Due Date</label>
+    <input id="${prefix}_due" type="date" value="${defaultDueDate}" required/>
+    <label class="billing-no-due-date" for="${prefix}_no_due">
+      <input id="${prefix}_no_due" type="checkbox" onchange="toggleBillingDeadline('${prefix}')"/>
+      <span>No due date</span>
+    </label>`;
+}
+
+function toggleBillingDeadline(prefix) {
+  const date = document.getElementById(`${prefix}_due`);
+  const noDueDate = document.getElementById(`${prefix}_no_due`).checked;
+  date.disabled = noDueDate;
+  date.required = !noDueDate;
+}
+
+function isValidBillingDate(value) {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return /^\d{4}-\d{2}-\d{2}$/.test(value) && Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
+function updateGeneratedDuesDeadline() {
+  const month = document.getElementById('gen_dues_month').value;
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return;
+  const [year, number] = month.split('-').map(Number);
+  document.getElementById('gen_dues_due').value = `${month}-${new Date(year, number, 0).getDate()}`;
+}
+
 function openAddBillingModal() {
   const homeowners = getBillingEligibleHomeowners();
   const currentMonthValue = getLocalMonthValue();
@@ -437,9 +465,9 @@ function openAddBillingModal() {
     <div class="form-group"><label>Title *</label><input id="bf_title" value="Monthly Association Dues" placeholder="e.g. Monthly Dues – April"/></div>
     <div class="grid-2">
       <div class="form-group"><label>Amount (₱) *</label><input id="bf_amount" type="number" placeholder="1500"/></div>
-      <div class="form-group"><label>Due Date *</label><input id="bf_due" type="date" value="${defaultDueDate}"/></div>
+      <div class="form-group">${billingDeadlineFields('bf', defaultDueDate)}</div>
     </div>
-    <div class="form-group"><label>Billing Month *</label><input id="bf_month" type="month" value="${currentMonthValue}"/></div>
+    <div class="form-group"><label>Billing Month *</label><input id="bf_month" type="month" value="${currentMonthValue}" required/></div>
     <div class="form-group"><label>Description</label><textarea id="bf_desc" placeholder="Optional description..."></textarea></div>
     <div class="form-group">
       <label>Assign To</label>
@@ -488,7 +516,7 @@ function openProfessionalBillingModal() {
         </div>
         <div class="form-group" id="bf_month_group">
           <label>Billing Month *</label>
-          <input id="bf_month" type="month" value="${currentMonthValue}"/>
+          <input id="bf_month" type="month" value="${currentMonthValue}" required/>
         </div>
         <div class="grid-2 billing-compact-grid">
           <div class="form-group">
@@ -497,8 +525,7 @@ function openProfessionalBillingModal() {
             <div class="billing-helper-text" id="bf_amountHint"></div>
           </div>
           <div class="form-group">
-            <label>Due Date *</label>
-            <input id="bf_due" type="date" value="${defaultDueDate}"/>
+            ${billingDeadlineFields('bf', defaultDueDate)}
           </div>
         </div>
         <div class="form-group billing-desc-group" id="bf_desc_group">
@@ -677,6 +704,8 @@ function updateBillingTypeFields() {
 
   if (titleGroup) titleGroup.style.display = isMonthly ? 'none' : '';
   if (monthGroup) monthGroup.style.display = isMonthly ? '' : 'none';
+  const monthInput = document.getElementById('bf_month');
+  if (monthInput) monthInput.required = isMonthly;
   if (titleInput) {
     if (isMonthly) {
       titleInput.value = BILLING_TYPE_MONTHLY_DUES;
@@ -748,6 +777,7 @@ async function saveAddBilling() {
     const isMonthlyDues = billingType === BILLING_TYPE_MONTHLY_DUES;
     const enteredTitle = (document.getElementById('bf_title')?.value || '').trim();
     const due = (document.getElementById('bf_due')?.value || '').trim();
+    const noDueDate = document.getElementById('bf_no_due')?.checked === true;
     const rawMonthInput = (document.getElementById('bf_month')?.value || '').trim();
     const billingMonth = isMonthlyDues ? formatBillingMonth(rawMonthInput) : '';
     const description = (document.getElementById('bf_desc')?.value || '').trim();
@@ -757,8 +787,8 @@ async function saveAddBilling() {
       return;
     }
 
-    if (!due) {
-      showToast('error', 'Missing Due Date', 'Due Date is required.');
+    if (!noDueDate && !isValidBillingDate(due)) {
+      showToast('error', 'Invalid Due Date', 'Select a valid due date or choose No due date.');
       return;
     }
 
@@ -767,7 +797,7 @@ async function saveAddBilling() {
       return;
     }
 
-    if (isMonthlyDues && !billingMonth) {
+    if (isMonthlyDues && (!billingMonth || !/^\d{4}-(0[1-9]|1[0-2])$/.test(rawMonthInput))) {
       showToast('error', 'Invalid Month', 'Please select a valid billing month.');
       return;
     }
@@ -829,7 +859,8 @@ async function saveAddBilling() {
       id: db.newId('b'),
       title: finalTitle,
       amount,
-      dueDate: due,
+      dueDate: noDueDate ? null : due,
+      noDueDate,
       description: finalDesc,
       assignedTo: checked,
       status: 'active',
@@ -878,7 +909,7 @@ function viewBillingDetail(id) {
     ${monthText ? `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center"><span style="color:var(--text-3);font-size:0.84rem">Monthly Dues Month:</span><strong style="color:var(--teal-700)">${escapeHtml(monthText)}</strong></div>` : ''}
     <div class="grid-2 mb-16">
       <div class="report-summary-item"><div class="r-val">₱${amountStr}</div><div class="r-lbl">Amount</div></div>
-      <div class="report-summary-item"><div class="r-val">${escapeHtml(b.dueDate || '—')}</div><div class="r-lbl">Due Date (Created: ${escapeHtml(b.createdAt || '—')})</div></div>
+      <div class="report-summary-item"><div class="r-val">${escapeHtml(b.dueDate || 'No due date')}</div><div class="r-lbl">Due Date (Created: ${escapeHtml(b.createdAt || '—')})</div></div>
     </div>
     <strong style="font-size:0.82rem;color:var(--text-3)">ASSIGNED TO (${assignedNames.length})</strong>
     <div style="margin-top:8px;max-height:180px;overflow-y:auto">
@@ -917,36 +948,7 @@ function confirmDeleteBilling(id) {
 }
 
 async function autoGenerateMonthlyDues() {
-  if (!canManageBilling()) return;
-  const month = new Date().toLocaleString('default', { month: 'long' });
-  const year = new Date().getFullYear();
-  const title = `Monthly Dues – ${month} ${year}`;
-  const homeowners = getBillingEligibleHomeowners();
-  if (!homeowners.length) {
-    showToast('warning', 'No Eligible Accounts', 'No homeowner accounts have the Resident Portal module.');
-    return;
-  }
-  const existing = db.get('billings').find(b => b.title === title);
-  if (existing) { showToast('warning', 'Already Exists', `Dues for ${month} already created.`); return; }
-  const lastDay = getLocalDateValue(new Date(year, new Date().getMonth() + 1, 0));
-  const bill = { id: db.newId('b'), title, amount: 1500, dueDate: lastDay, description: 'Auto-generated monthly dues.', assignedTo: homeowners.map(u => u.id), status: 'active', createdAt: getLocalDateValue() };
-  try {
-    showLoading();
-    await db.save('billings', bill);
-    await api.loadAll();
-    if (canManageBilling()) {
-      await syncHomeownerBalances();
-      await api.loadAll();
-    }
-    logAction(`Auto-generated monthly dues: ${title}`);
-    hideLoading();
-    showToast('success', 'Generated', `${title} created for ${homeowners.length} homeowners.`);
-    renderBilling();
-  } catch (err) {
-    hideLoading();
-    console.error(err);
-    showToast('error', 'Failed', err.message || 'Could not auto-generate dues.');
-  }
+  return autoGenerateLotAreaMonthlyDues();
 }
 
 function autoGenerateLotAreaMonthlyDues() {
@@ -962,8 +964,9 @@ function autoGenerateLotAreaMonthlyDues() {
       </p>
       <div class="form-group">
         <label style="font-weight:700">Select Month *</label>
-        <input type="month" id="gen_dues_month" class="form-control" value="${currentMonthValue}" style="width:100%;padding:10px;font-size:1rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text)" />
+        <input type="month" id="gen_dues_month" class="form-control" value="${currentMonthValue}" required onchange="updateGeneratedDuesDeadline()" style="width:100%;padding:10px;font-size:1rem;border-radius:var(--radius);border:1px solid var(--border);background:var(--surface);color:var(--text)" />
       </div>
+      <div class="form-group">${billingDeadlineFields('gen_dues', `${currentMonthValue}-${new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate()}`)}</div>
       <div style="background:var(--surface-2);border-radius:var(--radius);padding:12px;margin-top:14px;border:1px solid var(--border);font-size:0.82rem;color:var(--text-3)">
         <div style="font-weight:700;color:var(--text-2);margin-bottom:4px">Smart Dues Generation Rules:</div>
         <div>✓ <strong>Approved Advance Payments:</strong> Excluded from billing automatically.</div>
@@ -981,8 +984,15 @@ async function executeAutoGenerateMonthlyDues() {
   if (!canManageBilling()) return;
   const monthInput = document.getElementById('gen_dues_month');
   const selectedMonth = monthInput ? monthInput.value.trim() : '';
-  if (!selectedMonth || !/^\d{4}-\d{2}$/.test(selectedMonth)) {
+  if (!selectedMonth || !/^\d{4}-(0[1-9]|1[0-2])$/.test(selectedMonth)) {
     showToast('error', 'Select Month', 'Please select a valid month.');
+    return;
+  }
+
+  const noDueDate = document.getElementById('gen_dues_no_due')?.checked === true;
+  const dueDate = noDueDate ? null : (document.getElementById('gen_dues_due')?.value || '').trim();
+  if (!noDueDate && !isValidBillingDate(dueDate)) {
+    showToast('error', 'Invalid Due Date', 'Select a valid due date or choose No due date.');
     return;
   }
 
@@ -990,7 +1000,7 @@ async function executeAutoGenerateMonthlyDues() {
   try {
     const res = await api.request('/api/billings/generate-monthly-dues', {
       method: 'POST',
-      body: JSON.stringify({ month: selectedMonth }),
+      body: JSON.stringify({ month: selectedMonth, dueDate, noDueDate }),
     });
 
     await api.loadAll();
@@ -1344,7 +1354,7 @@ function manualBillingOptionLabel(billing) {
   const homeownerId = document.getElementById('manual_payment_homeowner')?.value;
   const remaining = getBillingPaymentSummary(billing, homeownerId, db.get('payments')).remainingBalance;
   const amount = remaining.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-  return `${type} — ${period} — ₱${amount} remaining — Due ${billing.dueDate || '—'}`;
+  return `${type} — ${period} — ₱${amount} remaining — ${billing.dueDate ? `Due ${billing.dueDate}` : 'No due date'}`;
 }
 
 function openCreateManualPaymentModal() {
@@ -1808,7 +1818,7 @@ function viewPaymentDetail(id) {
           <tr><td style="padding:5px 0;color:var(--text-3)">Contact Number:</td><td>${escapeHtml(ho?.contact || '—')}</td></tr>
           <tr><td style="padding:5px 0;color:var(--text-3)">Billing Title:</td><td><strong>${escapeHtml(bill ? bill.title : (p.monthly_dues_month ? `Monthly Dues - ${formatBillingMonth(p.monthly_dues_month)}` : 'N/A'))}</strong></td></tr>
           ${p.monthly_dues_month ? `<tr><td style="padding:5px 0;color:var(--text-3)">Monthly Dues Month:</td><td><strong>${escapeHtml(formatBillingMonth(p.monthly_dues_month))}</strong>${!p.billingId ? ' <span class="badge badge-teal" style="font-size:0.75rem;padding:2px 6px">Advance Payment</span>' : ''}</td></tr>` : ''}
-          <tr><td style="padding:5px 0;color:var(--text-3)">Due Date:</td><td>${escapeHtml(bill?.dueDate || '—')}</td></tr>
+          <tr><td style="padding:5px 0;color:var(--text-3)">Due Date:</td><td>${escapeHtml(bill ? (bill.dueDate || 'No due date') : '—')}</td></tr>
           <tr><td style="padding:5px 0;color:var(--text-3)">Payment Method:</td><td><span class="badge ${p.payment_method === 'Cash' ? 'badge-cash' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span></td></tr>
           ${isManual ? `<tr><td style="padding:5px 0;color:var(--text-3)">Recorded By:</td><td>Admin${recordedBy ? ` — ${escapeHtml(recordedBy.name)}` : ''}</td></tr><tr><td style="padding:5px 0;color:var(--text-3)">Payment Source:</td><td><span class="badge badge-teal">Manual / Admin Recorded</span></td></tr>` : ''}
           <tr><td style="padding:5px 0;color:var(--text-3)">${isManual ? 'Reference / Receipt #:' : 'GCash Reference #:'}</td><td><code style="font-weight:800;font-size:0.95rem;color:var(--gcash-blue)">${escapeHtml(p.refNum || '—')}</code></td></tr>
@@ -2236,7 +2246,7 @@ function renderHOBilling() {
                 <td class="amount-due">₱${summary.originalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td class="amount-paid">₱${summary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
                 <td class="amount-due">₱${summary.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td>${escapeHtml(b.dueDate || '—')}${overdue ? ' <span style="color:var(--red-600);font-weight:700">— Overdue</span>' : ''}</td>
+                <td>${escapeHtml(b.dueDate || 'No due date')}${overdue ? ' <span style="color:var(--red-600);font-weight:700">— Overdue</span>' : ''}</td>
                 <td>${statusBadge}</td>
                 <td>${actionBtn}</td>
               </tr>`;
@@ -2270,7 +2280,7 @@ function openPayNowModal(billingIdOrOpts) {
         amount = Number(bill.amount || amount);
         title = bill.title || title;
         description = bill.description || description;
-        dueDate = bill.dueDate || dueDate;
+        dueDate = bill.dueDate || 'No due date';
         month = bill.monthly_dues_month || parseMonthFromTitle(bill.title) || month;
       }
     }
@@ -2281,7 +2291,7 @@ function openPayNowModal(billingIdOrOpts) {
     amount = Number(bill.amount || 0);
     title = bill.title;
     description = bill.description || '';
-    dueDate = bill.dueDate || '—';
+    dueDate = bill.dueDate || 'No due date';
     month = bill.monthly_dues_month || parseMonthFromTitle(bill.title);
   } else {
     showToast('error', 'Error', 'Invalid billing selection.');
@@ -2971,22 +2981,22 @@ function renderHOPayNow() {
       status = 'paid';
       paidMonthsCount++;
       amountDue = 0;
-      dueDateDisplay = matchingBill?.dueDate || (paidPayment?.payment_date ? `Paid ${paidPayment.payment_date}` : 'Paid');
+      dueDateDisplay = matchingBill ? (matchingBill.dueDate || 'No due date') : (paidPayment?.payment_date ? `Paid ${paidPayment.payment_date}` : 'Paid');
     } else if (pendingPayment) {
       status = 'pending';
       pendingCount++;
       amountDue = billingSummary ? billingSummary.remainingBalance : Number(pendingPayment.amount || defaultMonthlyDues);
-      dueDateDisplay = matchingBill?.dueDate || (pendingPayment.submittedAt ? `Submitted ${pendingPayment.submittedAt}` : 'Under Review');
+      dueDateDisplay = matchingBill ? (matchingBill.dueDate || 'No due date') : (pendingPayment.submittedAt ? `Submitted ${pendingPayment.submittedAt}` : 'Under Review');
       if (billingSummary) totalBilledOutstanding += billingSummary.remainingBalance;
     } else if (billingSummary && billingSummary.status === 'partially_paid') {
       status = 'partially_paid';
       amountDue = billingSummary.remainingBalance;
-      dueDateDisplay = matchingBill.dueDate || '—';
+      dueDateDisplay = matchingBill.dueDate || 'No due date';
       totalBilledOutstanding += billingSummary.remainingBalance;
     } else if (matchingBill) {
       status = 'pay_now';
       amountDue = billingSummary ? billingSummary.remainingBalance : Number(matchingBill.amount || 0);
-      dueDateDisplay = matchingBill.dueDate || '—';
+      dueDateDisplay = matchingBill.dueDate || 'No due date';
       totalBilledOutstanding += amountDue;
     } else {
       // Month is not billed yet by administrator
