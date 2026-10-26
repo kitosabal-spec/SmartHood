@@ -1,7 +1,7 @@
 'use strict';
 
 const AMENITIES = ['Basketball Court', 'Clubhouse', 'Chairs', 'Tables', 'Ladder'];
-const OCCUPIED = ['Pending', 'Approved'];
+const ACTIVE = ['Pending', 'Approved'];
 
 function unavailableSettings(value) {
   let settings;
@@ -27,12 +27,15 @@ function createAmenityService({ get, all }) {
     const row = await get('SELECT id FROM amenity_availability_lock WHERE id = 1 FOR UPDATE');
     if (!row) throw new Error('Amenity availability migration is missing.');
   }
-  async function availability() {
-    // Read closures and occupancy in a single statement/snapshot.
+  async function availability({ canManage = false, homeownerId = '' } = {}) {
+    // Read closures and occupancy in a single statement/snapshot. Pending rows
+    // are private to their owner and booking managers, even in this summary.
     const rows = await all(`SELECT b.amenity, b.bookingDate, b.status, s.value AS unavailableValue
       FROM (SELECT 1 AS singleton) seed
       LEFT JOIN appSettings s ON s.id = 'amenityUnavailable'
-      LEFT JOIN amenityBookings b ON b.archived_at IS NULL AND b.status IN ('Pending', 'Approved')`);
+      LEFT JOIN amenityBookings b ON b.archived_at IS NULL
+        AND (b.status = 'Approved' OR (b.status = 'Pending' AND (? = 1 OR b.homeownerId = ?)))`,
+    [canManage ? 1 : 0, homeownerId]);
     return {
       bookings: rows.filter(row => row.amenity).map(({ amenity, bookingDate, status }) => ({ amenity, bookingDate, status })),
       unavailable: unavailableSettings(rows[0]?.unavailableValue),
@@ -49,17 +52,19 @@ function createAmenityService({ get, all }) {
       res.status(400).json({ error: 'Select a valid amenity, date, homeowner, status, and time range.' });
       return false;
     }
-    if (!OCCUPIED.includes(booking.status)) return true;
+    if (!ACTIVE.includes(booking.status)) return true;
     const setting = await get("SELECT value FROM appSettings WHERE id = 'amenityUnavailable' FOR UPDATE");
     if (isUnavailable(unavailableSettings(setting?.value), booking.amenity, date)) {
       res.status(409).json({ error: 'This amenity is unavailable on that date. Choose another date.' });
       return false;
     }
+    // Pending requests compete for approval; only an approved booking reserves
+    // the date. The caller holds the mutex through this current read and commit.
     const conflict = await get(`SELECT id FROM amenityBookings
       WHERE amenity = ? AND bookingDate = ? AND id <> ? AND archived_at IS NULL
-        AND status IN ('Pending', 'Approved') LIMIT 1 FOR UPDATE`, [booking.amenity, date, ignoreId]);
+        AND status = 'Approved' LIMIT 1 FOR UPDATE`, [booking.amenity, date, ignoreId]);
     if (conflict) {
-      res.status(409).json({ error: 'This amenity is already booked or pending for that entire date. Choose another date.' });
+      res.status(409).json({ error: 'This amenity is already booked for that entire date. Choose another date.' });
       return false;
     }
     return true;

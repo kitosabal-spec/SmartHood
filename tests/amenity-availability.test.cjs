@@ -30,7 +30,9 @@ function amenityPool(initial = []) {
       return [[{ id: 1 }]];
     }
     if (q.startsWith('SELECT b.amenity, b.bookingDate')) {
-      const active = state.bookings.filter(b => !b.archived_at && ['Pending', 'Approved'].includes(b.status));
+      assert.match(q, /b.status = 'Pending' AND \(\? = 1 OR b.homeownerId = \?\)/);
+      const active = state.bookings.filter(b => !b.archived_at && (b.status === 'Approved' ||
+        (b.status === 'Pending' && (values[0] === 1 || b.homeownerId === values[1]))));
       return [(active.length ? active : [{}]).map(b => ({ amenity: b.amenity, bookingDate: b.bookingDate, status: b.status, unavailableValue: state.settings }))];
     }
     if (q.startsWith('SELECT value FROM appSettings')) return [state.settings ? [{ value: state.settings }] : []];
@@ -41,7 +43,8 @@ function amenityPool(initial = []) {
       if (q.includes('WHERE amenity = ?')) {
         assert.match(q, /FOR UPDATE$/, 'conflict checks must use current locking reads');
         assert.ok(tx?.releaseLock, 'lock must be acquired before checking conflicts');
-        rows = rows.filter(b => b.amenity === values[0] && b.bookingDate === values[1] && b.id !== values[2] && ['Pending', 'Approved'].includes(b.status));
+        assert.match(q, /AND status = 'Approved'/);
+        rows = rows.filter(b => b.amenity === values[0] && b.bookingDate === values[1] && b.id !== values[2] && b.status === 'Approved');
         // Let another HTTP request reach its own transaction before the write.
         await new Promise(resolve => setTimeout(resolve, 10));
       } else if (q.includes('homeownerId = ?')) rows = rows.filter(b => b.homeownerId === values[0]);
@@ -99,12 +102,14 @@ async function setup(t, initial) {
   return { pool, site, call };
 }
 
-test('two residents and admin share occupancy without leaking private booking details; reads remain scoped', async t => {
+test('only the submitter and admin see pending availability; approved dates are shared and reads remain scoped', async t => {
   const { call } = await setup(t, [booking('approved', { status: 'Approved' }), booking('pending', { bookingDate: '2026-10-14' })]);
   const views = await Promise.all(['a', 'b', 'admin'].map(who => call(who, 'GET', '/api/amenity-availability')));
   assert.ok(views.every(v => v.status === 200));
-  assert.deepEqual(views[0].body, views[1].body);
-  assert.deepEqual(views[1].body, views[2].body);
+  assert.deepEqual(views[0].body, views[2].body);
+  assert.deepEqual(views[1].body.bookings, [
+    { amenity: 'Basketball Court', bookingDate: '2026-10-08', status: 'Approved' },
+  ]);
   assert.deepEqual(views[0].body.bookings, [
     { amenity: 'Basketball Court', bookingDate: '2026-10-08', status: 'Approved' },
     { amenity: 'Basketball Court', bookingDate: '2026-10-14', status: 'Pending' },
@@ -121,17 +126,64 @@ test('two residents and admin share occupancy without leaking private booking de
   assert.equal((await call('anonymous', 'GET', '/api/amenity-availability')).status, 401);
 });
 
-test('server rejects another homeowner’s approved AND pending whole-date bookings despite different times', async t => {
+test('admin and two signed-in residents: private pending calendars, competing requests, then Booked for everyone', async t => {
+  const { call, pool } = await setup(t, []);
+  async function calendar(who, expected) {
+    // Query parameters must not let a resident impersonate an owner/manager.
+    const response = await call(who, 'GET', '/api/amenity-availability?canManage=1&homeownerId=home-1');
+    assert.equal(response.status, 200);
+    const { context, cache, elements } = browserContext();
+    cache.amenityAvailability = response.body.bookings;
+    cache.amenityAvailabilityRules[0].value = JSON.stringify(response.body.unavailable);
+    const admin = who === 'admin';
+    await context[admin ? 'renderAdminAmenityCalendar' : 'renderAmenityCalendar']();
+    const html = elements[admin ? 'adminAmenityCalendar' : 'amenityCalendar'].innerHTML;
+    const cell = html.match(/<button[^>]*2026-10-08[^]*?<\/button>/)?.[0];
+    assert.ok(cell, 'target date must be rendered');
+    assert.match(cell, new RegExp(`<small>${expected}</small>`));
+    for (const row of response.body.bookings) {
+      assert.deepEqual(Object.keys(row).sort(), ['amenity', 'bookingDate', 'status']);
+    }
+    return response.body.bookings;
+  }
+  assert.equal((await call('a', 'POST', '/api/amenityBookings', booking('a-request'))).status, 201);
+  await calendar('a', 'Pending');
+  await calendar('admin', 'Pending');
+  assert.deepEqual(await calendar('b', 'Free'), []);
+  assert.equal((await call('b', 'POST', '/api/amenityBookings', booking('b-request'))).status, 201);
+  assert.equal((await calendar('a', 'Pending')).length, 1);
+  assert.equal((await calendar('b', 'Pending')).length, 1);
+  assert.equal((await calendar('admin', 'Pending')).length, 2);
+  for (const [who, ownId] of [['a', 'a-request'], ['b', 'b-request']]) {
+    for (const route of ['/api/amenityBookings', '/api/paged/amenityBookings', '/api/data']) {
+      const { body, status } = await call(who, 'GET', route);
+      assert.equal(status, 200);
+      const rows = body.amenityBookings || body.items || body;
+      assert.deepEqual(rows.map(row => row.id), [ownId]);
+    }
+  }
+  assert.equal((await call('admin', 'PUT', '/api/amenityBookings/a-request', { status: 'Approved' })).status, 200);
+  for (const who of ['a', 'b', 'admin']) await calendar(who, 'Booked');
+  assert.equal((await call('admin', 'PUT', '/api/amenityBookings/b-request', { status: 'Approved' })).status, 409);
+  assert.equal(pool.state.bookings.find(row => row.id === 'b-request').status, 'Pending');
+  assert.equal((await call('b', 'POST', '/api/amenityBookings', booking('late'))).status, 409);
+  // Direct admin creates and moving an approved booking also use the server guard.
+  assert.equal((await call('admin', 'POST', '/api/amenityBookings', booking('direct', { status: 'Approved' }))).status, 409);
+  assert.equal((await call('admin', 'POST', '/api/amenityBookings', booking('different', { status: 'Approved', bookingDate: '2026-10-09' }))).status, 201);
+  assert.equal((await call('admin', 'PUT', '/api/amenityBookings/different', { bookingDate: '2026-10-08' })).status, 409);
+});
+
+test('server allows other pending requests but rejects approved whole-date conflicts despite different times', async t => {
   for (const status of ['Approved', 'Pending']) await t.test(status, async t => {
     const { call, pool } = await setup(t, [booking('existing', { status })]);
     const result = await call('b', 'POST', '/api/amenityBookings', booking('attempt', { startTime: '17:00', endTime: '18:00' }));
-    assert.equal(result.status, 409);
-    assert.match(result.body.error, /booked or pending.*entire date/);
-    assert.equal(pool.state.bookings.length, 1);
+    assert.equal(result.status, status === 'Approved' ? 409 : 201);
+    if (status === 'Approved') assert.match(result.body.error, /booked.*entire date/);
+    assert.equal(pool.state.bookings.length, status === 'Approved' ? 1 : 2);
   });
 });
 
-test('simultaneous submissions across two app instances sharing a database admit exactly one', async t => {
+test('simultaneous pending submissions across two app instances both succeed', async t => {
   const { call, pool, site } = await setup(t, []);
   const second = await fixture(t, { pool, emailConfigured: false });
   const login = await second.login('second@example.test', password);
@@ -139,26 +191,34 @@ test('simultaneous submissions across two app instances sharing a database admit
     cookie: login.headers.get('set-cookie').split(';')[0], 'Content-Type': 'application/json',
   }, body: JSON.stringify(booking('second')) });
   const [first, other] = await Promise.all([call('a', 'POST', '/api/amenityBookings', booking('first')), competing]);
-  assert.deepEqual([first.status, other.status].sort(), [201, 409], JSON.stringify(site.errors));
-  assert.equal(pool.state.bookings.length, 1);
+  assert.deepEqual([first.status, other.status].sort(), [201, 201], JSON.stringify(site.errors));
+  assert.equal(pool.state.bookings.length, 2);
   assert.equal(pool.state.locks, 2);
 });
 
-test('approval rejects approved/pending conflicts, including legacy duplicates and partial updates', async t => {
+test('approval rejects only approved conflicts, including partial updates', async t => {
   for (const status of ['Approved', 'Pending']) await t.test(status, async t => {
     const { call, pool } = await setup(t, [booking('own'), booking('other', { homeownerId: 'home-2', status })]);
-    assert.equal((await call('admin', 'PUT', '/api/amenityBookings/own', { status: 'Approved' })).status, 409);
-    assert.equal(pool.state.bookings[0].status, 'Pending');
+    assert.equal((await call('admin', 'PUT', '/api/amenityBookings/own', { status: 'Approved' })).status, status === 'Approved' ? 409 : 200);
+    assert.equal(pool.state.bookings[0].status, status === 'Approved' ? 'Pending' : 'Approved');
     assert.equal((await call('admin', 'PUT', '/api/amenityBookings/other', { status: 'Rejected' })).status, 200);
     assert.equal((await call('admin', 'PUT', '/api/amenityBookings/own', { status: 'Approved' })).status, 200);
   });
 });
 
-test('simultaneous approvals cannot occupy the same date', async t => {
-  const { call, pool } = await setup(t, [booking('one', { status: 'Rejected' }), booking('two', { status: 'Rejected' })]);
-  const results = await Promise.all(['one', 'two'].map(id => call('admin', 'PUT', `/api/amenityBookings/${id}`, { status: 'Approved' })));
+test('simultaneous approvals across app instances cannot occupy the same date', async t => {
+  const { call, pool } = await setup(t, [booking('one'), booking('two', { homeownerId: 'home-2' })]);
+  const second = await fixture(t, { pool, emailConfigured: false });
+  const login = await second.login('registered-admin@example.test', password);
+  const results = await Promise.all([
+    call('admin', 'PUT', '/api/amenityBookings/one', { status: 'Approved' }),
+    fetch(second.base + '/api/amenityBookings/two', { method: 'PUT', headers: {
+      cookie: login.headers.get('set-cookie').split(';')[0], 'Content-Type': 'application/json',
+    }, body: JSON.stringify({ status: 'Approved' }) }),
+  ]);
   assert.deepEqual(results.map(r => r.status).sort(), [200, 409]);
   assert.equal(pool.state.bookings.filter(b => b.status === 'Approved').length, 1);
+  assert.equal(pool.state.bookings.filter(b => b.status === 'Pending').length, 1);
 });
 
 test('rejection frees the date, spoofed status/owner are ignored, and residents cannot review or bulk replace', async t => {
@@ -221,7 +281,7 @@ function browserContext(records = []) {
   return { context, elements, events, cache };
 }
 
-test('both rendered calendars show identical Booked/Pending dates while My Requests contains only the resident’s rows', async () => {
+test('calendars render scoped availability while My Requests contains only the resident’s rows', async () => {
   const { context, elements } = browserContext([booking('private'), booking('own', { homeownerId: 'home-2', amenity: 'Clubhouse' })]);
   await context.renderAmenityCalendar();
   await context.renderAdminAmenityCalendar();
@@ -234,6 +294,27 @@ test('both rendered calendars show identical Booked/Pending dates while My Reque
   const requests = elements.contentArea.innerHTML.split('My Requests')[1];
   assert.match(requests, /Clubhouse/);
   assert.doesNotMatch(requests, /Basketball Court|Private party|Private remarks/);
+});
+
+test('frontend allows pending submissions and approval alongside other pending requests, but blocks approved conflicts', () => {
+  const { context, elements, events, cache } = browserContext([booking('one'), booking('two', { homeownerId: 'home-2' })]);
+  context.openConfirm = title => events.push(title);
+  for (const [id, value] of Object.entries({ ab_date: '2026-10-14', ab_start: '09:00', ab_end: '10:00', ab_purpose: 'Practice' })) {
+    elements[id] = { value };
+  }
+  context.confirmSubmitAmenityBooking();
+  assert.deepEqual(events, ['Submit Amenity Request']);
+  events.length = 0;
+  context.confirmApproveAmenityBooking('one');
+  assert.deepEqual(events, ['Approve Booking']);
+  events.length = 0;
+  cache.amenityBookings[1].status = 'Approved';
+  context.confirmApproveAmenityBooking('one');
+  assert.deepEqual(events, ['error:Schedule Conflict']);
+  events.length = 0;
+  elements.ab_date.value = '2026-10-08';
+  context.confirmSubmitAmenityBooking();
+  assert.deepEqual(events, ['error:Not Available']);
 });
 
 test('browser awaits persistence, refreshes on success, and preserves cached status on failure', async () => {

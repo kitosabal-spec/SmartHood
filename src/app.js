@@ -4660,7 +4660,10 @@ app.get('/api/amenity-availability', asyncHandler(async (req, res) => {
   const allowed = await checkTableAccess(req, res, 'amenityBookings', 'read');
   if (!allowed) return;
   res.setHeader('Cache-Control', 'private, no-store');
-  res.json(await amenityService.availability());
+  res.json(await amenityService.availability({
+    canManage: allowed.role === 'admin' || userHasPermission(allowed, 'amenities'),
+    homeownerId: requesterHomeownerId(allowed),
+  }));
 }));
 
 app.get('/api/:table', asyncHandler(async (req, res) => {

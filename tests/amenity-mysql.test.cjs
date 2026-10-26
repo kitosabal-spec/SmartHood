@@ -32,7 +32,7 @@ test('real MySQL: current reads under the mutex prevent conflicting commits acro
       bookingDate: '2026-10-08', status, startTime: '09:00', endTime: '10:00' });
     let arrived = 0;
     let ready;
-    const barrier = new Promise(resolve => { ready = resolve; });
+    let barrier = new Promise(resolve => { ready = resolve; });
     async function write(row, { update = false, synchronize = false, fail = false } = {}) {
       const connection = await pool.getConnection();
       const service = createAmenityService({
@@ -65,8 +65,22 @@ test('real MySQL: current reads under the mutex prevent conflicting commits acro
       } finally { connection.release(); }
     }
     const results = await Promise.all([write(record('resident-a'), { synchronize: true }), write(record('resident-b'), { synchronize: true })]);
-    assert.deepEqual(results.sort(), [200, 409]);
-    const [[winner]] = await pool.query('SELECT * FROM amenityBookings');
+    assert.deepEqual(results.sort(), [200, 200]);
+    const service = createAmenityService({ all: async (sql, values) => (await pool.execute(sql, values))[0] });
+    assert.equal((await service.availability({ homeownerId: 'resident-a' })).bookings.length, 1);
+    assert.equal((await service.availability({ homeownerId: 'resident-b' })).bookings.length, 1);
+    assert.equal((await service.availability({ homeownerId: 'unrelated' })).bookings.length, 0);
+    assert.equal((await service.availability({ canManage: true })).bookings.length, 2);
+    // Both approvals establish a stale snapshot before taking the shared lock.
+    arrived = 0;
+    barrier = new Promise(resolve => { ready = resolve; });
+    const approvals = await Promise.all(['resident-a', 'resident-b'].map(id =>
+      write(record(id, 'Approved'), { update: true, synchronize: true })));
+    assert.deepEqual(approvals.sort(), [200, 409]);
+    const [approved] = await pool.query("SELECT * FROM amenityBookings WHERE status = 'Approved'");
+    assert.equal(approved.length, 1);
+    const winner = approved[0];
+    assert.equal((await service.availability({ homeownerId: 'unrelated' })).bookings[0].status, 'Approved');
     assert.equal(await write(record('another', 'Approved')), 409);
     assert.equal(await write({ ...winner, status: 'Approved' }, { update: true }), 200);
     assert.equal(await write(record('another')), 409);

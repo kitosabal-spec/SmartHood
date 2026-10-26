@@ -60,15 +60,15 @@ function amenityBookingConflicts(amenity, bookingDate, ignoreId = null) {
     booking.id !== ignoreId &&
     booking.amenity === amenity &&
     booking.bookingDate === bookingDate &&
-    ['Pending', 'Approved'].includes(booking.status)
+    booking.status === 'Approved'
   );
 }
 
 function getAmenityDayStatus(amenity, dateValue) {
   if (!db.getOne('amenityAvailabilityRules', 'amenityUnavailable')) return 'Unknown';
-  if (getAmenityUnavailableRule(amenity, dateValue)) return 'Unavailable';
   const bookings = db.get('amenityAvailability').filter(booking => booking.amenity === amenity && booking.bookingDate === dateValue);
   if (bookings.some(booking => booking.status === 'Approved')) return 'Booked';
+  if (getAmenityUnavailableRule(amenity, dateValue)) return 'Unavailable';
   if (bookings.some(booking => booking.status === 'Pending')) return 'Pending';
   return 'Free';
 }
@@ -169,7 +169,7 @@ function updateAmenityAvailabilityNote() {
     return;
   }
   const unavailableRule = getAmenityUnavailableRule(amenity, bookingDate);
-  note.textContent = unavailableRule
+  note.textContent = unavailableRule && status !== 'Booked'
     ? `${amenity} is unavailable on ${formatAmenityDate(bookingDate)}. ${unavailableRule.reason || ''}`.trim()
     : status === 'Free'
       ? `${amenity} is available on ${formatAmenityDate(bookingDate)}.`
@@ -267,8 +267,8 @@ function confirmSubmitAmenityBooking() {
     showToast('error', 'Invalid Time', 'End time must be later than start time.');
     return;
   }
-  if (['Booked', 'Pending'].includes(getAmenityDayStatus(amenity, bookingDate))) {
-    showToast('error', 'Not Available', `${amenity} is already booked or pending for that date.`);
+  if (getAmenityDayStatus(amenity, bookingDate) === 'Booked') {
+    showToast('error', 'Not Available', `${amenity} is already booked for that date.`);
     return;
   }
   const purpose = document.getElementById('ab_purpose').value.trim();
@@ -551,7 +551,7 @@ function confirmApproveAmenityBooking(id) {
     return;
   }
   if (amenityBookingConflicts(booking.amenity, booking.bookingDate, id).length) {
-    showToast('error', 'Schedule Conflict', 'This amenity already has a pending or approved booking for that date.');
+    showToast('error', 'Schedule Conflict', 'This amenity already has an approved booking for that date.');
     return;
   }
   openConfirm('Approve Booking', `Approve <strong>${booking.amenity}</strong> for <strong>${formatAmenityDate(booking.bookingDate)}</strong>?`, () => approveAmenityBooking(id));
