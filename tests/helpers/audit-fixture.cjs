@@ -19,6 +19,11 @@ function auditDatabase() {
   pool.rollbacks = 0;
   pool.execute = async (sql, values = []) => {
     const q = sql.replace(/`/g, '').replace(/\s+/g, ' ').trim();
+    if (q === 'SELECT id FROM amenity_availability_lock WHERE id = 1 FOR UPDATE') return [[{ id: 1 }]];
+    if (q.startsWith('SELECT id FROM amenityBookings WHERE amenity = ?')) {
+      return [tables.amenityBookings.filter(row => row.amenity === values[0] && row.bookingDate === values[1] &&
+        row.id !== values[2] && !row.archived_at && ['Pending', 'Approved'].includes(row.status)).slice(0, 1)];
+    }
     if (/auth_rate_limits|auth_security_/.test(q) || q.includes('reset_token_') || (q.startsWith('SELECT * FROM users') && q.includes('LOWER(email)'))) return authExecute(sql, values);
     if (q.startsWith('SELECT id FROM users') && /BINARY username|LOWER\(email\)/.test(q)) {
       const column = q.includes('BINARY username') ? 'username' : 'email';

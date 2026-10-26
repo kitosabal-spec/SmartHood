@@ -37,6 +37,8 @@ const { roundMoney, billingBalance } = require('./services/financialService');
 const { createLoginRateLimits, loginIdentifier } = require('./middleware/loginRateLimit');
 const { normalizeEmail, isValidEmail } = require('./utils/email');
 const { createAdminEmailService, AdminEmailError } = require('./services/adminEmailService');
+const { createAmenityService } = require('./services/amenityService');
+const amenityService = createAmenityService({ get, all });
 
 const { AUDITED_TABLES, changeSummary, createAuditService } = require('./services/auditService');
 const audit = createAuditService({ getPool: () => db, resolveActor: getRequester });
@@ -4654,6 +4656,13 @@ app.get('/api/paged/:table', asyncHandler(async (req, res) => {
 }));
 
 
+app.get('/api/amenity-availability', asyncHandler(async (req, res) => {
+  const allowed = await checkTableAccess(req, res, 'amenityBookings', 'read');
+  if (!allowed) return;
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.json(await amenityService.availability());
+}));
+
 app.get('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
@@ -4791,6 +4800,8 @@ app.put('/api/:table', auditedHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'update');
   if (!allowed) return;
+  if (table === 'amenityBookings') return res.status(405).json({ error: 'Use individual booking requests and reviews.' });
+  if (table === 'appSettings') await amenityService.lock();
   if (table === 'users') return res.status(405).json({ error: 'Bulk account replacement is disabled. Use individual account management and verified administrator email changes.' });
   if (!Array.isArray(req.body)) {
     res.status(400).json({ error: 'Expected an array of records.' });
@@ -5419,9 +5430,10 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'create');
   if (!allowed) return;
+  if (table === 'amenityBookings' || table === 'appSettings') await amenityService.lock();
   // A create permission must not turn a chosen ID into an unlogged/unauthorized
   // overwrite (in particular, public lost-and-found submissions).
-  if (req.body.id && await get(`SELECT id FROM ${tableName(table)} WHERE id = ?`, [req.body.id])) {
+  if (req.body.id && await get(`SELECT id FROM ${tableName(table)} WHERE id = ?${table === 'amenityBookings' ? ' FOR UPDATE' : ''}`, [req.body.id])) {
     return res.status(409).json({ error: 'A record with this ID already exists.' });
   }
 
@@ -5501,6 +5513,19 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
     if (!userHasPermission(allowed, managePermission)) req.body.homeownerId = requesterHomeownerId(allowed);
   }
 
+  if (table === 'amenityBookings') {
+    if (allowed.role !== 'admin' && !userHasPermission(allowed, 'amenities')) {
+      // Resident input cannot forge ownership, approval, or review metadata.
+      req.body.homeownerId = requesterHomeownerId(allowed);
+      req.body.status = 'Pending';
+      req.body.adminRemarks = '';
+      req.body.reviewedAt = '';
+    }
+    req.body.status ||= 'Pending';
+    req.body.createdAt = new Date().toISOString();
+    if (!await amenityService.validate(req.body, res)) return;
+  }
+
   if (table === 'homeowners') {
     const name = String(req.body.name || '').trim();
     if (!name) return res.status(400).json({ error: 'Full Name is required.' });
@@ -5562,11 +5587,18 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'update');
   if (!allowed) return;
+  if (table === 'amenityBookings' || table === 'appSettings') await amenityService.lock();
+  if (table === 'amenityBookings') {
+    const existing = await get('SELECT * FROM amenityBookings WHERE id = ? AND archived_at IS NULL FOR UPDATE', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: 'Booking not found.' });
+    req.body = { ...existing, ...req.body, id: req.params.id };
+    if (!await amenityService.validate(req.body, res, req.params.id)) return;
+  }
 
   let previousImportantRecord = null;
   const importantFields = IMPORTANT_STATUS_FIELDS[table] || [];
   if (importantFields.some(field => req.body[field] !== undefined)) {
-    const row = await get(`SELECT * FROM ${tableName(table)} WHERE id = ?`, [req.params.id]);
+    const row = await get(`SELECT * FROM ${tableName(table)} WHERE id = ?${table === 'amenityBookings' ? ' FOR UPDATE' : ''}`, [req.params.id]);
     if (row) previousImportantRecord = deserializeRow(table, row);
   }
 
@@ -5752,6 +5784,7 @@ app.delete('/api/:table/:id', auditedHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'delete');
   if (!allowed) return;
+  if (table === 'amenityBookings' || table === 'appSettings') await amenityService.lock();
 
   if (table === 'users' && req.params.id === 'u001') {
     return res.status(400).json({ error: 'Primary Administrator account cannot be deleted.' });

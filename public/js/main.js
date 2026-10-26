@@ -232,6 +232,18 @@ const api = {
     return dbCache;
   },
 
+  async loadAmenityAvailability() {
+    const availability = await this.request('/api/amenity-availability');
+    dbCache.amenityAvailability = availability.bookings;
+    dbCache.amenityAvailabilityRules = [{ id: 'amenityUnavailable', value: JSON.stringify(availability.unavailable) }];
+    return availability;
+  },
+
+  async loadAmenityBookings() {
+    dbCache.amenityBookings = await this.request('/api/amenityBookings');
+    scheduleSidebarBadgeRefresh();
+  },
+
   async loadPublic() {
     const publicData = await this.request('/api/public-data');
     dbCache = { ...dbCache, ...publicData };

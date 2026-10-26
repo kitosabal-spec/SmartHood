@@ -10,8 +10,8 @@ function isSundayDate(value) {
   return date ? date.getDay() === 0 : false;
 }
 
-function getAmenityUnavailableSettings() {
-  const setting = db.getOne('appSettings', 'amenityUnavailable');
+function getAmenityUnavailableSettings(forAvailability = false) {
+  const setting = db.getOne(forAvailability ? 'amenityAvailabilityRules' : 'appSettings', 'amenityUnavailable');
   const fallback = { weeklyDays: [0], dateRules: [] };
   if (!setting?.value) return fallback;
   try {
@@ -25,8 +25,8 @@ function getAmenityUnavailableSettings() {
   }
 }
 
-function saveAmenityUnavailableSettings(settings) {
-  db.save('appSettings', {
+async function saveAmenityUnavailableSettings(settings) {
+  return saveAmenityChange('appSettings', {
     id: 'amenityUnavailable',
     value: JSON.stringify({
       weeklyDays: [...new Set(settings.weeklyDays || [])].map(Number).sort(),
@@ -38,7 +38,7 @@ function saveAmenityUnavailableSettings(settings) {
 function getAmenityUnavailableRule(amenity, dateValue) {
   const date = getAmenityBookingDate(dateValue);
   if (!date) return null;
-  const settings = getAmenityUnavailableSettings();
+  const settings = getAmenityUnavailableSettings(true);
   const dayRule = settings.weeklyDays.includes(date.getDay())
     ? { type: 'weekly', reason: `${date.toLocaleDateString(undefined, { weekday: 'long' })} is marked unavailable.` }
     : null;
@@ -65,16 +65,30 @@ function amenityBookingConflicts(amenity, bookingDate, ignoreId = null) {
 }
 
 function getAmenityDayStatus(amenity, dateValue) {
+  if (!db.getOne('amenityAvailabilityRules', 'amenityUnavailable')) return 'Unknown';
   if (getAmenityUnavailableRule(amenity, dateValue)) return 'Unavailable';
-  const bookings = amenityBookingConflicts(amenity, dateValue);
+  const bookings = db.get('amenityAvailability').filter(booking => booking.amenity === amenity && booking.bookingDate === dateValue);
   if (bookings.some(booking => booking.status === 'Approved')) return 'Booked';
   if (bookings.some(booking => booking.status === 'Pending')) return 'Pending';
   return 'Free';
 }
 
-function renderAmenityCalendar() {
+async function loadAmenityCalendar(container) {
+  container.textContent = 'Loading availability…';
+  try {
+    await api.loadAmenityAvailability();
+    return document.getElementById(container.id) === container;
+  } catch (error) {
+    container.textContent = 'Could not load availability. Change the month or reopen this page to retry.';
+    showToast('error', 'Availability Unavailable', error.message);
+    return false;
+  }
+}
+
+async function renderAmenityCalendar() {
   const container = document.getElementById('amenityCalendar');
   if (!container) return;
+  if (!await loadAmenityCalendar(container)) return;
   const amenity = document.getElementById('ab_amenity')?.value || AMENITIES[0];
   const monthValue = document.getElementById('ab_month')?.value || getLocalMonthValue();
   const [year, month] = monthValue.split('-').map(Number);
@@ -97,6 +111,7 @@ function renderAmenityCalendar() {
   container.innerHTML = `
     <div class="amenity-calendar-head">${['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => `<span>${day}</span>`).join('')}</div>
     <div class="amenity-calendar-grid">${cells.join('')}</div>`;
+  updateAmenityAvailabilityNote();
 }
 
 function selectAmenityDate(dateValue) {
@@ -105,9 +120,10 @@ function selectAmenityDate(dateValue) {
   updateAmenityAvailabilityNote();
 }
 
-function renderAdminAmenityCalendar() {
+async function renderAdminAmenityCalendar() {
   const container = document.getElementById('adminAmenityCalendar');
   if (!container) return;
+  if (!await loadAmenityCalendar(container)) return;
   const amenity = document.getElementById('admin_ab_amenity')?.value || AMENITIES[0];
   const monthValue = document.getElementById('admin_ab_month')?.value || getLocalMonthValue();
   const [year, month] = monthValue.split('-').map(Number);
@@ -148,6 +164,10 @@ function updateAmenityAvailabilityNote() {
     return;
   }
   const status = getAmenityDayStatus(amenity, bookingDate);
+  if (status === 'Unknown') {
+    note.textContent = 'Availability has not loaded. Reopen this page to retry.';
+    return;
+  }
   const unavailableRule = getAmenityUnavailableRule(amenity, bookingDate);
   note.textContent = unavailableRule
     ? `${amenity} is unavailable on ${formatAmenityDate(bookingDate)}. ${unavailableRule.reason || ''}`.trim()
@@ -159,7 +179,8 @@ function updateAmenityAvailabilityNote() {
 
 function renderHOAmenityBooking() {
   const today = getLocalDateValue();
-  const currentMonth = today.slice(0, 7);
+  const currentMonth = document.getElementById('ab_month')?.value || today.slice(0, 7);
+  const selectedAmenity = document.getElementById('ab_amenity')?.value || AMENITIES[0];
   const myBookings = db.get('amenityBookings')
     .filter(booking => booking.homeownerId === getCurrentHomeownerId())
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
@@ -176,7 +197,7 @@ function renderHOAmenityBooking() {
           <div class="form-group">
             <label>Amenity *</label>
             <select id="ab_amenity" onchange="renderAmenityCalendar();updateAmenityAvailabilityNote()">
-              ${AMENITIES.map(item => `<option value="${item}">${item}</option>`).join('')}
+              ${AMENITIES.map(item => `<option value="${item}" ${item === selectedAmenity ? 'selected' : ''}>${item}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
@@ -246,7 +267,7 @@ function confirmSubmitAmenityBooking() {
     showToast('error', 'Invalid Time', 'End time must be later than start time.');
     return;
   }
-  if (amenityBookingConflicts(amenity, bookingDate).length) {
+  if (['Booked', 'Pending'].includes(getAmenityDayStatus(amenity, bookingDate))) {
     showToast('error', 'Not Available', `${amenity} is already booked or pending for that date.`);
     return;
   }
@@ -258,7 +279,29 @@ function confirmSubmitAmenityBooking() {
   );
 }
 
-function submitAmenityBooking({ amenity, bookingDate, startTime, endTime, purpose }) {
+// A failed save must leave cached records and the form untouched. A refresh
+// failure after commit is reported separately so residents do not resubmit.
+async function saveAmenityChange(table, item) {
+  try {
+    await db.save(table, item);
+  } catch (error) {
+    showToast('error', 'Change Not Saved', error.message);
+    if (error.status === 409) {
+      if (document.getElementById('amenityCalendar')) await renderAmenityCalendar();
+      if (document.getElementById('adminAmenityCalendar')) await renderAdminAmenityCalendar();
+    }
+    return false;
+  }
+  try {
+    await api.loadAmenityBookings();
+    await api.loadAmenityAvailability();
+  } catch (error) {
+    showToast('warning', 'Saved; Refresh Failed', 'Your change was saved. Reopen this page to refresh availability.');
+  }
+  return true;
+}
+
+async function submitAmenityBooking({ amenity, bookingDate, startTime, endTime, purpose }) {
   const booking = {
     id: db.newId('ab'),
     homeownerId: getCurrentHomeownerId(),
@@ -272,7 +315,7 @@ function submitAmenityBooking({ amenity, bookingDate, startTime, endTime, purpos
     createdAt: getLocalDateValue(),
     reviewedAt: '',
   };
-  db.save('amenityBookings', booking);
+  if (!await saveAmenityChange('amenityBookings', booking)) return;
   addNotification('Amenity Booking Request', `${currentUser.name} requested ${booking.amenity} on ${formatAmenityDate(booking.bookingDate)}.`, { roles: ['admin', 'president'] });
   logAction(`Submitted amenity booking request: ${booking.amenity} for ${currentUser.name}`);
   closeModal();
@@ -350,7 +393,8 @@ function renderAmenityBookingsAdmin() {
   const allBookings = [...db.get('amenityBookings')].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
   const bookings = getFilteredAdminAmenityBookings(allBookings, filters);
   const today = getLocalDateValue();
-  const currentMonth = today.slice(0, 7);
+  const currentMonth = document.getElementById('admin_ab_month')?.value || today.slice(0, 7);
+  const selectedAmenity = document.getElementById('admin_ab_amenity')?.value || AMENITIES[0];
   const unavailable = getAmenityUnavailableSettings();
   const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
   const area = document.getElementById('contentArea');
@@ -366,7 +410,7 @@ function renderAmenityBookingsAdmin() {
           <div class="form-group">
             <label>Amenity</label>
             <select id="admin_ab_amenity" onchange="renderAdminAmenityCalendar()">
-              ${AMENITIES.map(item => `<option value="${item}">${item}</option>`).join('')}
+              ${AMENITIES.map(item => `<option value="${item}" ${item === selectedAmenity ? 'selected' : ''}>${item}</option>`).join('')}
             </select>
           </div>
           <div class="form-group">
@@ -456,16 +500,16 @@ function renderAmenityBookingsAdmin() {
   renderAdminAmenityCalendar();
 }
 
-function saveAmenityUnavailableDays() {
+async function saveAmenityUnavailableDays() {
   const settings = getAmenityUnavailableSettings();
   settings.weeklyDays = [...document.querySelectorAll('.admin-unavailable-day:checked')].map(input => Number(input.value));
-  saveAmenityUnavailableSettings(settings);
+  if (!await saveAmenityUnavailableSettings(settings)) return;
   logAction(`Updated amenity unavailable days: ${settings.weeklyDays.join(', ') || 'none'}`);
   showToast('success', 'Days Saved', 'Unavailable amenity days have been updated.');
   renderAmenityBookingsAdmin();
 }
 
-function addAmenityUnavailableDate() {
+async function addAmenityUnavailableDate() {
   const date = document.getElementById('adminUnavailableDate')?.value;
   const amenity = document.getElementById('adminUnavailableAmenity')?.value || 'all';
   const reason = document.getElementById('adminUnavailableReason')?.value.trim() || 'Marked unavailable by admin.';
@@ -482,17 +526,17 @@ function addAmenityUnavailableDate() {
     settings.dateRules.push({ id: db.newId('au'), date, amenity, reason });
   }
 
-  saveAmenityUnavailableSettings(settings);
+  if (!await saveAmenityUnavailableSettings(settings)) return;
   logAction(`Marked amenity unavailable: ${amenity === 'all' ? 'All amenities' : amenity} on ${formatAmenityDate(date)}`);
   showToast('success', 'Date Blocked', `${amenity === 'all' ? 'All amenities' : amenity} marked unavailable on ${formatAmenityDate(date)}.`);
   renderAmenityBookingsAdmin();
 }
 
-function removeAmenityUnavailableDate(id) {
+async function removeAmenityUnavailableDate(id) {
   const settings = getAmenityUnavailableSettings();
   const removed = settings.dateRules.find(rule => rule.id === id);
   settings.dateRules = settings.dateRules.filter(rule => rule.id !== id);
-  saveAmenityUnavailableSettings(settings);
+  if (!await saveAmenityUnavailableSettings(settings)) return;
   if (removed) logAction(`Removed amenity unavailable date: ${removed.amenity} on ${formatAmenityDate(removed.date)}`);
   showToast('success', 'Date Removed', 'The unavailable date has been removed.');
   renderAmenityBookingsAdmin();
@@ -506,19 +550,18 @@ function confirmApproveAmenityBooking(id) {
     showToast('error', 'Unavailable', unavailableRule.reason || 'This amenity is not available on that date.');
     return;
   }
-  if (amenityBookingConflicts(booking.amenity, booking.bookingDate, id).some(item => item.status === 'Approved')) {
-    showToast('error', 'Schedule Conflict', 'This amenity already has an approved booking for that date.');
+  if (amenityBookingConflicts(booking.amenity, booking.bookingDate, id).length) {
+    showToast('error', 'Schedule Conflict', 'This amenity already has a pending or approved booking for that date.');
     return;
   }
   openConfirm('Approve Booking', `Approve <strong>${booking.amenity}</strong> for <strong>${formatAmenityDate(booking.bookingDate)}</strong>?`, () => approveAmenityBooking(id));
 }
 
-function approveAmenityBooking(id) {
-  const booking = db.getOne('amenityBookings', id);
-  if (!booking) return;
-  booking.status = 'Approved';
-  booking.reviewedAt = getLocalDateValue();
-  db.save('amenityBookings', booking);
+async function approveAmenityBooking(id) {
+  const existing = db.getOne('amenityBookings', id);
+  if (!existing) return;
+  const booking = { ...existing, status: 'Approved', reviewedAt: getLocalDateValue() };
+  if (!await saveAmenityChange('amenityBookings', booking)) return;
   const homeowner = getHomeownerById(booking.homeownerId);
   logAction(`Approved amenity booking: ${booking.amenity} for ${homeowner ? homeowner.name : 'Unknown'}`);
   showToast('success', 'Approved', 'Amenity booking approved.');
@@ -542,13 +585,11 @@ function confirmRejectAmenityBooking(id) {
   openConfirm('Reject Booking', `Reject <strong>${booking.amenity}</strong> request for <strong>${formatAmenityDate(booking.bookingDate)}</strong>?`, () => rejectAmenityBooking(id, remarks));
 }
 
-function rejectAmenityBooking(id, remarks) {
-  const booking = db.getOne('amenityBookings', id);
-  if (!booking) return;
-  booking.status = 'Rejected';
-  booking.adminRemarks = remarks;
-  booking.reviewedAt = getLocalDateValue();
-  db.save('amenityBookings', booking);
+async function rejectAmenityBooking(id, remarks) {
+  const existing = db.getOne('amenityBookings', id);
+  if (!existing) return;
+  const booking = { ...existing, status: 'Rejected', adminRemarks: remarks, reviewedAt: getLocalDateValue() };
+  if (!await saveAmenityChange('amenityBookings', booking)) return;
   const homeowner = getHomeownerById(booking.homeownerId);
   logAction(`Rejected amenity booking: ${booking.amenity} for ${homeowner ? homeowner.name : 'Unknown'} - ${remarks}`);
   closeModal();

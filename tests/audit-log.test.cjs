@@ -73,7 +73,8 @@ test('generic mutations audit authenticated actors once, redact content, and rol
   const rows = f.pool.tables;
   f.pool.users.push({ id: 'officer', role: 'hoa_officer', status: 'active', permissions: '["complaints","amenities","vehicles","lostfound","payments"]' });
   rows.complaints.push({ id: 'case-1', homeownerId: 'home-1', status: 'Reviewed', description: 'private case details' });
-  rows.amenityBookings.push({ id: 'booking-1', status: 'Pending' });
+  rows.amenityBookings.push({ id: 'booking-1', homeownerId: 'home-1', amenity: 'Basketball Court',
+    bookingDate: '2026-10-08', startTime: '09:00', endTime: '10:00', status: 'Pending' });
   rows.vehicleRegistrations.push({ id: 'vehicle-1', registrationStatus: 'Pending' });
   rows.lostFound.push({ id: 'lost-1', status: 'Pending' });
   const mutations = [
