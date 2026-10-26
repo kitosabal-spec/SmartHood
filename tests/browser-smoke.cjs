@@ -35,6 +35,20 @@ const cleanups = [];
       users: [admin, resident],
       homeowners: [{ id: 'home-1', name: 'Test Resident', block: '1', lot: '2', lotArea: 50, balance: 0 }],
       appSettings: [{ id: 'duesRatePerSqm', value: '5.725' }],
+      auditLog: [
+        { id: 'z-migration', adminId: 'system:migration', actor_name: 'Database migration',
+          action_type: 'reconciled orphan link', entity_type: 'payments', entity_id: 'legacy-payment',
+          action: 'system migration reconciled orphan billing link for payments (legacy-payment): preserved as an unapplied advance credit; original identifier retained internally',
+          timestamp: '2026-10-23T01:53:12.108Z' },
+        ...Array.from({ length: 12 }, (_, i) => ({ id: `event-${i}`, adminId: 'admin-1', actor_name: 'Original Administrator',
+          action_type: 'created', entity_type: 'billings', entity_id: `bill-${i}`,
+          action: `admin (admin-1) created billings (bill-${i}): amount: (empty) -> 300; title: (empty) -> [redacted]`,
+          timestamp: new Date(Date.parse('2026-10-24T01:00:00Z') + i * 60000).toISOString() })),
+        { id: 'a-latest', adminId: 'deleted-account', actor_name: 'Former Resident', action_type: 'created',
+          entity_type: 'amenityBookings', entity_id: 'booking-1',
+          action: 'homeowner (deleted-account) created amenityBookings (booking-1): bookingDate: (empty) -> 2026-10-31; status: (empty) -> Pending; purpose: (empty) -> [redacted] <script>alert(1)</script>; reviewedAt: (empty) -> (empty)',
+          timestamp: '2026-10-24T05:32:39.391Z' },
+      ],
     });
     await page.route('**/api/**', async route => {
       if (route.request().method() !== 'GET') {
@@ -46,6 +60,7 @@ const cleanups = [];
       if (url === '/api/session') body = { authenticated: false };
       else if (['/api/public-data', '/api/data'].includes(url)) body = tables;
       else if (url === '/api/announcements/comment-counts') body = {};
+      else if (url === '/api/announcements/reactions') body = {};
       else if (url === '/api/board') body = tables.board_of_directors;
       else if (url === '/api/payment-settings') body = { payment_method: 'gcash', account_name: 'Test HOA', account_number: '09170000000', is_active: true };
       else if (Object.hasOwn(tables, url.slice(5))) body = tables[url.slice(5)];
@@ -107,6 +122,66 @@ const cleanups = [];
     await page.getByRole('button', { name: 'Open Billing', exact: true }).click();
     assert.equal(await page.evaluate(() => currentView), 'billing');
     console.log('PASS: resident permission denial, escaped profile fields and Settings billing action');
+
+    await page.setViewportSize({ width: 1256, height: 871 });
+    await page.evaluate(() => navigate('auditlog'));
+    await page.locator('#auditLogTable').waitFor();
+    assert.equal(await page.locator('#logTableBody tr').count(), 10);
+    assert.match(await page.locator('#logTableBody tr').first().innerText(), /Created amenity booking/);
+    assert.match(await page.locator('#logTableBody tr').first().innerText(), /Former Resident/);
+    assert.equal(await page.locator('#logTableBody script').count(), 0);
+    assert.doesNotMatch(await page.locator('#logTableBody .log-time').first().innerText(), /T05:32/);
+    await page.locator('#logTableBody summary').first().click();
+    assert.match(await page.locator('#logTableBody details[open]').innerText(), /Record ID: booking-1/);
+    assert.match(await page.locator('#logTableBody tr').first().innerText(), /Booking date: Oct 31, 2026/);
+    assert.match(await page.locator('#logTableBody tr').first().innerText(), /Status: Pending/);
+    assert.doesNotMatch(await page.locator('#logTableBody').innerText(), /\[redacted\]|\(empty\)|<script>|amenityBookings/);
+    await page.locator('#logTableBody summary').first().click();
+    await page.locator('#logSearch').fill('Database migration');
+    assert.equal(await page.locator('#logTableBody tr').count(), 1);
+    assert.match(await page.locator('#logTableBody').innerText(), /Reconciled a legacy payment billing link/);
+    await page.locator('#auditLogResetBtn').click();
+    await page.evaluate(() => changeAuditLogPage(2));
+    assert.equal(await page.locator('#logTableBody tr').count(), 4);
+    assert.match(await page.locator('#logTableBody tr').last().innerText(), /Database migration/);
+    const downloadEvent = page.waitForEvent('download');
+    await page.locator('#auditLogExportButton').click();
+    const download = await downloadEvent;
+    const auditOutput = process.env.AUDIT_TEST_OUTPUT || path.join(require('node:os').tmpdir(), 'smarthood-audit-browser');
+    fs.mkdirSync(auditOutput, { recursive: true });
+    const excelPath = path.join(auditOutput, download.suggestedFilename());
+    await download.saveAs(excelPath);
+    const workbook = await new (require('exceljs').Workbook)().xlsx.readFile(excelPath);
+    const sheet = workbook.getWorksheet('Audit Log');
+    assert.equal(sheet.rowCount, 22, 'export includes all 14 records despite being on page 2');
+    assert.equal(sheet.getCell('B9').value, 'a-latest');
+    assert.equal(sheet.getCell('D9').value, 'Former Resident');
+    assert.equal(sheet.getCell('B22').value, 'z-migration');
+    assert.equal(sheet.getCell('C9').value, 'Created amenity booking\nBooking date: Oct 31, 2026\nStatus: Pending');
+    assert.equal(sheet.getCell('G9').value, 'booking-1');
+    assert.doesNotMatch(sheet.getCell('C9').value, /\[redacted\]|\(empty\)|->/);
+    await page.locator('#logSearch').fill('Oct 31, 2026');
+    assert.equal(await page.locator('#logTableBody tr').count(), 1);
+    await page.locator('#auditLogResetBtn').click();
+    await page.evaluate(() => changeAuditLogPage(1));
+    await page.mouse.move(1200, 70);
+    await page.waitForFunction(() => document.querySelectorAll('#toastContainer .toast').length === 0);
+    await page.screenshot({ path: path.join(auditOutput, 'audit-desktop.png'), fullPage: true, animations: 'disabled' });
+    await page.setViewportSize({ width: 390, height: 844 });
+    assert.ok(await page.locator('#auditLogTable').isVisible());
+    assert.ok(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1), 'mobile overflow stays inside the table wrapper');
+    assert.ok(await page.locator('#logTableBody .audit-event-title').first().evaluate(el => {
+      const box = el.getBoundingClientRect();
+      return box.left >= 0 && box.right <= innerWidth;
+    }), 'mobile event text must be within the viewport, not clipped outside its card');
+    await page.screenshot({ path: path.join(auditOutput, 'audit-mobile.png'), fullPage: true, animations: 'disabled' });
+    await page.setViewportSize({ width: 1256, height: 871 });
+    await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+    await page.mouse.move(1200, 70);
+    await page.screenshot({ path: path.join(auditOutput, 'audit-dark.png'), fullPage: true, animations: 'disabled' });
+    assert.deepEqual(errors, []);
+    console.log('PASS: audit chronology, readable details and reference IDs, actor snapshots, search, pagination, XLSX download, desktop and mobile layout');
+
     await page.goto(f.base + '/tests/faq-browser.html');
     await page.waitForFunction(() => document.getElementById('results')?.textContent.split('\n').length === 8, { timeout: 30000 });
     const results = await page.locator('#results').innerText();

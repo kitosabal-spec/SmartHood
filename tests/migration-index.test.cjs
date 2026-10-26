@@ -105,7 +105,7 @@ test('real database: all migrations, legacy 006 failure recovery, and restart', 
         pool.getConnection = getConnection;
         await runMigrations(pool);
         const [[count]] = await pool.query('SELECT COUNT(*) AS count FROM schema_migrations');
-        assert.equal(Number(count.count), 12);
+        assert.equal(Number(count.count), 13);
         const [[index]] = await pool.query("SELECT SUB_PART AS prefix FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'auditLog' AND index_name = 'idx_audit_actor'");
         assert.equal(index.prefix, legacy ? 191 : null);
         if (legacy) {
@@ -113,6 +113,32 @@ test('real database: all migrations, legacy 006 failure recovery, and restart', 
           assert.equal(row.adminId, actor);
           assert.equal(row.action, 'original action');
         }
+        // Exercise business/audit atomicity on real InnoDB tables as well as
+        // the HTTP suite's SQL double. These schemas are disposable fixtures.
+        const { createAuditService } = require('../src/services/auditService');
+        const audit = createAuditService({ getPool: () => pool,
+          resolveActor: async () => ({ id: 'test-operator', role: 'admin', name: 'Test Operator' }) });
+        const req = { ip: '127.0.0.1' };
+        await audit.transaction(req, async () => {
+          await audit.current().connection.execute("INSERT INTO appSettings (id, value) VALUES ('audit-commit', 'saved')");
+          await audit.record(req, { table: 'appSettings', id: 'audit-commit', operation: 'created' });
+        });
+        const [[saved]] = await pool.query("SELECT COUNT(*) AS count FROM appSettings WHERE id = 'audit-commit'");
+        const [[event]] = await pool.query("SELECT id, actor_name, ip_address FROM auditLog WHERE entity_id = 'audit-commit'");
+        assert.equal(Number(saved.count), 1);
+        assert.equal(event.actor_name, 'Test Operator');
+        assert.equal(event.ip_address, '127.0.0.1');
+        await assert.rejects(audit.transaction(req, async () => {
+          await audit.current().connection.execute("INSERT INTO appSettings (id, value) VALUES ('audit-rollback', 'must disappear')");
+          await audit.record(req, { table: 'appSettings', id: 'audit-rollback', operation: 'created' });
+          throw new Error('Simulated request failure after both writes');
+        }), /Simulated request failure/);
+        const [[rolledBack]] = await pool.query("SELECT COUNT(*) AS count FROM appSettings WHERE id = 'audit-rollback'");
+        const [[rolledBackAudit]] = await pool.query("SELECT COUNT(*) AS count FROM auditLog WHERE entity_id = 'audit-rollback'");
+        assert.equal(Number(rolledBack.count), 0);
+        assert.equal(Number(rolledBackAudit.count), 0);
+        await assert.rejects(pool.execute('UPDATE auditLog SET action = ? WHERE id = ?', ['tampered', event.id]), /Audit logs are immutable/);
+        await assert.rejects(pool.execute('DELETE FROM auditLog WHERE id = ?', [event.id]), /Audit logs are immutable/);
       } finally {
         await pool.end();
         await admin.query(`DROP DATABASE \`${database}\``);

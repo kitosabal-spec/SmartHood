@@ -4596,6 +4596,7 @@ app.get('/api/public-data', asyncHandler(async (req, res) => {
 app.get('/api/paged/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
+  if (table === 'auditLog') res.setHeader('Cache-Control', 'private, no-store');
   const requester = await checkTableAccess(req, res, table, 'read');
   if (!requester) return;
   const supported = new Set(['billings', 'payments', 'complaints', 'amenityBookings', 'vehicleRegistrations', 'lostFound', 'auditLog']);
@@ -4649,6 +4650,7 @@ app.get('/api/paged/:table', asyncHandler(async (req, res) => {
 app.get('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
+  if (table === 'auditLog') res.setHeader('Cache-Control', 'private, no-store');
   const allowed = await checkTableAccess(req, res, table, 'read');
   if (!allowed) return;
 
@@ -4717,7 +4719,7 @@ app.get('/api/:table', asyncHandler(async (req, res) => {
     const filtered = data.filter(item => {
       if (query) {
         const actionMatch = (item.action || '').toLowerCase().includes(query);
-        const performerMatch = (item.adminId || '').toLowerCase().includes(query);
+        const performerMatch = `${item.adminId || ''} ${item.actor_name || ''}`.toLowerCase().includes(query);
         const timeMatch = (item.timestamp || '').toLowerCase().includes(query);
         if (!actionMatch && !performerMatch && !timeMatch) return false;
       }

@@ -20,7 +20,7 @@ function buildAuditLogWorkbook(ExcelJS, data) {
       printTitlesRow: '8:8', margins: { left: 0.3, right: 0.3, top: 0.35, bottom: 0.4, header: 0.15, footer: 0.2 } },
     headerFooter: { oddFooter: '&LSmartHood | Audit Log&RPage &P of &N' },
   });
-  sheet.columns = [7, 25, 80, 27, 25, 32].map(width => ({ width }));
+  sheet.columns = [7, 25, 64, 27, 25, 32, 25].map(width => ({ width }));
   function style(row, fill, bold = false) {
     let lines = 1;
     row.eachCell((cell, column) => {
@@ -39,7 +39,7 @@ function buildAuditLogWorkbook(ExcelJS, data) {
   function heading(text, prominent = false) {
     const row = sheet.addRow([String(text)]);
     style(row, prominent ? colors.dark : colors.pale, prominent);
-    sheet.mergeCells(row.number, 1, row.number, 6);
+    sheet.mergeCells(row.number, 1, row.number, 7);
     row.height = Math.max(24, Math.ceil(text.length / 175) * 16 + 8);
     if (prominent) { row.getCell(1).font.size = 20; row.height = 32; }
   }
@@ -52,13 +52,13 @@ function buildAuditLogWorkbook(ExcelJS, data) {
   heading(`Date filter: ${modes[filters.mode] || filters.mode}${filters.mode === 'date' ? ` | Date: ${filters.date || 'Not selected'}` : filters.mode === 'range' ? ` | Range: ${filters.startDate || 'Open start'} to ${filters.endDate || 'Open end'}` : ''} | Calendar: ${Intl.DateTimeFormat().resolvedOptions().timeZone}`);
   heading(`Search keyword: ${filters.search || '(none)'}`);
   heading(`Total exported records: ${data.rows.length}`);
-  style(sheet.addRow(['No.', 'Audit Log ID', 'Action / Event', 'Performed By', 'Actor Account ID', 'Date & Time (Asia/Manila)']), colors.teal, true);
+  style(sheet.addRow(['No.', 'Audit Log ID', 'Action / Event', 'Performed By', 'Actor Account ID', 'Date & Time (Asia/Manila)', 'Record ID']), colors.teal, true);
   data.rows.forEach((item, index) => {
     // Plain strings, never formula or hyperlink objects, including IDs and actions.
-    const row = sheet.addRow([index + 1, item.id, item.action, item.performer, item.adminId, item.timestamp].map((value, col) => col ? String(value ?? '') : value));
+    const row = sheet.addRow([index + 1, item.id, item.action, item.performer, item.adminId, item.timestamp, item.recordId].map((value, col) => col ? String(value ?? '') : value));
     style(row, index % 2 ? colors.pale : colors.white);
   });
-  sheet.autoFilter = { from: 'A8', to: `F${8 + data.rows.length}` };
-  sheet.pageSetup.printArea = `A1:F${8 + data.rows.length}`;
+  sheet.autoFilter = { from: 'A8', to: `G${8 + data.rows.length}` };
+  sheet.pageSetup.printArea = `A1:G${8 + data.rows.length}`;
   return book;
 }

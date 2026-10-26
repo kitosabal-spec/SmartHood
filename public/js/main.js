@@ -2237,15 +2237,190 @@ function parseLogTimestamp(ts) {
   return null;
 }
 
-function getAuditPerformerName(adminId) {
+function getAuditPerformerName(adminId, record) {
+  // Prefer the event-time snapshot, including deleted or renamed accounts.
+  if (record?.actor_name) return record.actor_name;
+  if (adminId === 'system:migration') return 'Database migration';
   if (!adminId) return 'System';
   const u = db.getOne('users', adminId);
   if (u) return u.name || u.username || adminId;
   return adminId;
 }
 
+function sortAuditLogs(records) {
+  return [...records].sort((a, b) => {
+    const aTime = parseLogTimestamp(a.timestamp)?.getTime();
+    const bTime = parseLogTimestamp(b.timestamp)?.getTime();
+    if (aTime !== bTime) {
+      if (aTime === undefined) return 1;
+      if (bTime === undefined) return -1;
+      return bTime - aTime;
+    }
+    // IDs break ties only; migration IDs are random, not event timestamps.
+    return String(b.id || '').localeCompare(String(a.id || ''), 'en');
+  });
+}
+
+function getAuditEventParts(record) {
+  // Parse only the known server-written envelope. Never resolve old events
+  // against today's business records: that would rewrite their meaning.
+  const action = String(record.action || '');
+  const legacy = action.match(/^[a-z_]+ \(([^)]*)\) (.+?) ([A-Za-z_]+) \(([^)]*)\)(?:: ([\s\S]*))?$/);
+  let stored = record.new_values;
+  if (typeof stored === 'string') { try { stored = JSON.parse(stored); } catch { stored = null; } }
+  return {
+    operation: record.action_type || legacy?.[2] || '',
+    entity: record.entity_type || legacy?.[3] || '',
+    recordId: record.entity_id || legacy?.[4] || '',
+    summary: typeof stored?.summary === 'string' ? stored.summary : legacy?.[5] || '',
+  };
+}
+
+function getAuditEventTitle(record) {
+  const entities = {
+    homeowners: 'homeowner', users: 'account', billings: 'billing', payments: 'payment',
+    payment_settings: 'payment settings', complaints: 'complaint', amenityBookings: 'amenity booking',
+    vehicleRegistrations: 'vehicle registration', lostFound: 'lost and found report',
+    announcements: 'announcement', appSettings: 'system settings', schema: 'database schema',
+  };
+  const action = String(record.action || '');
+  if (record.adminId === 'system:migration') {
+    if (record.action_type === 'reconciled orphan link' || action.startsWith('system migration reconciled orphan billing link')) {
+      return 'Reconciled a legacy payment billing link';
+    }
+    if (record.action_type === 'finalized legacy backfills' || action.startsWith('system migration finalized typed legacy-date')) {
+      return 'Completed legacy database reconciliation';
+    }
+  }
+  // Older server-written records predate the structured event columns.
+  const { operation, entity } = getAuditEventParts(record);
+  const accountOperations = {
+    'created account': 'Created account',
+    'reset password for': 'Reset account password',
+    'updated account/password for': 'Updated account credentials',
+    'reset password using verified reset link': 'Reset password using a verified reset link',
+    'request administrator email verification': 'Requested administrator email verification',
+    'verify administrator email and change login address': 'Verified administrator email and changed login address',
+  };
+  if (entity === 'users' && Object.hasOwn(accountOperations, operation)) return accountOperations[operation];
+  if (operation && Object.hasOwn(entities, entity)) {
+    const title = `${operation} ${entities[entity]}`;
+    return title.charAt(0).toUpperCase() + title.slice(1);
+  }
+  // Do not invent a meaning for unrecognized historical/free-text events.
+  return action || 'Audit event';
+}
+
+function getAuditEventDetails(record) {
+  const { operation, summary } = getAuditEventParts(record);
+  const isCreation = /^(created|submitted|generated)\b/.test(operation);
+  const labels = {
+    status: 'Status', registrationStatus: 'Registration status', paymentStatus: 'Payment status',
+    amount: 'Amount', balance: 'Balance', fee: 'Fee', lotArea: 'Lot area',
+    dueDate: 'Due date', bookingDate: 'Booking date', payment_date: 'Payment date', monthly_dues_month: 'Dues month',
+    role: 'Role', permissions: 'Permissions', payment_method: 'Payment method', payment_type: 'Payment type',
+    is_active: 'Active', is_pinned: 'Pinned', urgent: 'Urgent', 'billing status': 'Billing status',
+    billing: 'Billing reference', 'homeowner record': 'Homeowner reference',
+    amenity: 'Amenity', startTime: 'Start time', endTime: 'End time',
+  };
+  const enums = {
+    active: 'Active', inactive: 'Inactive', deactivated: 'Deactivated', pending: 'Pending', approved: 'Approved',
+    rejected: 'Rejected', paid: 'Paid', partially_paid: 'Partially paid', unpaid: 'Unpaid', voided: 'Voided',
+    reviewed: 'Reviewed', 'in progress': 'In progress', resolved: 'Resolved', posted: 'Posted', claimed: 'Claimed',
+    released: 'Released', registered: 'Registered', admin: 'Administrator', homeowner: 'Homeowner', hoa_officer: 'HOA officer',
+    cash: 'Cash', gcash: 'GCash', other: 'Other', monthly_dues: 'Monthly dues', billing: 'Billing', advance: 'Advance credit',
+  };
+  function displayValue(field, value) {
+    if (value === '(empty)') return 'Not set';
+    if (value === '[redacted]') return null;
+    if (field === 'amenity') return AMENITIES.includes(value) ? value : null;
+    if (field === 'startTime' || field === 'endTime') {
+      if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return null;
+      const [hour, minute] = value.split(':').map(Number);
+      return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour >= 12 ? 'PM' : 'AM'}`;
+    }
+    if (['amount', 'balance', 'fee', 'lotArea'].includes(field)) {
+      if (!/^-?\d+(?:\.\d+)?$/.test(value) || !Number.isFinite(Number(value))) return null;
+      return field === 'lotArea' ? `${Number(value)} m²` : new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value));
+    }
+    if (['is_active', 'is_pinned', 'urgent'].includes(field)) return value === '1' ? 'Yes' : value === '0' ? 'No' : null;
+    if (['dueDate', 'bookingDate', 'payment_date', 'monthly_dues_month'].includes(field)) {
+      const match = value.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
+      if (!match) return null;
+      const date = new Date(`${match[1]}-${match[2]}-${match[3] || '01'}T12:00:00Z`);
+      if (!Number.isFinite(date.getTime()) || date.toISOString().slice(0, match[3] ? 10 : 7) !== value) return null;
+      return new Intl.DateTimeFormat('en-PH', { timeZone: 'UTC', year: 'numeric', month: 'short', ...(match[3] ? { day: 'numeric' } : {}) }).format(date);
+    }
+    if (field === 'permissions') {
+      const names = { '*': 'Full administrator access', resident: 'Resident', billing: 'Billing', payments: 'Payments',
+        complaints: 'Complaints', vehicles: 'Vehicles', lostfound: 'Lost and found', announcements: 'Announcements',
+        amenities: 'Amenities', reports: 'Reports', auditlog: 'Audit log' };
+      if (value === '(none)') return 'None';
+      const list = value.split(',').map(item => item.trim());
+      return list.every(item => Object.hasOwn(names, item)) ? list.map(item => names[item]).join(', ') : null;
+    }
+    if (field === 'billing' || field === 'homeowner record') {
+      if (field === 'billing' && value === '(advance dues)') return 'Advance dues';
+      return /^[a-zA-Z0-9_:-]{1,128}$/.test(value) ? value : null;
+    }
+    return Object.hasOwn(enums, value.toLowerCase()) ? enums[value.toLowerCase()] : null;
+  }
+  const details = [];
+  const privateChanges = new Set();
+  for (const part of summary.split('; ')) {
+    const match = part.match(/^([A-Za-z_ ]+): (.+)$/);
+    if (!match) continue;
+    const [, field, change] = match;
+    const values = change.split(' -> ');
+    if (values.length > 2 || values.every(value => value === '(empty)')) continue;
+    if (values.length === 2 && values[0] === values[1] && values[0] !== '[redacted]') continue;
+    if (Object.hasOwn(labels, field)) {
+      const shown = values.map(value => displayValue(field, value));
+      if (shown.every(value => value !== null)) {
+        const value = values.length === 2 && (isCreation || values[0] === '(empty)') ? shown[1] : shown.join(' → ');
+        details.push(`${labels[field]}: ${value}`);
+        continue;
+      }
+    }
+    // A changed private value matters, but its contents do not belong here.
+    // Creation already explains that the record and its private fields were added.
+    if (!isCreation) {
+      if (/password|token/i.test(field)) privateChanges.add('Account credentials changed.');
+      else if (/receipt|image|photo|attachment/i.test(field)) privateChanges.add('Attachments changed.');
+      else if (/^(homeownerId|homeowner_id|billingId|assignedTo)$/.test(field)) privateChanges.add('Record associations changed.');
+      else if (/reason|remarks|response/i.test(field)) privateChanges.add('Private notes recorded or updated.');
+      else privateChanges.add('Private details changed.');
+    }
+  }
+  if (record.adminId === 'system:migration' && getAuditEventTitle(record) === 'Reconciled a legacy payment billing link') {
+    const action = String(record.action || '');
+    if (action.includes('preserved as an unapplied advance credit')) details.push('Payment retained as an unapplied advance credit.');
+    else if (action.includes('preserved as a month-specific unlinked payment')) details.push('Payment retained for its dues month; the missing billing link was removed.');
+    else if (action.includes('detached from a missing billing')) details.push('Removed a link to a billing record that no longer existed.');
+  }
+  return [...new Set([...details, ...privateChanges])];
+}
+
+function getAuditExportDescription(record) {
+  return [getAuditEventTitle(record), ...getAuditEventDetails(record)].join('\n');
+}
+
+function auditLocalDateValue(date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function formatAuditDisplayTimestamp(value) {
+  const parsed = parseLogTimestamp(value);
+  if (!parsed) return String(value || 'Unknown date');
+  return new Intl.DateTimeFormat('en-PH', {
+    year: 'numeric', month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit',
+    hour12: true,
+  }).format(parsed);
+}
+
 let auditLogPaginationState = { page: 1, pageSize: 10 };
 let currentAuditLogFilteredList = null;
+let auditLogLoadVersion = 0;
 
 function changeAuditLogPage(page) {
   auditLogPaginationState.page = page;
@@ -2263,9 +2438,18 @@ window.changeAuditLogPageSize = changeAuditLogPageSize;
 async function renderAuditLog() {
   const area = document.getElementById('contentArea');
   if (!area) return;
+  const actorId = currentUser?.id;
+  const loadVersion = ++auditLogLoadVersion;
+  currentAuditLogFilteredList = null;
+  area.innerHTML = '<div class="section-card"><p class="audit-notice" role="status">Loading audit logs…</p></div>';
   try {
-    dbCache.auditLog = await api.request('/api/auditLog');
+    const records = await api.request('/api/auditLog', { cache: 'no-store' });
+    if (loadVersion !== auditLogLoadVersion || currentUser?.id !== actorId || currentView !== 'auditlog') return;
+    dbCache.auditLog = records;
   } catch (error) {
+    if (loadVersion !== auditLogLoadVersion || currentUser?.id !== actorId || currentView !== 'auditlog') return;
+    dbCache.auditLog = [];
+    area.innerHTML = '<div class="section-card"><p class="audit-notice" role="alert">Audit logs could not be loaded. Please check your connection and access, then reopen this page.</p></div>';
     showToast('error', 'Could Not Load Audit Logs', error.message);
     return;
   }
@@ -2275,7 +2459,7 @@ async function renderAuditLog() {
   <div class="page-header">
     <div class="page-header-left">
       <h2>Audit Log</h2>
-      <p>Track all admin actions and system events.</p>
+      <p>Track account activity and system events. Newest events appear first.</p>
     </div>
     <div class="page-header-actions">
       <div class="audit-count-badge" id="auditLogCountBadge">
@@ -2292,7 +2476,7 @@ async function renderAuditLog() {
       <div class="filters-row" style="align-items:center;">
         <div class="search-box">
           <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
-          <input id="logSearch" type="text" placeholder="Search actions, details, or admin..." oninput="filterAuditLogs()"/>
+          <input id="logSearch" type="text" placeholder="Search audit logs…" aria-label="Search audit events, details, or people" oninput="filterAuditLogs()"/>
         </div>
         <select class="filter-select" id="auditLogFilter" onchange="onAuditLogFilterChange()">
           <option value="all">All Logs</option>
@@ -2315,6 +2499,7 @@ async function renderAuditLog() {
         </button>
       </div>
     </div>
+    <p class="audit-notice">Account activity, meaningful changes, and system maintenance. Private values are omitted. Dates and filters use ${escapeHtml(Intl.DateTimeFormat().resolvedOptions().timeZone)}.</p>
     <div class="section-card-body no-pad">
       <div class="table-wrapper">
         <table class="data-table" id="auditLogTable">
@@ -2350,16 +2535,16 @@ function onAuditLogFilterChange() {
   if (rangeWrap) rangeWrap.style.display = (mode === 'range') ? 'inline-flex' : 'none';
 
   if (mode === 'date' && dateInput && !dateInput.value) {
-    dateInput.value = new Date().toISOString().split('T')[0];
+    dateInput.value = auditLocalDateValue(new Date());
   }
   if (mode === 'range') {
     if (startInput && !startInput.value) {
       const d = new Date();
       d.setDate(d.getDate() - 7);
-      startInput.value = d.toISOString().split('T')[0];
+      startInput.value = auditLocalDateValue(d);
     }
     if (endInput && !endInput.value) {
-      endInput.value = new Date().toISOString().split('T')[0];
+      endInput.value = auditLocalDateValue(new Date());
     }
   }
 
@@ -2380,11 +2565,11 @@ function getAuditLogFilters() {
 function getFilteredAuditLogs(records, filters, now = new Date()) {
   const filterMode = filters.mode;
   const query = filters.search.toLowerCase();
-  return [...records].reverse().filter(item => {
+  return sortAuditLogs(records).filter(item => {
     // 1. Text search
     if (query) {
-      const actionMatch = String(item.action || '').toLowerCase().includes(query);
-      const performer = String(getAuditPerformerName(item.adminId)).toLowerCase();
+      const actionMatch = `${item.action || ''} ${getAuditExportDescription(item)} ${item.id || ''} ${getAuditEventParts(item).recordId}`.toLowerCase().includes(query);
+      const performer = String(getAuditPerformerName(item.adminId, item)).toLowerCase();
       const performerMatch = performer.includes(query) || String(item.adminId || '').toLowerCase().includes(query);
       const timeMatch = String(item.timestamp || '').toLowerCase().includes(query);
       if (!actionMatch && !performerMatch && !timeMatch) return false;
@@ -2493,8 +2678,8 @@ async function exportAuditLogExcel() {
     const filters = getAuditLogFilters();
     const generatedAt = new Date();
     const rows = getFilteredAuditLogs(records, filters, generatedAt).map(item => ({
-      id: String(item.id ?? ''), action: String(item.action ?? ''),
-      performer: String(getAuditPerformerName(item.adminId)), adminId: String(item.adminId ?? ''),
+      id: String(item.id ?? ''), action: getAuditExportDescription(item), recordId: String(getAuditEventParts(item).recordId),
+      performer: String(getAuditPerformerName(item.adminId, item)), adminId: String(item.adminId ?? ''),
       timestamp: formatAuditExportTimestamp(item.timestamp),
     }));
     if (!rows.length) {
@@ -2538,7 +2723,7 @@ function renderAuditLogRows(filtered = null, resetPage = false) {
   if (filtered !== null) {
     currentAuditLogFilteredList = filtered;
   } else if (currentAuditLogFilteredList === null) {
-    currentAuditLogFilteredList = [...db.get('auditLog')].reverse();
+    currentAuditLogFilteredList = sortAuditLogs(db.get('auditLog'));
   }
   const logs = currentAuditLogFilteredList || [];
 
@@ -2569,14 +2754,26 @@ function renderAuditLogRows(filtered = null, resetPage = false) {
 
   tbody.innerHTML = pageItems.map((l, index) => {
     const rowNum = startIdx + index + 1;
-    const performer = getAuditPerformerName(l.adminId);
+    const performer = getAuditPerformerName(l.adminId, l);
+    const title = getAuditEventTitle(l);
+    const details = getAuditEventDetails(l);
+    const recordId = getAuditEventParts(l).recordId;
     return `
       <tr>
         <td style="color:var(--text-3);font-size:0.82rem;font-weight:600;">${rowNum}</td>
         <td>
           <div style="display:flex;align-items:flex-start;gap:10px;">
             <div class="log-dot" style="margin-top:6px;"></div>
-            <div class="log-text" style="word-break:break-word;">${escapeHtml(l.action)}</div>
+            <div class="log-text audit-event">
+              <div class="audit-event-title">${escapeHtml(title)}</div>
+              ${details.length ? `<ul class="audit-change-list">${details.map(detail => `<li>${escapeHtml(detail)}</li>`).join('')}</ul>` : ''}
+              <details class="audit-event-details">
+                <summary>Reference IDs</summary>
+                ${recordId ? `<div class="audit-record-id">Record ID: ${escapeHtml(String(recordId))}</div>` : ''}
+                <div class="audit-record-id">Audit ID: ${escapeHtml(String(l.id || ''))}</div>
+                <div class="audit-record-id">Actor account ID: ${escapeHtml(String(l.adminId || 'System'))}</div>
+              </details>
+            </div>
           </div>
         </td>
         <td>
@@ -2585,7 +2782,7 @@ function renderAuditLogRows(filtered = null, resetPage = false) {
           </span>
         </td>
         <td>
-          <div class="log-time" style="font-size:0.8rem;color:var(--text-3);">${escapeHtml(l.timestamp || '')}</div>
+          <div class="log-time" title="${escapeHtml(l.timestamp || '')}">${escapeHtml(formatAuditDisplayTimestamp(l.timestamp))}</div>
         </td>
       </tr>
     `;

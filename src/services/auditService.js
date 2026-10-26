@@ -19,6 +19,7 @@ const enumFields = new Set(['status', 'role', 'registrationStatus', 'paymentStat
 const numberFields = new Set(['amount', 'balance', 'lotArea', 'fee', 'is_active', 'is_pinned', 'urgent']);
 const permissionValues = new Set(['*', 'resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog']);
 const dateFields = new Set(['dueDate', 'monthly_dues_month', 'payment_date', 'bookingDate']);
+const amenityValues = new Set(['Basketball Court', 'Clubhouse', 'Chairs', 'Tables', 'Ladder']);
 
 // Values are denied by default. Free text (including complaint content,
 // remarks, account numbers, file keys and credentials) never enters the log.
@@ -27,6 +28,8 @@ function safeValue(field, value) {
   if (enumFields.has(field) && visibleEnums.has(value)) return value;
   if (numberFields.has(field) && (typeof value === 'boolean' || Number.isFinite(Number(value)))) return String(Number(value));
   if (dateFields.has(field) && /^\d{4}-\d{2}(?:-\d{2})?$/.test(value)) return value;
+  if (field === 'amenity' && amenityValues.has(value)) return value;
+  if (['startTime', 'endTime'].includes(field) && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return value;
   if (field === 'permissions') {
     let list = value;
     if (typeof list === 'string') { try { list = JSON.parse(list); } catch { return '[redacted]'; } }
@@ -36,8 +39,9 @@ function safeValue(field, value) {
 }
 
 function changeSummary(before, after, columns) {
+  const normalized = value => value === undefined || value === null || value === '' ? null : value;
   return columns.filter(field => !ignoredFields.has(field) && after[field] !== undefined)
-    .filter(field => JSON.stringify(before?.[field] ?? null) !== JSON.stringify(after[field] ?? null))
+    .filter(field => JSON.stringify(normalized(before?.[field])) !== JSON.stringify(normalized(after[field])))
     .map(field => `${field}: ${safeValue(field, before?.[field])} -> ${safeValue(field, after[field])}`)
     .join('; ');
 }
@@ -91,8 +95,9 @@ function createAuditService({ getPool, resolveActor }) {
     }
     const action = `${actor.role} (${actor.id}) ${operation} ${table} (${recordId})${summary ? ': ' + summary : ''}`;
     const safeChanges = summary ? JSON.stringify({ summary }) : null;
-    const forwarded = String(req?.headers?.['x-forwarded-for'] || '').split(',')[0].trim();
-    const ipAddress = (forwarded || req?.ip || null)?.slice(0, 64) || null;
+    // Express resolves req.ip using the configured trust-proxy boundary.
+    // Reading X-Forwarded-For directly lets callers forge audit evidence.
+    const ipAddress = String(req?.ip || req?.socket?.remoteAddress || '').slice(0, 64) || null;
     try {
       await (connection || state?.connection || getPool()).execute(
         `INSERT INTO auditLog

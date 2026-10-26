@@ -27,6 +27,47 @@ test('all audit mutations are rejected for admins, audit-only officers, resident
   assert.deepEqual(f.pool.tables.auditLog, [old]);
 });
 
+test('audit reads are not cached and searchable event-time names survive account deletion', async t => {
+  const f = await auditFixture(t);
+  const row = { id: 'snapshot', adminId: 'deleted', actor_name: 'Former Operator', action: 'Updated billing', timestamp: '2026-10-24T05:00:00Z' };
+  f.pool.tables.auditLog.push(row);
+  const response = await f.request('GET', '/api/auditLog?q=former');
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'private, no-store');
+  assert.deepEqual(response.body, [row]);
+  const denied = await f.request('GET', '/api/auditLog', undefined, 'resident-1');
+  assert.equal(denied.status, 403);
+  assert.equal(denied.headers.get('cache-control'), 'private, no-store');
+});
+
+test('audit IP evidence uses the trusted request address, never a raw forwarding header', async () => {
+  const writes = [];
+  const service = createAuditService({
+    getPool: () => ({ execute: async (sql, values) => writes.push(values) }),
+    resolveActor: async () => ({ id: 'admin-1', name: 'Operator', role: 'admin' }),
+  });
+  await service.record({ ip: '203.0.113.8', headers: { 'x-forwarded-for': 'forged, 203.0.113.8' } }, { table: 'billings', id: 'b1', operation: 'updated' });
+  assert.equal(writes[0][10], '203.0.113.8');
+  await service.record({ socket: { remoteAddress: '127.0.0.1' }, headers: { 'x-forwarded-for': 'forged' } }, { table: 'billings', id: 'b1', operation: 'updated' });
+  assert.equal(writes[1][10], '127.0.0.1');
+});
+
+test('summaries omit empty-to-empty noise while preserving changes to protected values', () => {
+  assert.equal(changeSummary({}, { purpose: '', reviewedAt: null, status: 'Pending' }, ['purpose', 'reviewedAt', 'status']), 'status: (empty) -> Pending');
+  assert.equal(changeSummary({ purpose: 'old secret' }, { purpose: 'new secret' }, ['purpose']), 'purpose: [redacted] -> [redacted]');
+  assert.equal(changeSummary({ purpose: 'old secret' }, { purpose: '' }, ['purpose']), 'purpose: [redacted] -> (empty)');
+});
+
+test('booking summaries record allowed amenities and valid times while keeping free text private', () => {
+  const columns = ['amenity', 'startTime', 'endTime', 'purpose'];
+  const summary = changeSummary({}, { amenity: 'Clubhouse', startTime: '09:00', endTime: '13:30', purpose: 'Private celebration' }, columns);
+  assert.match(summary, /amenity: \(empty\) -> Clubhouse/);
+  assert.match(summary, /startTime: \(empty\) -> 09:00; endTime: \(empty\) -> 13:30/);
+  assert.doesNotMatch(summary, /Private celebration/);
+  const invalid = changeSummary({}, { amenity: 'PRIVATE ADDRESS', startTime: '25:90', endTime: 'PRIVATE TEXT' }, columns);
+  assert.doesNotMatch(invalid, /PRIVATE|25:90/);
+});
+
 test('generic mutations audit authenticated actors once, redact content, and roll back required audit failures', async t => {
   const f = await auditFixture(t);
   const rows = f.pool.tables;

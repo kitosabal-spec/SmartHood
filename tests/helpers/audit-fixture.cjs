@@ -179,7 +179,7 @@ async function auditFixture(t) {
       method, headers: { ...(body instanceof FormData ? {} : { 'Content-Type': 'application/json' }), ...(id ? { Cookie: cookie(id) } : {}) },
       body: body === undefined ? undefined : body instanceof FormData ? body : JSON.stringify(body),
     });
-    return { status: response.status, body: await response.json() };
+    return { status: response.status, headers: response.headers, body: await response.json() };
   }
   return { ...f, request, uploadDir };
 }

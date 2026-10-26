@@ -2095,6 +2095,28 @@ input[type="date"].filter-select {
   white-space: nowrap;
 }
 
+.audit-notice { margin: 0; padding: 12px 20px; color: var(--text-3); font-size: 0.8rem; }
+#auditLogTable { min-width: 760px; table-layout: fixed; }
+#auditLogTable th:first-child { width: 50px; }
+#auditLogTable th:nth-child(3) { width: 180px; }
+#auditLogTable th:last-child { width: 190px !important; }
+#auditLogTable td { vertical-align: top; }
+#auditLogTable .badge { max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+#auditLogTable .log-time { font-size: 0.8rem; color: var(--text-3); line-height: 1.6; }
+.audit-event { min-width: 0; overflow-wrap: anywhere; }
+.audit-event-title { font-weight: 600; color: var(--text); }
+.audit-record-id { margin-top: 4px; font-size: 0.75rem; color: var(--text-3); }
+.audit-event-details { margin-top: 6px; }
+.audit-event-details summary { cursor: pointer; color: var(--teal-600); font-size: 0.78rem; }
+.audit-event-details summary:focus-visible { outline: 2px solid var(--teal-500); outline-offset: 3px; }
+.audit-change-list { margin: 5px 0 0; padding: 0; list-style: none; font-size: 0.8rem; color: var(--text-2); line-height: 1.7; }
+#auditLogTable .log-dot { flex-shrink: 0; }
+@media (max-width: 640px) {
+  #auditLogTable { min-width: 0; }
+  #auditLogTable tbody td:nth-child(2) { flex-direction: column; align-items: stretch !important; text-align: left !important; }
+  #auditLogTable tbody td:nth-child(2) > div { min-width: 0; width: 100%; }
+}
+
 .field-error { color: var(--red-600); font-size: 0.78rem; margin-top: 4px; }
 .input-error { border-color: var(--red-600) !important; }
 
