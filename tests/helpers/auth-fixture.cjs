@@ -180,6 +180,11 @@ async function fixture(t, options = {}) {
       if (name === './config/environment') return { DB_CONFIG: {} };
       if (name === './config/loginSecurity') return { readLoginSecurityConfig: () => realRequire(name).readLoginSecurityConfig(env) };
       if (name === './services/uploadService') return { ensureUploadDirectories() {}, moveLegacyPrivateUploads() {} };
+      if (name === './services/storageService' && options.storageClient) {
+        const service = realRequire(name);
+        return { ...service, createStorageService: deps => service.createStorageService({ ...deps,
+          client: options.storageClient, presign: options.presign, logger: sandbox.console }) };
+      }
       if (name === './services/emailService') return emailService;
       if (name === './services/loginSecurityAlerts') return { createLoginSecurityAlerts(deps) {
         const handler = createLoginSecurityAlerts({ ...deps, deliver: emailService.sendEmail, logger: sandbox.console });

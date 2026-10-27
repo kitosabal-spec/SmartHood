@@ -20,3 +20,4 @@ data/backups/
 *.log
 .env.*
 !.env.example
+r2-migration-report.json
