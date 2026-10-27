@@ -63,6 +63,107 @@ editing. Stop the server with Ctrl+C in its terminal. Do not run two server
 instances on the same port. Open the page through the server, not as a local
 HTML file.
 
+## Permanent upload storage
+
+`STORAGE_DRIVER=local` (the default) keeps development uploads on disk.
+`STORAGE_DRIVER=r2` stores new uploads in a private Cloudflare R2 bucket using
+the AWS SDK, with region `auto`. Set all five values from `.env.example`:
+`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`, and
+`R2_ENDPOINT` (normally `https://<account-id>.r2.cloudflarestorage.com`).
+Incomplete R2 configuration stops startup. Use an R2 API token scoped to
+object read/write access for the intended bucket; keep it in deployment secrets.
+Do not enable a public bucket, an `r2.dev` URL, or a public custom domain.
+The backend uploads files, so browser upload CORS configuration is unnecessary.
+See [Cloudflare's private presigned URL documentation](https://developers.cloudflare.com/r2/api/s3/presigned-urls/).
+
+Install dependencies with `npm ci`. Run `npm run db:migrate` against the intended
+database before deploying (normal application startup also applies migrations).
+Migration `016_storage_objects` adds upload metadata without removing any existing
+columns: permanent reference, provider, original filename, MIME type, and size.
+R2 references are opaque keys such as `receipts/<uuid>.png`; expiring URLs are
+never saved. Keep the database and bucket together when backing up or restoring.
+
+Receipts, complaint evidence, profile photos, payment QR codes, announcements,
+board photos, and lost-and-found media use the shared storage service. Existing
+file filters, counts, size limits, and byte checks still apply; R2 uploads use
+Multer memory storage. Resident documents have a reserved directory in this
+repository but **no existing upload API, table, or UI**. The storage service
+supports the `resident-documents` prefix, and the migration recognizes an optional
+legacy `resident_documents.file_path` / `storage_key` table if present. No new
+document workflow or public document endpoint is introduced.
+
+Private file routes authorize the current session before returning a five-minute
+GetObject URL with `Cache-Control: private, no-store`. Homeowners cannot read
+another homeowner's receipts, complaint evidence, or profile files, including
+accounts with legacy module permissions. Existing officer access to receipts and
+complaints and administrator access are retained. Profile reads are now owner or
+administrator only, as required for file privacy; HOA QR codes remain available
+to authenticated users. Community media keeps its `/uploads/...` application
+URLs; those public application routes redirect to short-lived signed URLs.
+
+An audit/database rollback removes newly stored objects; replaced R2 objects are
+deleted only after commit. Deletion failures retain the object and log only its
+key and a safe error code, for operator retry. Like any database plus external
+object store, abrupt process termination can leave an unreferenced object; review
+such objects separately before cleanup. Existing local files are never
+automatically removed or moved. Old private paths are read through the same
+authorized routes, including files still under `public/uploads`; that directory's
+private categories remain blocked from static access. Keep `STORAGE_DRIVER=r2`
+when serving a database containing R2 references.
+
+### Test one receipt before touching production files
+
+1. Use a separate local/test MySQL database with fictional homeowner and billing
+   records. Set `NODE_ENV=development`, `APP_BASE_URL=http://localhost:3000`,
+   `TRUST_PROXY=0`, and `STORAGE_DRIVER=local`. Start with `npm start`.
+2. Sign in as the test homeowner and submit one small PNG/JPG/WebP payment receipt
+   through the normal payment form. Check the pending payment, its audit entry,
+   and that the homeowner and administrator can open the receipt. Another
+   homeowner must be denied access. This also checks local compatibility.
+3. Create a separate **private test R2 bucket** and configure the five R2 values
+   locally. Change only `STORAGE_DRIVER=r2`, restart, and replace that test receipt
+   through the normal correction flow (or submit a second test payment).
+4. Check that `payments.receipt` is `receipts/<uuid>.<ext>`, the corresponding
+   `storage_objects` row contains metadata, and the bucket contains that object.
+   The application file request should respond with a 302, `private, no-store`,
+   and a signed URL with `X-Amz-Expires=300`. Check owner/admin access and denial
+   for the second homeowner again. The original local receipt must still exist.
+5. Run `npm run check` and `npm test`. The automated storage tests inject upload,
+   audit, transaction, and verification failures without using real R2 or MySQL.
+
+### One-time local upload migration
+
+Back up MySQL and both upload directories first. Run from a checkout with the
+actual local files and the matching database. Pause application writes during
+the real migration. Built-in board portraits are application assets and are
+excluded. Unreferenced files are left alone, including resident documents with
+no ownership/database records; never guess their owners.
+
+```powershell
+# Preview only: no R2 credentials needed, no uploads or database writes.
+npm run storage:migrate
+# Or explicitly:
+npm run storage:migrate -- --dry-run
+
+# After reviewing the preview, configure R2 and explicitly confirm execution:
+npm run storage:migrate -- --execute --confirm=UPLOAD_TO_R2
+```
+
+The script uses the right category prefix, verifies length and SHA-256 metadata
+and downloads the uploaded object to verify its actual bytes, then updates
+references and metadata in one database transaction. It locks and rereads target
+records so unrelated edits are preserved. A migration lock prevents simultaneous
+runs. Deterministic opaque keys and a unique legacy-reference mapping make retries
+safe after interruptions; completed references are skipped and existing mappings
+are verified before reuse. A failed transaction leaves local references intact;
+an already uploaded object can be reused on retry. No local file is deleted.
+
+`r2-migration-report.json` contains only object keys, stages, safe failure codes,
+and counts. It is Git-ignored. Correct missing files/configuration/permissions and
+rerun the same command if failures occur. Verify migrated downloads and backups
+before planning a **separate** local cleanup operation; this tool has no cleanup
+option. Restart the application in R2 mode after migration.
+
 ## Verify changes
 
 ```powershell

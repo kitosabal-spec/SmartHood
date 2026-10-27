@@ -13,9 +13,12 @@ function moveLegacyPrivateUploads(legacyDirectory, privateDirectory) {
     if (!entry.isFile() || entry.name === '.gitkeep') continue;
     const source = path.join(legacyDirectory, entry.name);
     const destination = path.join(privateDirectory, path.basename(entry.name));
-    if (!fs.existsSync(destination)) fs.renameSync(source, destination);
-    else if (fs.readFileSync(source).equals(fs.readFileSync(destination))) fs.unlinkSync(source);
-    else console.warn(`Upload migration skipped a filename collision: ${entry.name}. Both files were preserved.`);
+    // Compatibility helper only: local originals require a separate verified
+    // cleanup operation, even when a byte-identical private copy exists.
+    if (!fs.existsSync(destination)) fs.copyFileSync(source, destination, fs.constants.COPYFILE_EXCL);
+    else if (!fs.readFileSync(source).equals(fs.readFileSync(destination))) {
+      console.warn('Upload migration skipped a filename collision. Both files were preserved.');
+    }
   }
 }
 

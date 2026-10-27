@@ -15,7 +15,6 @@ const {
   ANNOUNCEMENT_UPLOAD_DIR,
   BOARD_UPLOAD_DIR,
   LOSTFOUND_UPLOAD_DIR,
-  PRIVATE_UPLOAD_DIR,
   PRIVATE_RECEIPT_UPLOAD_DIR,
   PRIVATE_COMPLAINT_UPLOAD_DIR,
   PRIVATE_RESIDENT_DOCUMENT_UPLOAD_DIR,
@@ -24,7 +23,8 @@ const {
 } = require('./config/paths');
 const asyncHandler = require('./middleware/asyncHandler');
 const { isEmailConfigured, sendEmail } = require('./services/emailService');
-const { ensureUploadDirectories, moveLegacyPrivateUploads } = require('./services/uploadService');
+const { ensureUploadDirectories } = require('./services/uploadService');
+const { createStorageService, isObjectKey, permanentReference, presentCommunity } = require('./services/storageService');
 const { createHealthController } = require('./controllers/healthController');
 const { createIndexController } = require('./controllers/pageController');
 const { createHealthRoutes } = require('./routes/healthRoutes');
@@ -45,13 +45,17 @@ const amenityService = createAmenityService({ get, all });
 const { AUDITED_TABLES, changeSummary, createAuditService } = require('./services/auditService');
 const audit = createAuditService({ getPool: () => db, resolveActor: getRequester });
 const auditedHandler = audit.handler;
+const storage = createStorageService({ env: process.env, audit, metadata: entry => run(
+  'INSERT INTO storage_objects (object_key, provider, original_name, mime_type, size_bytes) VALUES (?, ?, ?, ?, ?)',
+  [entry.key, entry.provider, entry.originalname, entry.mimetype, entry.size]
+) });
 // Multer finishes parsing before the transaction starts. Its existing error
 // responses are retained, while success is sent only after a durable commit.
 function auditedUpload(req, res, work) {
   return uploadErr => auditedHandler(() => {
     audit.afterRollback(async () => {
       const files = [req.file, ...(Array.isArray(req.files) ? req.files : Object.values(req.files || {}).flat())].filter(Boolean);
-      await Promise.all(files.map(file => fs.promises.unlink(file.path).catch(() => {})));
+      await Promise.all(files.map(file => storage.discard(file)));
     });
     return work(uploadErr);
   })(req, res, error => {
@@ -129,16 +133,18 @@ for (const [urlPath, directory] of [
   ['/uploads/board', BOARD_UPLOAD_DIR],
   ['/uploads/lostfound', LOSTFOUND_UPLOAD_DIR],
 ]) {
+  app.get(urlPath + '/:filename', asyncHandler(async (req, res, next) => {
+    const key = urlPath.slice('/uploads/'.length) + '/' + req.params.filename;
+    if (!isObjectKey(key)) return next();
+    res.setHeader('Cache-Control', 'private, no-store');
+    return res.redirect(302, await storage.signedUrl(key));
+  }));
   app.use(urlPath, express.static(directory));
 }
 // Built-in board portraits are application assets, not runtime uploads. Keep
 // their historical URLs valid so existing database rows do not need migration.
 app.use('/uploads/board', express.static(path.join(PUBLIC_DIR, 'images', 'board')));
 
-moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'receipts'), PRIVATE_RECEIPT_UPLOAD_DIR);
-moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'complaints'), PRIVATE_COMPLAINT_UPLOAD_DIR);
-moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'profile'), PRIVATE_PROFILE_UPLOAD_DIR);
-moveLegacyPrivateUploads(path.join(PUBLIC_UPLOAD_DIR, 'qrcodes'), PRIVATE_QRCODE_UPLOAD_DIR);
 
 const tableConfig = {
   users: {
@@ -456,6 +462,11 @@ async function get(sql, params = []) {
 }
 
 function serializeValue(table, column, value) {
+  if (['announcements', 'board_of_directors', 'lostFound'].includes(table) && ['image_path', 'images', 'image', 'photo'].includes(column)) {
+    if (typeof value === 'string' && value.startsWith('[')) {
+      try { value = JSON.stringify(permanentReference(JSON.parse(value))); } catch { /* existing validation handles malformed JSON */ }
+    } else value = permanentReference(value);
+  }
   const config = tableConfig[table];
   if (config.jsonColumns.includes(column)) {
     if (typeof value === 'string') {
@@ -679,6 +690,11 @@ function deserializeRow(table, row) {
     output.status = output.status || 'active';
   }
 
+  if (['announcements', 'board_of_directors', 'lostFound'].includes(table)) {
+    for (const field of ['image_path', 'images', 'image', 'photo']) {
+      if (output[field] !== undefined) output[field] = presentCommunity(output[field]);
+    }
+  }
   return output;
 }
 
@@ -1499,7 +1515,7 @@ function randomUploadName(prefix, extension) {
 }
 
 const profileUpload = multer({
-  storage: multer.diskStorage({
+  storage: storage.multerStorage('profile-photos', {
     destination: (req, file, cb) => cb(null, PRIVATE_PROFILE_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || '.jpg';
@@ -1535,7 +1551,7 @@ function isValidImageBuffer(buffer) {
 const MAX_PAYMENT_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
 
 const receiptUpload = multer({
-  storage: multer.diskStorage({
+  storage: storage.multerStorage('receipts', {
     destination: (req, file, cb) => cb(null, PRIVATE_RECEIPT_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const origExt = path.extname(file.originalname || '').toLowerCase();
@@ -1557,7 +1573,7 @@ const receiptUpload = multer({
 });
 
 const qrUpload = multer({
-  storage: multer.diskStorage({
+  storage: storage.multerStorage('payment-qrcodes', {
     destination: (req, file, cb) => cb(null, PRIVATE_QRCODE_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const origExt = path.extname(file.originalname || '').toLowerCase();
@@ -1659,7 +1675,7 @@ function isValidAnnouncementMediaBuffer(buffer, ext) {
 }
 
 const announcementUpload = multer({
-  storage: multer.diskStorage({
+  storage: storage.multerStorage('announcements', {
     destination: (req, file, cb) => cb(null, ANNOUNCEMENT_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const ext = getAnnouncementMediaExt(file);
@@ -1687,7 +1703,7 @@ const announcementUploadMiddleware = announcementUpload.fields([
 ]);
 
 const boardUpload = multer({
-  storage: multer.diskStorage({
+  storage: storage.multerStorage('board', {
     destination: (req, file, cb) => cb(null, BOARD_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const ext = ALLOWED_PHOTO_MIMES[file.mimetype] || '.jpg';
@@ -1724,7 +1740,7 @@ function isAllowedMediaMime(mime, extension) {
 }
 
 const complaintUpload = multer({
-  storage: multer.diskStorage({
+  storage: storage.multerStorage('complaints', {
     destination: (req, file, cb) => cb(null, PRIVATE_COMPLAINT_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const ext = getSafeMediaExt(file);
@@ -1744,7 +1760,7 @@ const complaintUpload = multer({
 });
 
 const lostFoundUpload = multer({
-  storage: multer.diskStorage({
+  storage: storage.multerStorage('lostfound', {
     destination: (req, file, cb) => cb(null, LOSTFOUND_UPLOAD_DIR),
     filename: (req, file, cb) => {
       const ext = getSafeMediaExt(file);
@@ -1998,10 +2014,6 @@ async function requirePermission(req, res, permissionKey) {
 const PRIVATE_FILE_TICKET_TTL_MS = 10 * 60 * 1000;
 const privateUploadTickets = new Map();
 
-function privateStorageKey(kind, filename) {
-  return `private:${kind}/${path.basename(filename)}`;
-}
-
 function registerStagedPrivateUpload(kind, filename, userId) {
   // Complaint uploads are staged briefly before their complaint record is
   // saved. Binding the random filename to the uploader prevents one resident
@@ -2009,13 +2021,16 @@ function registerStagedPrivateUpload(kind, filename, userId) {
   const now = Date.now();
   cleanExpiredPrivateUploads(now);
   privateUploadTickets.set(`${kind}/${filename}`, { userId, expires: now + 15 * 60 * 1000 });
+  if (audit.current()) audit.afterRollback(() => privateUploadTickets.delete(`${kind}/${filename}`));
 }
 
 function cleanExpiredPrivateUploads(now = Date.now()) {
   for (const [key, value] of privateUploadTickets) {
     if (value.expires >= now) continue;
     privateUploadTickets.delete(key);
-    const [kind, filename] = key.split('/', 2);
+    const separator = key.indexOf('/');
+    const kind = key.slice(0, separator);
+    const filename = key.slice(separator + 1);
     deletePrivateFiles(kind, [filename]);
   }
 
@@ -2035,6 +2050,7 @@ function claimStagedPrivateUpload(kind, filename, requester) {
 
 function storedPrivateFilename(value, kind) {
   if (!value || typeof value !== 'string') return null;
+  if (isObjectKey(value, kind)) return value;
   const prefix = `private:${kind}/`;
   const legacyFolder = { 'profile-photos': 'profile', 'payment-qrcodes': 'qrcodes' }[kind] || kind;
   const legacyPrefix = `/uploads/${legacyFolder}/`;
@@ -2129,8 +2145,17 @@ function privateFilePath(kind, filename) {
   return candidate.startsWith(directory + path.sep) ? candidate : null;
 }
 
-function sendPrivateFile(res, filename, kind) {
-  const filePath = privateFilePath(kind, filename);
+async function sendPrivateFile(res, filename, kind) {
+  if (isObjectKey(filename, kind)) {
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    return res.redirect(302, await storage.signedUrl(filename));
+  }
+  let filePath = privateFilePath(kind, filename);
+  if (filePath && !fs.existsSync(filePath)) {
+    const legacyFolder = { 'profile-photos': 'profile', 'payment-qrcodes': 'qrcodes' }[kind] || kind;
+    filePath = path.join(PUBLIC_UPLOAD_DIR, legacyFolder, filename);
+  }
   if (!filePath || !fs.existsSync(filePath)) return res.status(404).json({ error: 'File not found.' });
   res.setHeader('Cache-Control', 'private, no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -2186,18 +2211,18 @@ function complaintStoredFilenames(record) {
 }
 
 function deletePrivateFiles(kind, filenames) {
-  if (audit.current()) return audit.afterCommit(() => deletePrivateFiles(kind, filenames));
   for (const filename of new Set(filenames.filter(Boolean))) {
-    const filePath = privateFilePath(kind, filename);
-    if (filePath) audit.afterCommit(() => fs.promises.unlink(filePath).catch(() => {}));
+    if (isObjectKey(filename, kind)) storage.deleteAfterCommit(filename, kind);
   }
 }
 
 function prepareComplaintPrivateAttachments(body, requester, existing = null) {
+  // File ownership must not be reassigned by homeowner module permissions.
+  if (requester.role === 'homeowner') body.homeownerId = existing ? existing.homeownerId : requesterHomeownerId(requester);
   const incomingItems = complaintAttachmentItems(body);
   const submittedStorageKeys = incomingItems.map((item) => {
     const value = typeof item === 'string' ? item : (item?.url || item?.media_url || item?.attachment);
-    return typeof value === 'string' && value.startsWith('private:complaints/') ? storedPrivateFilename(value, 'complaints') : null;
+    return typeof value === 'string' && (value.startsWith('private:complaints/') || isObjectKey(value, 'complaints')) ? storedPrivateFilename(value, 'complaints') : null;
   }).filter(Boolean);
   const oldFilenames = existing ? complaintStoredFilenames(deserializeRow('complaints', existing)) : [];
 
@@ -2236,11 +2261,6 @@ function requireOwnPhotoAccess(req, res) {
     return null;
   }
   return requesterId;
-}
-
-function photoRecordToUrl(value) {
-  if (!value) return null;
-  return privateStorageKey('profile-photos', path.basename(value));
 }
 
 function deleteProfileFile(photoPath) {
@@ -2283,19 +2303,19 @@ app.post('/api/users/:id/photo', (req, res) => {
       return;
     }
     try {
-      const buffer = await fs.promises.readFile(req.file.path);
+      const buffer = await storage.read(req.file);
       if (!isValidImageBuffer(buffer)) {
-        await fs.promises.unlink(req.file.path).catch(() => {});
+        await storage.discard(req.file);
         res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
         return;
       }
       const target = await get('SELECT id, homeowner_id, profile_photo FROM users WHERE id = ?', [req.params.id]);
       if (!target) {
-        await fs.promises.unlink(req.file.path).catch(() => {});
+        await storage.discard(req.file);
         res.status(404).json({ error: 'User not found.' });
         return;
       }
-      const photoPath = photoRecordToUrl(req.file.filename);
+      const photoPath = await storage.store(req.file, 'profile-photos');
       let oldPhoto = target.profile_photo;
       if (target.homeowner_id) {
         const homeowner = await get('SELECT profile_photo FROM homeowners WHERE id = ?', [target.homeowner_id]);
@@ -2307,7 +2327,7 @@ app.post('/api/users/:id/photo', (req, res) => {
       deleteProfileFile(oldPhoto);
       res.json({ ok: true, profile_photo: privateFileUrl('profile-photos', target.id, { id: requesterId }) });
     } catch (err) {
-      await fs.promises.unlink(req.file.path).catch(() => {});
+      await storage.discard(req.file);
       console.error(err);
       res.status(500).json({ error: 'Could not save the profile photo.' });
     }
@@ -2360,7 +2380,7 @@ app.post('/api/announcements', (req, res) => {
         const title = (req.body.title || '').trim();
         const contentText = (req.body.content || req.body.description || '').trim();
         if (!title || !contentText) {
-          for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+          for (const f of uploadedFiles) await storage.discard(f);
           return res.status(400).json({ error: 'Title and content are required.' });
         }
 
@@ -2376,19 +2396,19 @@ app.post('/api/announcements', (req, res) => {
           }
         }
         if (oversized.length > 0) {
-          for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+          for (const f of uploadedFiles) await storage.discard(f);
           return res.status(400).json({ error: oversized.join(' ') });
         }
 
         const mediaPaths = [];
         for (const f of uploadedFiles) {
           const ext = path.extname(f.filename || f.originalname || '').toLowerCase();
-          const buffer = await fs.promises.readFile(f.path);
+          const buffer = await storage.read(f);
           if (!isValidAnnouncementMediaBuffer(buffer, ext)) {
-            for (const uf of uploadedFiles) await fs.promises.unlink(uf.path).catch(() => {});
+            for (const uf of uploadedFiles) await storage.discard(uf);
             return res.status(400).json({ error: `Uploaded file "${f.originalname}" is not a valid JPG, PNG, WebP image or MP4, MOV, WebM video.` });
           }
-          mediaPaths.push(`/uploads/announcements/${f.filename}`);
+          mediaPaths.push(await storage.store(f, 'announcements'));
         }
 
         const primaryMedia = mediaPaths[0] || null;
@@ -2411,7 +2431,7 @@ app.post('/api/announcements', (req, res) => {
         const created = await get('SELECT * FROM announcements WHERE id = ?', [id]);
         res.status(201).json(deserializeRow('announcements', created));
       } catch (err) {
-        for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+        for (const f of uploadedFiles) await storage.discard(f);
         console.error(err);
         res.status(500).json({ error: 'Could not create announcement.' });
       }
@@ -2445,7 +2465,7 @@ app.put('/api/announcements/:id', (req, res) => {
       try {
         const existing = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
         if (!existing) {
-          for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+          for (const f of uploadedFiles) await storage.discard(f);
           return res.status(404).json({ error: 'Announcement not found.' });
         }
 
@@ -2455,7 +2475,7 @@ app.put('/api/announcements/:id', (req, res) => {
           : (req.body.description !== undefined ? String(req.body.description).trim() : (existing.content || existing.description));
 
         if (!title || !contentText) {
-          for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+          for (const f of uploadedFiles) await storage.discard(f);
           return res.status(400).json({ error: 'Title and content are required.' });
         }
 
@@ -2471,7 +2491,7 @@ app.put('/api/announcements/:id', (req, res) => {
           }
         }
         if (oversized.length > 0) {
-          for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+          for (const f of uploadedFiles) await storage.discard(f);
           return res.status(400).json({ error: oversized.join(' ') });
         }
 
@@ -2488,9 +2508,8 @@ app.put('/api/announcements/:id', (req, res) => {
 
         if (req.body.remove_image === 'true' || req.body.remove_all_images === 'true') {
           for (const imgPath of currentImages) {
-            if (imgPath && imgPath.startsWith('/uploads/announcements/')) {
-              const oldFile = path.join(PUBLIC_DIR, imgPath);
-              audit.afterCommit(() => fs.promises.unlink(oldFile).catch(() => {}));
+            if (imgPath && (imgPath.startsWith('/uploads/announcements/') || isObjectKey(imgPath, 'announcements'))) {
+              storage.deleteAfterCommit(imgPath, 'announcements');
             }
           }
           currentImages = [];
@@ -2499,12 +2518,12 @@ app.put('/api/announcements/:id', (req, res) => {
           try {
             keptImages = typeof req.body.existing_images === 'string' ? JSON.parse(req.body.existing_images) : req.body.existing_images;
             if (!Array.isArray(keptImages)) keptImages = [];
+            keptImages = permanentReference(keptImages);
           } catch { keptImages = currentImages; }
 
           for (const oldImg of currentImages) {
-            if (!keptImages.includes(oldImg) && oldImg && oldImg.startsWith('/uploads/announcements/')) {
-              const oldFile = path.join(PUBLIC_DIR, oldImg);
-              audit.afterCommit(() => fs.promises.unlink(oldFile).catch(() => {}));
+            if (!keptImages.includes(oldImg) && oldImg && (oldImg.startsWith('/uploads/announcements/') || isObjectKey(oldImg, 'announcements'))) {
+              storage.deleteAfterCommit(oldImg, 'announcements');
             }
           }
           currentImages = keptImages;
@@ -2513,16 +2532,16 @@ app.put('/api/announcements/:id', (req, res) => {
         // Process newly uploaded media files
         for (const f of uploadedFiles) {
           const ext = path.extname(f.filename || f.originalname || '').toLowerCase();
-          const buffer = await fs.promises.readFile(f.path);
+          const buffer = await storage.read(f);
           if (!isValidAnnouncementMediaBuffer(buffer, ext)) {
-            for (const uf of uploadedFiles) await fs.promises.unlink(uf.path).catch(() => {});
+            for (const uf of uploadedFiles) await storage.discard(uf);
             return res.status(400).json({ error: `Uploaded file "${f.originalname}" is not a valid JPG, PNG, WebP image or MP4, MOV, WebM video.` });
           }
-          currentImages.push(`/uploads/announcements/${f.filename}`);
+          currentImages.push(await storage.store(f, 'announcements'));
         }
 
-        const primaryMedia = currentImages[0] || null;
-        const mediaJson = JSON.stringify(currentImages);
+        const primaryMedia = permanentReference(currentImages[0]) || null;
+        const mediaJson = JSON.stringify(permanentReference(currentImages));
 
         const category = req.body.category || existing.category;
         const dateStr = req.body.date || existing.date;
@@ -2538,7 +2557,7 @@ app.put('/api/announcements/:id', (req, res) => {
         const updated = await get('SELECT * FROM announcements WHERE id = ?', [req.params.id]);
         res.json(deserializeRow('announcements', updated));
       } catch (err) {
-        for (const f of uploadedFiles) await fs.promises.unlink(f.path).catch(() => {});
+        for (const f of uploadedFiles) await storage.discard(f);
         console.error(err);
         res.status(500).json({ error: 'Could not update announcement.' });
       }
@@ -2572,9 +2591,8 @@ app.delete('/api/announcements/:id', auditedHandler(async (req, res) => {
   }
 
   for (const imgPath of allImages) {
-    if (imgPath && imgPath.startsWith('/uploads/announcements/')) {
-      const oldFile = path.join(PUBLIC_DIR, imgPath);
-      audit.afterCommit(() => fs.promises.unlink(oldFile).catch(() => {}));
+    if (imgPath && (imgPath.startsWith('/uploads/announcements/') || isObjectKey(imgPath, 'announcements'))) {
+      storage.deleteAfterCommit(imgPath, 'announcements');
     }
   }
 
@@ -2979,7 +2997,7 @@ app.post('/api/board', (req, res) => {
   requirePermission(req, res, 'board').then(author => {
     if (!author) return;
 
-    boardUpload.single('photo')(req, res, async (uploadErr) => {
+    boardUpload.single('photo')(req, res, auditedUpload(req, res, async (uploadErr) => {
       if (uploadErr) {
         const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
           ? 'Photo must be 5 MB or smaller.'
@@ -2995,18 +3013,18 @@ app.post('/api/board', (req, res) => {
         const displayOrder = parseInt(req.body.display_order, 10) || 0;
 
         if (!name || !position) {
-          if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+          if (req.file) await storage.discard(req.file);
           return res.status(400).json({ error: 'Name and position are required.' });
         }
 
         let photoPath = null;
         if (req.file) {
-          const buffer = await fs.promises.readFile(req.file.path);
+          const buffer = await storage.read(req.file);
           if (!isValidImageBuffer(buffer)) {
-            await fs.promises.unlink(req.file.path).catch(() => {});
+            await storage.discard(req.file);
             return res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
           }
-          photoPath = `/uploads/board/${req.file.filename}`;
+          photoPath = await storage.store(req.file, 'board');
         } else if (req.body.photo) {
           photoPath = req.body.photo.trim();
         }
@@ -3020,14 +3038,15 @@ app.post('/api/board', (req, res) => {
           [id, name, position, contactNumber, photoPath, termYears, displayOrder, nowIso, nowIso]
         );
 
+        await recordAuditLog(req, { table: 'board_of_directors', id, operation: 'created' });
         const created = await get('SELECT * FROM board_of_directors WHERE id = ?', [id]);
         res.status(201).json(deserializeRow('board_of_directors', created));
       } catch (err) {
-        if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+        if (req.file) await storage.discard(req.file);
         console.error(err);
         res.status(500).json({ error: 'Could not create board member.' });
       }
-    });
+    }));
   }).catch(err => {
     console.error(err);
     res.status(500).json({ error: 'Server error checking authorization.' });
@@ -3038,7 +3057,7 @@ app.put('/api/board/:id', (req, res) => {
   requirePermission(req, res, 'board').then(author => {
     if (!author) return;
 
-    boardUpload.single('photo')(req, res, async (uploadErr) => {
+    boardUpload.single('photo')(req, res, auditedUpload(req, res, async (uploadErr) => {
       if (uploadErr) {
         const msg = uploadErr.code === 'LIMIT_FILE_SIZE'
           ? 'Photo must be 5 MB or smaller.'
@@ -3049,7 +3068,7 @@ app.put('/api/board/:id', (req, res) => {
       try {
         const existing = await get('SELECT * FROM board_of_directors WHERE id = ?', [req.params.id]);
         if (!existing) {
-          if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+          if (req.file) await storage.discard(req.file);
           return res.status(404).json({ error: 'Board member not found.' });
         }
 
@@ -3060,28 +3079,26 @@ app.put('/api/board/:id', (req, res) => {
         const displayOrder = req.body.display_order !== undefined ? (parseInt(req.body.display_order, 10) || 0) : existing.display_order;
 
         if (!name || !position) {
-          if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+          if (req.file) await storage.discard(req.file);
           return res.status(400).json({ error: 'Name and position cannot be empty.' });
         }
 
         let photoPath = existing.photo;
         if (req.file) {
-          const buffer = await fs.promises.readFile(req.file.path);
+          const buffer = await storage.read(req.file);
           if (!isValidImageBuffer(buffer)) {
-            await fs.promises.unlink(req.file.path).catch(() => {});
+            await storage.discard(req.file);
             return res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
           }
-          photoPath = `/uploads/board/${req.file.filename}`;
+          photoPath = await storage.store(req.file, 'board');
 
           // Unlink old photo if custom uploaded
-          if (existing.photo && existing.photo.startsWith('/uploads/board/') && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
-            const oldFile = path.join(PUBLIC_DIR, existing.photo);
-            fs.promises.unlink(oldFile).catch(() => {});
+          if (existing.photo && (existing.photo.startsWith('/uploads/board/') || isObjectKey(existing.photo)) && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
+            storage.deleteAfterCommit(existing.photo, 'board');
           }
         } else if (req.body.remove_photo === 'true') {
-          if (existing.photo && existing.photo.startsWith('/uploads/board/') && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
-            const oldFile = path.join(PUBLIC_DIR, existing.photo);
-            fs.promises.unlink(oldFile).catch(() => {});
+          if (existing.photo && (existing.photo.startsWith('/uploads/board/') || isObjectKey(existing.photo)) && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
+            storage.deleteAfterCommit(existing.photo, 'board');
           }
           photoPath = null;
         }
@@ -3093,21 +3110,22 @@ app.put('/api/board/:id', (req, res) => {
           [name, position, contactNumber, photoPath, termYears, displayOrder, nowIso, req.params.id]
         );
 
+        await recordAuditLog(req, { table: 'board_of_directors', id: req.params.id, operation: 'updated' });
         const updated = await get('SELECT * FROM board_of_directors WHERE id = ?', [req.params.id]);
         res.json(deserializeRow('board_of_directors', updated));
       } catch (err) {
-        if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+        if (req.file) await storage.discard(req.file);
         console.error(err);
         res.status(500).json({ error: 'Could not update board member.' });
       }
-    });
+    }));
   }).catch(err => {
     console.error(err);
     res.status(500).json({ error: 'Server error checking authorization.' });
   });
 });
 
-app.delete('/api/board/:id', asyncHandler(async (req, res) => {
+app.delete('/api/board/:id', auditedHandler(async (req, res) => {
   const author = await requirePermission(req, res, 'board');
   if (!author) return;
 
@@ -3116,12 +3134,12 @@ app.delete('/api/board/:id', asyncHandler(async (req, res) => {
     return res.status(404).json({ error: 'Board member not found.' });
   }
 
-  if (existing.photo && existing.photo.startsWith('/uploads/board/') && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
-    const oldFile = path.join(PUBLIC_DIR, existing.photo);
-    fs.promises.unlink(oldFile).catch(() => {});
+  if (existing.photo && (existing.photo.startsWith('/uploads/board/') || isObjectKey(existing.photo)) && !existing.photo.includes('arturo_tuy') && !existing.photo.includes('marian_ciudadano') && !existing.photo.includes('mary_ann_celis') && !existing.photo.includes('claudette_delaon') && !existing.photo.includes('mitch_aganan')) {
+    storage.deleteAfterCommit(existing.photo, 'board');
   }
 
   await run('DELETE FROM board_of_directors WHERE id = ?', [req.params.id]);
+  await recordAuditLog(req, { table: 'board_of_directors', id: req.params.id, operation: 'deleted' });
   res.json({ ok: true });
 }));
 
@@ -3482,7 +3500,7 @@ app.post('/api/payment-settings/upload-qr', asyncHandler(async (req, res, next) 
     try {
       const requester = await requireFinancialAdmin(req, res);
       if (!requester) {
-        if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+        if (req.file) await storage.discard(req.file);
         return;
       }
 
@@ -3490,9 +3508,9 @@ app.post('/api/payment-settings/upload-qr', asyncHandler(async (req, res, next) 
         return res.status(400).json({ error: 'No QR code image received.' });
       }
 
-      const buffer = await fs.promises.readFile(req.file.path);
+      const buffer = await storage.read(req.file);
       if (!isValidImageBuffer(buffer)) {
-        await fs.promises.unlink(req.file.path).catch(() => {});
+        await storage.discard(req.file);
         return res.status(400).json({ error: 'Uploaded file is not a valid JPG, JPEG, PNG, or WebP image.' });
       }
 
@@ -3502,7 +3520,7 @@ app.post('/api/payment-settings/upload-qr', asyncHandler(async (req, res, next) 
         if (oldFilename) deletePrivateFiles('payment-qrcodes', [oldFilename]);
       }
 
-      const qrPath = privateStorageKey('payment-qrcodes', req.file.filename);
+      const qrPath = await storage.store(req.file, 'payment-qrcodes');
       const record = {
         id: existing ? existing.id : 'ps_gcash',
         payment_method: 'gcash',
@@ -3518,7 +3536,7 @@ app.post('/api/payment-settings/upload-qr', asyncHandler(async (req, res, next) 
 
       res.json({ ok: true, qr_code_path: privateFileUrl('payment-qrcodes', record.id, requester), message: 'GCash QR code updated successfully.' });
     } catch (err) {
-      if (req.file) await fs.promises.unlink(req.file.path).catch(() => {});
+      if (req.file) await storage.discard(req.file);
       console.error(err);
       res.status(500).json({ error: 'Could not upload QR code image.' });
     }
@@ -3929,8 +3947,8 @@ app.post('/api/payments/submit', asyncHandler(async (req, res, next) => {
     }
 
     const cleanUpFile = async () => {
-      if (req.file && req.file.path) {
-        await fs.promises.unlink(req.file.path).catch(() => {});
+      if (req.file) {
+        await storage.discard(req.file);
       }
     };
 
@@ -3956,7 +3974,7 @@ app.post('/api/payments/submit', asyncHandler(async (req, res, next) => {
       }
 
       // Magic byte validation of uploaded receipt image
-      const buffer = await fs.promises.readFile(req.file.path);
+      const buffer = await storage.read(req.file);
       if (!isValidImageBuffer(buffer)) {
         await cleanUpFile();
         return res.status(400).json({ error: 'Uploaded file is not a valid JPG, JPEG, PNG, or WebP image.' });
@@ -4144,7 +4162,7 @@ app.post('/api/payments/submit', asyncHandler(async (req, res, next) => {
       // Payment Date
       const paymentDate = (req.body.payment_date || new Date().toISOString().slice(0, 10)).trim();
       const paymentMethod = (req.body.payment_method || 'GCash').trim();
-      const receiptPath = privateStorageKey('receipts', req.file.filename);
+      const receiptPath = await storage.store(req.file, 'receipts');
       const paymentId = 'p' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
       const nowIso = new Date().toISOString();
 
@@ -4215,7 +4233,7 @@ app.post('/api/payments/:id/receipt', asyncHandler(async (req, res) => {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE' ? 'Receipt image exceeds the 10 MB size limit.' : (uploadErr.message || 'Invalid receipt upload.');
       return res.status(400).json({ error: message });
     }
-    const cleanUpFile = () => req.file?.path && fs.promises.unlink(req.file.path).catch(() => {});
+    const cleanUpFile = () => storage.discard(req.file);
     try {
       const payment = await get('SELECT * FROM payments WHERE id = ?', [req.params.id]);
       if (!payment) {
@@ -4227,12 +4245,12 @@ app.post('/api/payments/:id/receipt', asyncHandler(async (req, res) => {
         await cleanUpFile();
         return res.status(403).json({ error: 'You do not have permission to replace this receipt.' });
       }
-      if (!req.file || !isValidImageBuffer(await fs.promises.readFile(req.file.path))) {
+      if (!req.file || !isValidImageBuffer(await storage.read(req.file))) {
         await cleanUpFile();
         return res.status(400).json({ error: 'Uploaded file is not a valid JPG, PNG, or WebP image.' });
       }
       const oldFilename = storedPrivateFilename(payment.receipt, 'receipts');
-      const receipt = privateStorageKey('receipts', req.file.filename);
+      const receipt = await storage.store(req.file, 'receipts');
       await saveRecord('payments', { id: payment.id, receipt, updated_at: new Date().toISOString() });
       if (oldFilename) deletePrivateFiles('receipts', [oldFilename]);
       res.json({ ok: true, payment: presentPrivateFiles('payments', deserializeRow('payments', { ...payment, receipt }), requester) });
@@ -4448,7 +4466,7 @@ app.get('/api/files/receipts/:id', asyncHandler(async (req, res) => {
   if (!requester) return;
   const payment = await get('SELECT * FROM payments WHERE id = ?', [req.params.id]);
   if (!payment) return res.status(404).json({ error: 'Payment record not found.' });
-  const mayView = userHasPermission(requester, 'payments') || (userHasPermission(requester, 'resident') && requesterHomeownerId(requester) === payment.homeownerId);
+  const mayView = (requester.role !== 'homeowner' && userHasPermission(requester, 'payments')) || (userHasPermission(requester, 'resident') && requesterHomeownerId(requester) === payment.homeownerId);
   if (!mayView) return res.status(403).json({ error: 'You do not have permission to view this receipt.' });
   const filename = storedPrivateFilename(payment.receipt, 'receipts');
   if (!filename) return res.status(404).json({ error: 'Receipt file not found.' });
@@ -4462,7 +4480,7 @@ app.get('/api/files/complaints/:id/:index?', asyncHandler(async (req, res) => {
   if (!requester) return;
   const complaint = await get('SELECT * FROM complaints WHERE id = ?', [req.params.id]);
   if (!complaint) return res.status(404).json({ error: 'Complaint not found.' });
-  const mayView = requesterHomeownerId(requester) === complaint.homeownerId || requester.role === 'admin' || userHasPermission(requester, 'complaints');
+  const mayView = requesterHomeownerId(requester) === complaint.homeownerId || requester.role === 'admin' || (requester.role !== 'homeowner' && userHasPermission(requester, 'complaints'));
   if (!mayView) return res.status(403).json({ error: 'You do not have permission to view this complaint attachment.' });
   const item = complaintAttachmentItems(deserializeRow('complaints', complaint))[index];
   const filename = privateFilenameFromComplaintItem(item);
@@ -4470,12 +4488,13 @@ app.get('/api/files/complaints/:id/:index?', asyncHandler(async (req, res) => {
   return sendPrivateFile(res, filename, 'complaints');
 }));
 
-// Profile photos and payment QR codes are private to authenticated residents.
-// They are intentionally not ownership-restricted because logged-in residents
-// need avatars and the HOA payment QR code throughout the application.
+// Profile files are owner/admin-only. HOA payment QR codes remain available to authenticated residents.
 app.get('/api/files/profile-photos/:id', asyncHandler(async (req, res) => {
   const requester = await requesterFromPrivateFileTicket(req, res, 'profile-photos', req.params.id);
   if (!requester) return;
+  if (requester.role !== 'admin' && req.params.id !== requester.id && req.params.id !== requesterHomeownerId(requester)) {
+    return res.status(403).json({ error: 'You do not have permission to view this profile file.' });
+  }
   const record = await get(
     `SELECT COALESCE(h.profile_photo, u.profile_photo) AS profile_photo
        FROM users u LEFT JOIN homeowners h ON h.id = u.homeowner_id WHERE u.id = ?
@@ -4931,7 +4950,7 @@ app.put('/api/:table', auditedHandler(async (req, res) => {
 app.post('/api/complaints/upload', asyncHandler(async (req, res) => {
   const requester = await requirePermission(req, res, 'resident');
   if (!requester) return;
-  complaintUpload.any()(req, res, async (uploadErr) => {
+  complaintUpload.any()(req, res, auditedUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE'
         ? 'A file exceeds the maximum allowed size (5 MB for images, 30 MB for videos).'
@@ -4958,24 +4977,25 @@ app.post('/api/complaints/upload', asyncHandler(async (req, res) => {
     }
 
     if (oversized.length > 0) {
-      await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+      await Promise.all(files.map(f => storage.discard(f)));
       return res.status(400).json({ error: oversized.join(' ') });
     }
 
     for (const file of files) {
       const ext = path.extname(file.filename || '').toLowerCase();
-      const buffer = await fs.promises.readFile(file.path);
+      const buffer = await storage.read(file);
       if (!isValidAnnouncementMediaBuffer(buffer, ext)) {
-        await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+        await Promise.all(files.map(f => storage.discard(f)));
         return res.status(400).json({ error: `Uploaded file "${file.originalname}" is not a valid JPG, PNG, WebP image or MP4, MOV, WebM video.` });
       }
     }
 
+    for (const file of files) await storage.store(file, 'complaints');
     const uploadedFiles = files.map(file => {
       const ext = path.extname(file.originalname || '').toLowerCase();
       const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
-      const storageKey = privateStorageKey('complaints', file.filename);
-      registerStagedPrivateUpload('complaints', file.filename, requester.id);
+      const storageKey = file.storageReference;
+      registerStagedPrivateUpload('complaints', storedPrivateFilename(storageKey, 'complaints'), requester.id);
       return {
         // This is a storage key, not a public URL. It becomes a signed API URL
         // only after the complaint record has been created.
@@ -5007,13 +5027,13 @@ app.post('/api/complaints/upload', asyncHandler(async (req, res) => {
       originalname: primary.originalname || null,
       size: primary.size || 0,
     });
-  });
+  }));
 }));
 
 // ── LOST & FOUND MEDIA UPLOAD API ──
 
 const handleLostFoundUpload = (req, res) => {
-  lostFoundUpload.any()(req, res, async (uploadErr) => {
+  lostFoundUpload.any()(req, res, auditedUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE'
         ? 'A file exceeds the maximum allowed size (5 MB for images, 30 MB for videos).'
@@ -5040,23 +5060,24 @@ const handleLostFoundUpload = (req, res) => {
     }
 
     if (oversized.length > 0) {
-      await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+      await Promise.all(files.map(f => storage.discard(f)));
       return res.status(400).json({ error: oversized.join(' ') });
     }
 
     for (const file of files) {
       const ext = path.extname(file.originalname || '').toLowerCase();
-      const buffer = await fs.promises.readFile(file.path);
+      const buffer = await storage.read(file);
       if (!isValidAnnouncementMediaBuffer(buffer, ext)) {
-        await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+        await Promise.all(files.map(f => storage.discard(f)));
         return res.status(400).json({ error: `Uploaded file "${file.originalname}" is not a valid JPG, PNG, WebP image or MP4, MOV, WebM video.` });
       }
     }
 
+    for (const file of files) await storage.store(file, 'lostfound');
     const uploadedFiles = files.map(file => {
       const ext = path.extname(file.originalname || '').toLowerCase();
       const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
-      const mediaUrl = `/uploads/lostfound/${file.filename}`;
+      const mediaUrl = presentCommunity(file.storageReference);
       return {
         url: mediaUrl,
         media_url: mediaUrl,
@@ -5085,7 +5106,7 @@ const handleLostFoundUpload = (req, res) => {
       originalname: primary.originalname || null,
       size: primary.size || 0,
     });
-  });
+  }));
 };
 
 app.post('/api/lostfound/upload', handleLostFoundUpload);
@@ -5106,7 +5127,7 @@ app.post('/api/complaints', (req, res, next) => {
       try {
         const allowed = await checkTableAccess(req, res, 'complaints', 'create');
         if (!allowed) {
-          if (files.length) await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+          if (files.length) await Promise.all(files.map(f => storage.discard(f)));
           return;
         }
 
@@ -5122,14 +5143,20 @@ app.post('/api/complaints', (req, res, next) => {
           }
         }
         if (oversized.length > 0) {
-          await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+          await Promise.all(files.map(f => storage.discard(f)));
           return res.status(400).json({ error: oversized.join(' ') });
         }
 
+        for (const file of files) {
+          if (!isValidAnnouncementMediaBuffer(await storage.read(file), path.extname(file.originalname).toLowerCase())) {
+            return res.status(400).json({ error: 'Uploaded file is not a valid image or video.' });
+          }
+        }
+        for (const file of files) await storage.store(file, 'complaints');
         const uploadedFiles = files.map(file => {
           const ext = path.extname(file.originalname || '').toLowerCase();
           const isVideo = ALLOWED_COMPLAINT_VIDEO_EXTS.has(ext) || (file.mimetype && file.mimetype.startsWith('video/'));
-          const mediaUrl = privateStorageKey('complaints', file.filename);
+          const mediaUrl = file.storageReference;
           return {
             url: mediaUrl,
             media_url: mediaUrl,
@@ -5142,6 +5169,10 @@ app.post('/api/complaints', (req, res, next) => {
         });
 
         const body = { ...req.body };
+        if (body.id && await get('SELECT id FROM complaints WHERE id = ?', [body.id])) {
+          return res.status(409).json({ error: 'Complaint ID already exists. Use the update route.' });
+        }
+        if (allowed.role === 'homeowner') body.homeownerId = requesterHomeownerId(allowed);
         if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) body.homeownerId = requesterHomeownerId(allowed);
         if (uploadedFiles.length > 0) {
           const primary = uploadedFiles[0];
@@ -5161,7 +5192,7 @@ app.post('/api/complaints', (req, res, next) => {
         await saveRecord('complaints', body);
         res.status(201).json(presentPrivateFiles('complaints', sanitizeRecord('complaints', body), allowed));
       } catch (err) {
-        if (files.length) await Promise.all(files.map(f => fs.promises.unlink(f.path).catch(() => {})));
+        if (files.length) await Promise.all(files.map(f => storage.discard(f)));
         console.error(err);
         res.status(500).json({ error: 'Could not save complaint.' });
       }
@@ -5627,6 +5658,9 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
   let complaintFiles = null;
   if (table === 'complaints') {
     // A resident may only create a complaint in their own name.
+    if (req.body.id && await get('SELECT id FROM complaints WHERE id = ?', [req.body.id])) {
+      return res.status(409).json({ error: 'Complaint ID already exists. Use the update route.' });
+    }
     if (allowed.role !== 'admin' && !userHasPermission(allowed, 'complaints')) req.body.homeownerId = requesterHomeownerId(allowed);
     try {
       complaintFiles = prepareComplaintPrivateAttachments(req.body, allowed);
@@ -5697,6 +5731,8 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
 
     if (allowed.role !== 'admin') {
       // Non-admin updating their own profile cannot change role, permissions, balance, status, or password via PUT
+      // The resident link is also an authorization boundary for private files.
+      delete req.body.homeowner_id;
       delete req.body.role;
       delete req.body.permissions;
       delete req.body.balance;
@@ -5898,7 +5934,7 @@ app.delete('/api/:table/:id', auditedHandler(async (req, res) => {
     const existing = await get('SELECT image, images FROM lostFound WHERE id = ?', [req.params.id]);
     if (existing) {
       const filesToDelete = [];
-      if (existing.image && existing.image.startsWith('/uploads/lostfound/')) {
+      if (existing.image && (existing.image.startsWith('/uploads/lostfound/') || isObjectKey(existing.image))) {
         filesToDelete.push(existing.image);
       }
       if (existing.images) {
@@ -5907,7 +5943,7 @@ app.delete('/api/:table/:id', auditedHandler(async (req, res) => {
           if (Array.isArray(parsed)) {
             for (const img of parsed) {
               const url = typeof img === 'string' ? img : (img?.url || img?.image || img?.media_url);
-              if (url && url.startsWith('/uploads/lostfound/') && !filesToDelete.includes(url)) {
+              if (url && (url.startsWith('/uploads/lostfound/') || isObjectKey(url)) && !filesToDelete.includes(url)) {
                 filesToDelete.push(url);
               }
             }
@@ -5915,8 +5951,7 @@ app.delete('/api/:table/:id', auditedHandler(async (req, res) => {
         } catch {}
       }
       for (const f of filesToDelete) {
-        const filePath = path.join(PUBLIC_DIR, f);
-        audit.afterCommit(() => fs.promises.unlink(filePath).catch(() => {}));
+        storage.deleteAfterCommit(f, 'lostfound');
       }
     }
   }

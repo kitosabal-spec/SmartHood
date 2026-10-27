@@ -27,7 +27,7 @@ test('database SSL respects explicit settings and recognizes loopback addresses'
   assert.ok(config({ MYSQL_HOST: 'database.internal', MYSQL_SSL: 'true' }).ssl);
 });
 
-test('private upload migration moves files, removes only exact duplicates, and preserves collisions', t => {
+test('private upload compatibility copy retains all local originals, including duplicates and collisions', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'smarthood-migration-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const legacy = path.join(root, 'legacy');
@@ -41,8 +41,8 @@ test('private upload migration moves files, removes only exact duplicates, and p
   fs.writeFileSync(path.join(target, 'collision.txt'), 'private receipt');
   moveLegacyPrivateUploads(legacy, target);
   assert.equal(fs.readFileSync(path.join(target, 'new.txt'), 'utf8'), 'new receipt');
-  assert.equal(fs.existsSync(path.join(legacy, 'new.txt')), false);
-  assert.equal(fs.existsSync(path.join(legacy, 'same.txt')), false);
+  assert.equal(fs.existsSync(path.join(legacy, 'new.txt')), true);
+  assert.equal(fs.existsSync(path.join(legacy, 'same.txt')), true);
   assert.equal(fs.readFileSync(path.join(target, 'same.txt'), 'utf8'), 'same receipt');
   assert.equal(fs.readFileSync(path.join(legacy, 'collision.txt'), 'utf8'), 'legacy receipt');
   assert.equal(fs.readFileSync(path.join(target, 'collision.txt'), 'utf8'), 'private receipt');

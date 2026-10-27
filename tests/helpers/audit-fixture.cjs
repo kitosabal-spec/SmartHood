@@ -11,7 +11,7 @@ function auditDatabase() {
     auditLog: [], billings: [], payments: [], complaints: [], amenityBookings: [],
     vehicleRegistrations: [], lostFound: [], announcements: [], appSettings: [],
     payment_settings: [], notifications: [], notification_recipients: [], billing_assignments: [],
-    announcement_comments: [], announcement_reactions: [], board_of_directors: [],
+    announcement_comments: [], announcement_reactions: [], board_of_directors: [], storage_objects: [],
   };
   pool.tables = tables;
   pool.failAudit = false;
@@ -123,7 +123,8 @@ function auditDatabase() {
         const token = tokens[index];
         return [column, token === '?' ? values[i++] : token === 'NULL' ? null : token === 'NOW()' ? new Date().toISOString() : token.replace(/^'|'$/g, '')];
       }));
-      if (tables[insert[1]].some(x => x.id === row.id)) throw Object.assign(new Error('duplicate'), { code: 'ER_DUP_ENTRY' });
+      const primaryKey = insert[1] === 'storage_objects' ? 'object_key' : 'id';
+      if (tables[insert[1]].some(x => x[primaryKey] === row[primaryKey])) throw Object.assign(new Error('duplicate'), { code: 'ER_DUP_ENTRY' });
       tables[insert[1]].push(row);
       return [{ affectedRows: 1 }];
     }
@@ -171,7 +172,7 @@ function auditDatabase() {
   return pool;
 }
 
-async function auditFixture(t) {
+async function auditFixture(t, options = {}) {
   const pool = auditDatabase();
   const fs = require('node:fs');
   const path = require('node:path');
@@ -180,7 +181,9 @@ async function auditFixture(t) {
     for (const name of fs.readdirSync(uploadDir)) fs.unlinkSync(path.join(uploadDir, name));
     fs.rmdirSync(uploadDir);
   });
-  const f = await fixture(t, { pool, paths: { PRIVATE_RECEIPT_UPLOAD_DIR: uploadDir, PRIVATE_QRCODE_UPLOAD_DIR: uploadDir } });
+  const f = await fixture(t, { ...options, pool, paths: { PRIVATE_RECEIPT_UPLOAD_DIR: uploadDir, PRIVATE_QRCODE_UPLOAD_DIR: uploadDir,
+    PRIVATE_PROFILE_UPLOAD_DIR: uploadDir, PRIVATE_COMPLAINT_UPLOAD_DIR: uploadDir,
+    ANNOUNCEMENT_UPLOAD_DIR: uploadDir, BOARD_UPLOAD_DIR: uploadDir, LOSTFOUND_UPLOAD_DIR: uploadDir, ...options.paths } });
   // Signed sessions use the real application signing/authentication code.
   const crypto = require('node:crypto');
   function cookie(id) {
@@ -195,6 +198,6 @@ async function auditFixture(t) {
     });
     return { status: response.status, headers: response.headers, body: await response.json() };
   }
-  return { ...f, request, uploadDir };
+  return { ...f, request, uploadDir, cookie };
 }
 module.exports = { auditDatabase, auditFixture };
