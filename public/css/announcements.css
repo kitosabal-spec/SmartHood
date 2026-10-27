@@ -831,6 +831,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 0.8rem;
   font-weight: 700;
   color: var(--teal-700);

@@ -1,0 +1,2 @@
+# Migration checksums must stay portable between Windows and Linux checkouts.
+/migrations/*.js text eol=lf

@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { runMigrations, loadMigrations } = require('../src/db/migrationRunner');
 
 function fixture(t, { version = '8.0.11-TiDB-v8.5.0', failure, migration = '010', commitLost = false, alwaysFail = false } = {}) {
@@ -122,4 +123,49 @@ test('already-applied migration checksum mismatches still stop startup on TiDB',
   const f = fixture(t);
   f.applied.set('010', 'wrong-checksum');
   await assert.rejects(runMigrations(f.pool, { directory: f.directory }), /Applied migration 010 has changed/);
+});
+
+test('historical LF and CRLF checksums survive checkout changes without replay or history updates', async t => {
+  for (const storedEnding of ['\n', '\r\n']) {
+    for (const diskEnding of ['\n', '\r\n']) {
+      const f = fixture(t, { migration: '016', version: '8.0.36' });
+      const filename = path.join(f.directory, '016_test_backfill.js');
+      const source = fs.readFileSync(filename, 'utf8');
+      const recorded = crypto.createHash('sha256').update(source.replace(/\n/g, storedEnding)).digest('hex');
+      f.applied.set('016', recorded);
+      fs.writeFileSync(filename, source.replace(/\n/g, diskEnding));
+      await runMigrations(f.pool, { directory: f.directory });
+      assert.equal(f.applied.get('016'), recorded);
+      assert.ok(!f.calls.some(x => x.sql === 'BACKFILL' || /INSERT|UPDATE|DELETE/.test(x.sql)));
+    }
+  }
+});
+
+test('new CRLF migrations record the LF checksum and run only once across checkout changes', async t => {
+  const f = fixture(t, { migration: '016', version: '8.0.36' });
+  const filename = path.join(f.directory, '016_test_backfill.js');
+  const source = fs.readFileSync(filename, 'utf8');
+  const expected = crypto.createHash('sha256').update(source).digest('hex');
+  fs.writeFileSync(filename, source.replace(/\n/g, '\r\n'));
+  await runMigrations(f.pool, { directory: f.directory });
+  assert.equal(f.applied.get('016'), expected);
+  fs.writeFileSync(filename, source);
+  await runMigrations(f.pool, { directory: f.directory });
+  assert.equal(f.calls.filter(x => x.sql === 'BACKFILL').length, 1);
+  assert.equal(f.calls.filter(x => x.sql.startsWith('INSERT INTO schema_migrations')).length, 1);
+});
+
+test('line-ending compatibility still rejects source edits and releases the migration lock', async t => {
+  for (const ending of ['\n', '\r\n']) {
+    const f = fixture(t, { migration: '016', version: '8.0.36' });
+    const filename = path.join(f.directory, '016_test_backfill.js');
+    const source = fs.readFileSync(filename, 'utf8');
+    const recorded = crypto.createHash('sha256').update(source.replace(/\n/g, ending)).digest('hex');
+    f.applied.set('016', recorded);
+    fs.writeFileSync(filename, source.replace('BACKFILL', 'CHANGED_BACKFILL').replace(/\n/g, '\r\n'));
+    await assert.rejects(runMigrations(f.pool, { directory: f.directory }), /Applied migration 016 has changed on disk/);
+    assert.equal(f.applied.get('016'), recorded);
+    assert.ok(f.calls.some(x => x.sql.includes('RELEASE_LOCK(')));
+    assert.ok(!f.calls.some(x => x.sql === 'BACKFILL' || x.sql === 'CHANGED_BACKFILL'));
+  }
 });

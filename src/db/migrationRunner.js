@@ -100,12 +100,19 @@ function loadMigrations(directory) {
       const filename = path.join(directory, name);
       delete require.cache[require.resolve(filename)];
       const migration = require(filename);
+      const source = fs.readFileSync(filename);
+      const lfSource = source.toString('utf8').replace(/\r\n/g, '\n');
+      const checksum = value => crypto.createHash('sha256').update(value).digest('hex');
       return {
         ...migration,
         version: name.slice(0, 3),
         name: name.slice(4, -3),
         filename,
-        checksum: crypto.createHash('sha256').update(fs.readFileSync(filename)).digest('hex'),
+        // Git can convert LF to CRLF on Windows. Record a portable checksum for
+        // new migrations and accept the old raw-byte hashes without rewriting
+        // migration history or allowing any other source changes.
+        checksum: checksum(lfSource),
+        legacyChecksums: [checksum(source), checksum(lfSource.replace(/\n/g, '\r\n'))],
       };
     });
 }
@@ -200,7 +207,8 @@ async function runMigrationsOnConnection(connection, options = {}) {
     const applied = new Map(appliedRows.map(row => [row.version, row.checksum]));
     for (const migration of loadMigrations(directory)) {
       if (applied.has(migration.version)) {
-        if (applied.get(migration.version) !== migration.checksum) {
+        const recordedChecksum = applied.get(migration.version);
+        if (recordedChecksum !== migration.checksum && !migration.legacyChecksums.includes(recordedChecksum)) {
           throw new Error(`Applied migration ${migration.version} has changed on disk.`);
         }
         continue;

@@ -387,9 +387,9 @@ function initCropperBox() {
   activeCropper.stageSize = { w: stageW, h: stageH };
   activeCropper.origRatio = (img.naturalWidth && img.naturalHeight) ? (img.naturalWidth / img.naturalHeight) : (stageW / stageH);
 
-  // Default box: 85% of stage, centered
-  let w = Math.round(stageW * 0.85);
-  let h = Math.round(stageH * 0.85);
+  // Start with the entire image selected; presets fit within these bounds.
+  let w = stageW;
+  let h = stageH;
 
   if (activeCropper.ratio !== 'free') {
     const targetRatio = getNumericRatio(activeCropper.ratio);
@@ -651,7 +651,8 @@ function applyPhotoCrop() {
       showToast('error', 'Error', 'Could not generate cropped image.');
       return;
     }
-    const cleanName = sourceName.replace(/\.[^/.]+$/, '') + '-cropped.jpg';
+    const exportExt = exportMime === 'image/png' ? '.png' : '.jpg';
+    const cleanName = sourceName.replace(/\.[^/.]+$/, '') + '-cropped' + exportExt;
     const croppedFile = new File([blob], cleanName, { type: exportMime });
 
     if (typeof onApply === 'function') {
