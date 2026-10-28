@@ -2379,11 +2379,6 @@ app.post('/api/announcements', (req, res) => {
       try {
         const title = (req.body.title || '').trim();
         const contentText = (req.body.content || req.body.description || '').trim();
-        if (!title || !contentText) {
-          for (const f of uploadedFiles) await storage.discard(f);
-          return res.status(400).json({ error: 'Title and content are required.' });
-        }
-
         const oversized = [];
         for (const f of uploadedFiles) {
           const ext = path.extname(f.originalname || '').toLowerCase();
@@ -2473,11 +2468,6 @@ app.put('/api/announcements/:id', (req, res) => {
         const contentText = req.body.content !== undefined
           ? String(req.body.content).trim()
           : (req.body.description !== undefined ? String(req.body.description).trim() : (existing.content || existing.description));
-
-        if (!title || !contentText) {
-          for (const f of uploadedFiles) await storage.discard(f);
-          return res.status(400).json({ error: 'Title and content are required.' });
-        }
 
         const oversized = [];
         for (const f of uploadedFiles) {

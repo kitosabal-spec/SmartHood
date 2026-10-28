@@ -959,10 +959,10 @@ function communityPostCardHTML(a, canManage) {
       </div>
     ` : ''}
 
-    <div class="community-post-content">
-      <div class="community-post-title">${escapeHtml(a.title)}</div>
-      <div class="community-post-text">${escapeHtml(a.content || a.description || '')}</div>
-    </div>
+    ${a.title || a.content || a.description ? `<div class="community-post-content">
+      ${a.title ? `<div class="community-post-title">${escapeHtml(a.title)}</div>` : ''}
+      ${a.content || a.description ? `<div class="community-post-text">${escapeHtml(a.content || a.description)}</div>` : ''}
+    </div>` : ''}
 
     ${renderPhotoGridHTML(a.id, images, a.title)}
 
@@ -1502,7 +1502,7 @@ function openAddAnnouncementModal(triggerPhoto = false) {
   selectedAnnouncementFiles = [];
   openModal('New Announcement', `
     <div class="form-group">
-      <label>Title *</label>
+      <label>Title</label>
       <input id="af_title" placeholder="Announcement title..."/>
     </div>
     <div class="grid-2">
@@ -1527,7 +1527,7 @@ function openAddAnnouncementModal(triggerPhoto = false) {
       <input type="text" id="af_other_category" placeholder="Please specify announcement category..." />
     </div>
     <div class="form-group">
-      <label>Content / Details *</label>
+      <label>Content / Details</label>
       <textarea id="af_content" placeholder="Write announcement details..." style="min-height:110px"></textarea>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
@@ -1696,11 +1696,6 @@ async function saveAnnouncement() {
   const date = document.getElementById('af_date').value;
   const urgent = document.getElementById('af_urgent').checked;
 
-  if (!title || !content) {
-    showToast('error', 'Missing Fields', 'Title and content are required.');
-    return;
-  }
-
   if (category === 'Others' && !otherText) {
     showToast('error', 'Specification Required', 'Please specify your announcement.');
     if (otherInput) otherInput.focus();
@@ -1756,8 +1751,8 @@ function openEditAnnouncementModal(id) {
 
   openModal('Edit Announcement', `
     <div class="form-group">
-      <label>Title *</label>
-      <input id="edit_af_title" value="${escapeHtml(a.title)}" placeholder="Announcement title..."/>
+      <label>Title</label>
+      <input id="edit_af_title" value="${escapeHtml(a.title || '')}" placeholder="Announcement title..."/>
     </div>
     <div class="grid-2">
       <div class="form-group">
@@ -1781,7 +1776,7 @@ function openEditAnnouncementModal(id) {
       <input type="text" id="edit_af_other_category" value="${escapeHtml(otherVal)}" placeholder="Please specify announcement category..." />
     </div>
     <div class="form-group">
-      <label>Content / Details *</label>
+      <label>Content / Details</label>
       <textarea id="edit_af_content" style="min-height:110px">${escapeHtml(a.content || a.description || '')}</textarea>
     </div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px">
@@ -1984,11 +1979,6 @@ async function updateAnnouncement(id) {
   const date = document.getElementById('edit_af_date').value;
   const urgent = document.getElementById('edit_af_urgent').checked;
 
-  if (!title || !content) {
-    showToast('error', 'Missing Fields', 'Title and content are required.');
-    return;
-  }
-
   if (category === 'Others' && !otherText) {
     showToast('error', 'Specification Required', 'Please specify your announcement.');
     if (otherInput) otherInput.focus();
@@ -2119,7 +2109,7 @@ function renderPublicAnnouncements() {
     return `
     <div class="pub-ann-card" style="--ann-color:${accentColor}">
       <div class="pub-ann-card-top">
-        <div class="pub-ann-card-title">${escapeHtml(a.title)}</div>
+        ${a.title ? `<div class="pub-ann-card-title">${escapeHtml(a.title)}</div>` : ''}
         <div style="flex-shrink:0;display:flex;align-items:center;gap:4px;">
           ${a.is_pinned ? '<span class="badge" style="background:var(--teal-500)20;color:var(--teal-600);font-weight:700;">📌 Pinned</span>' : ''}
           ${a.urgent ? '<span class="badge badge-red">Urgent</span>' : ''}
@@ -2133,7 +2123,7 @@ function renderPublicAnnouncements() {
               <div style="width:34px;height:34px;border-radius:50%;background:rgba(0,0,0,0.72);color:#fff;display:flex;align-items:center;justify-content:center;font-size:14px;border:1.5px solid #fff;">▶</div>
             </div>
           ` : `
-            <img src="${escapeHtml(images[0])}" alt="${escapeHtml(a.title)}" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy" />
+            <img src="${escapeHtml(images[0])}" alt="${escapeHtml(a.title || 'Announcement photo')}" style="width:100%;height:100%;object-fit:cover;display:block;" loading="lazy" />
           `}
           ${images.length > 1 ? `
             <div style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,0.7);color:#fff;font-size:0.75rem;font-weight:700;padding:2px 8px;border-radius:10px;display:inline-flex;align-items:center;gap:4px;">
@@ -2142,7 +2132,7 @@ function renderPublicAnnouncements() {
           ` : ''}
         </div>
       ` : ''}
-      <div class="pub-ann-card-body">${escapeHtml(a.content || a.description || '')}</div>
+      ${a.content || a.description ? `<div class="pub-ann-card-body">${escapeHtml(a.content || a.description)}</div>` : ''}
       <div class="pub-ann-card-meta">
         <span>${formatCommunityDate(a.created_at || a.date)}</span>
         <span class="badge" style="background:${accentColor}18;color:${accentColor};font-weight:700;">${escapeHtml(a.category || 'General')}</span>

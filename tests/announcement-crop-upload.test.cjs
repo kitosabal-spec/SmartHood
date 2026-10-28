@@ -54,6 +54,26 @@ test('cropped PNG reaches the announcement API with matching filename and MIME',
   assert.match(accepted.body.image_path, /\.png$/);
 });
 
+test('announcement media can be posted and edited without title or content', async t => {
+  const site = await auditFixture(t);
+  const data = new FormData();
+  data.set('images', new File([png], 'announcement.png', { type: 'image/png' }));
+  const created = await site.request('POST', '/api/announcements', data);
+  assert.equal(created.status, 201, JSON.stringify(created.body));
+  assert.equal(created.body.title, '');
+  assert.equal(created.body.content, '');
+  assert.match(created.body.image_path, /\.png$/);
+
+  const edited = new FormData();
+  edited.set('title', '');
+  edited.set('content', '');
+  const updated = await site.request('PUT', `/api/announcements/${created.body.id}`, edited);
+  assert.equal(updated.status, 200, JSON.stringify(updated.body));
+  assert.equal(updated.body.title, '');
+  assert.equal(updated.body.content, '');
+  assert.equal(updated.body.image_path, created.body.image_path);
+});
+
 test('JPEG and WebP crops keep the JPEG export filename', () => {
   for (const [name, mime] of [['photo.jpeg', 'image/jpeg'], ['photo.webp', 'image/webp']]) {
     const file = crop(name, mime);
