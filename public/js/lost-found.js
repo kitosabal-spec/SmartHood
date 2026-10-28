@@ -465,7 +465,7 @@ function renderHOLostFound(tab = null) {
         </div>
       </div>
 
-      <div class="stats-grid">
+      <div class="stats-grid lostfound-stats-grid">
         <div class="stat-card" style="--card-accent:#16a34a;--card-accent-bg:#dcfce7">
           <div class="stat-icon"><svg width="22" height="22"><use href="#ico-check"/></svg></div>
           <div class="stat-info"><span class="stat-value">${communityPosts.length}</span><span class="stat-label">Community Items</span></div>
