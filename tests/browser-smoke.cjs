@@ -62,6 +62,7 @@ const cleanups = [];
       else if (url === '/api/announcements/comment-counts') body = {};
       else if (url === '/api/announcements/reactions') body = {};
       else if (url === '/api/board') body = tables.board_of_directors;
+      else if (url === '/api/amenity-availability') body = { bookings: [], unavailable: { weeklyDays: [], dateRules: [] } };
       else if (url === '/api/payment-settings') body = { payment_method: 'gcash', account_name: 'Test HOA', account_number: '09170000000', is_active: true };
       else if (Object.hasOwn(tables, url.slice(5))) body = tables[url.slice(5)];
       else {

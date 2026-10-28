@@ -27,6 +27,7 @@ const { ensureUploadDirectories } = require('./services/uploadService');
 const { createStorageService, isObjectKey, permanentReference, presentCommunity } = require('./services/storageService');
 const { createHealthController } = require('./controllers/healthController');
 const { createIndexController } = require('./controllers/pageController');
+const { createPublicAssetCache } = require('./utils/publicAssetCache');
 const { createHealthRoutes } = require('./routes/healthRoutes');
 const { registerPageRoutes } = require('./routes');
 const { isBcryptHash, hashPasswordResetToken, isPasswordResetToken } = require('./utils/security');
@@ -88,6 +89,12 @@ const LEGAL_POLICY_VERSION = '2026-10-06';
 if (!process.env.FILE_ACCESS_SECRET) console.warn('FILE_ACCESS_SECRET is not set; private file links will expire after a server restart.');
 if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not set; sessions will expire after a server restart.');
 
+// API responses can contain personal data or signed file URLs. Apply this to
+// errors and dedicated routes too, before any authorization/route handler.
+app.use('/api', (req, res, next) => {
+  res.setHeader('Cache-Control', 'private, no-store');
+  next();
+});
 app.use(express.json({ limit: '15mb' }));
 // This precedes every dedicated and generic route, including administrator
 // access. auditlog is a read permission, never a write permission.
@@ -104,10 +111,12 @@ app.use('/public/uploads', (req, res) => res.status(404).end());
 app.get('/public/vendor/exceljs-4.4.0.min.js', (req, res) => {
   res.sendFile(require.resolve('exceljs/dist/exceljs.min.js'));
 });
-app.use('/public', express.static(PUBLIC_DIR));
-app.use('/images', express.static(path.join(PUBLIC_DIR, 'images')));
-app.use('/css', express.static(path.join(PUBLIC_DIR, 'css')));
-app.use('/js', express.static(path.join(PUBLIC_DIR, 'js')));
+const publicAssetCache = createPublicAssetCache(PUBLIC_DIR);
+const publicAssetOptions = { setHeaders: publicAssetCache.setHeaders };
+app.use('/public', express.static(PUBLIC_DIR, publicAssetOptions));
+app.use('/images', express.static(path.join(PUBLIC_DIR, 'images'), publicAssetOptions));
+app.use('/css', express.static(path.join(PUBLIC_DIR, 'css'), publicAssetOptions));
+app.use('/js', express.static(path.join(PUBLIC_DIR, 'js'), publicAssetOptions));
 
 // Public media is deliberately limited to community-facing images and videos.
 // Never add resident profiles, payment QR codes, receipts, complaint evidence,
@@ -786,7 +795,18 @@ async function deleteRecord(table, id) {
   return true;
 }
 
-async function getTableData(table) {
+function readHomeownersWithBalances(sharedReads) {
+  if (!sharedReads.has('homeownersWithBalances')) {
+    sharedReads.set('homeownersWithBalances', all(`SELECT h.*, COALESCE(s.remaining_balance, 0) AS balance,
+                  COALESCE(s.total_billed, 0) AS total_billed,
+                  COALESCE(s.total_approved_payments, 0) AS total_approved_payments
+             FROM homeowners h LEFT JOIN homeowner_financial_summary s ON s.homeowner_id = h.id
+            WHERE h.archived_at IS NULL`));
+  }
+  return sharedReads.get('homeownersWithBalances');
+}
+
+async function getTableData(table, sharedReads = new Map()) {
   if (table === 'amenityBookings') {
     const rows = await all(`SELECT a.*, b.id AS billingId, b.status AS billingStatus, b.archived_at AS billingArchivedAt
       FROM amenityBookings a LEFT JOIN billings b ON b.amenity_booking_id = a.id
@@ -812,20 +832,14 @@ async function getTableData(table) {
   if (table === 'users') {
     const [userRows, homeownerRows] = await Promise.all([
       all('SELECT * FROM users WHERE archived_at IS NULL'),
-      all(`SELECT h.*, COALESCE(s.remaining_balance, 0) AS balance
-             FROM homeowners h LEFT JOIN homeowner_financial_summary s ON s.homeowner_id = h.id
-            WHERE h.archived_at IS NULL`),
+      readHomeownersWithBalances(sharedReads),
     ]);
     const homeownersById = new Map(homeownerRows.map(homeowner => [homeowner.id, homeowner]));
     return userRows.map((row) => mergeUserWithHomeowner(deserializeRow('users', row), homeownersById.get(row.homeowner_id)));
   }
   if (table === 'homeowners') {
     const [homeownerRows, accountRows] = await Promise.all([
-      all(`SELECT h.*, COALESCE(s.remaining_balance, 0) AS balance,
-                  COALESCE(s.total_billed, 0) AS total_billed,
-                  COALESCE(s.total_approved_payments, 0) AS total_approved_payments
-             FROM homeowners h LEFT JOIN homeowner_financial_summary s ON s.homeowner_id = h.id
-            WHERE h.archived_at IS NULL`),
+      readHomeownersWithBalances(sharedReads),
       all("SELECT id, homeowner_id, email, mobile, status FROM users WHERE role = 'homeowner' AND homeowner_id IS NOT NULL"),
     ]);
     const accountsByHomeownerId = new Map(accountRows.map(account => [account.homeowner_id, account]));
@@ -921,10 +935,20 @@ function requesterHomeownerId(user) {
 }
 
 async function loadAllData(requester = null) {
-  const data = {};
-  for (const table of Object.keys(tableConfig)) {
-    data[table] = await getScopedTableData(table, requester);
+  const tables = Object.keys(tableConfig);
+  const data = Object.fromEntries(tables.map(table => [table, []]));
+  // Request-local sharing only: no data is reused across users or requests.
+  // Three workers leave room in the ten-connection pool for other requests.
+  // Audited callers keep their original transaction's sequential ordering.
+  const sharedReads = new Map();
+  let nextTable = 0;
+  async function loadNext() {
+    while (nextTable < tables.length) {
+      const table = tables[nextTable++];
+      data[table] = await getScopedTableData(table, requester, sharedReads);
+    }
   }
+  await Promise.all(Array.from({ length: audit.current()?.connection ? 1 : 3 }, loadNext));
   // Filter table data for non-admins based on permissions
   if (!requester || requester.role !== 'admin') {
     const homeownerId = requesterHomeownerId(requester);
@@ -984,13 +1008,13 @@ async function loadAllData(requester = null) {
   return data;
 }
 
-async function getScopedTableData(table, requester) {
-  if (!requester || requester.role === 'admin') return getTableData(table);
+async function getScopedTableData(table, requester, sharedReads = new Map()) {
+  if (!requester || requester.role === 'admin') return getTableData(table, sharedReads);
   const homeownerId = requesterHomeownerId(requester);
   if (table === 'notifications') return getNotificationsForUser(requester.id);
-  if (table === 'auditLog') return userHasPermission(requester, 'auditlog') ? getTableData(table) : [];
+  if (table === 'auditLog') return userHasPermission(requester, 'auditlog') ? getTableData(table, sharedReads) : [];
   if (table === 'billings') {
-    if (userHasPermission(requester, 'billing')) return getTableData(table);
+    if (userHasPermission(requester, 'billing')) return getTableData(table, sharedReads);
     if (!userHasPermission(requester, 'resident') || !homeownerId) return [];
     const rows = await all(
       `SELECT b.* FROM billings b JOIN billing_assignments ba ON ba.billing_id = b.id
@@ -1007,7 +1031,7 @@ async function getScopedTableData(table, requester) {
   };
   if (scopes[table]) {
     const [sqlTable, column, managePermission] = scopes[table];
-    if (userHasPermission(requester, managePermission)) return getTableData(table);
+    if (userHasPermission(requester, managePermission)) return getTableData(table, sharedReads);
     if (!userHasPermission(requester, 'resident') || !homeownerId) return [];
     const rows = await all(`SELECT * FROM ${sqlTable} WHERE \`${column}\` = ? AND archived_at IS NULL`, [homeownerId]);
     return rows.map(row => deserializeRow(table, row));
@@ -1023,7 +1047,7 @@ async function getScopedTableData(table, requester) {
   if (table === 'users' || table === 'homeowners') {
     const canViewDirectory = ['billing', 'payments', 'complaints', 'vehicles', 'amenities', 'lostfound']
       .some(permission => userHasPermission(requester, permission));
-    if (canViewDirectory) return getTableData(table);
+    if (canViewDirectory) return getTableData(table, sharedReads);
     if (table === 'users') {
       const row = await get('SELECT * FROM users WHERE id = ? AND archived_at IS NULL', [requester.id]);
       if (!row) return [];
@@ -1041,7 +1065,7 @@ async function getScopedTableData(table, requester) {
     );
     return row ? [presentHomeownerAccountStatus(deserializeRow('homeowners', row), requester)] : [];
   }
-  return getTableData(table);
+  return getTableData(table, sharedReads);
 }
 
 async function createTables() {
@@ -5961,7 +5985,7 @@ app.delete('/api/:table/:id', auditedHandler(async (req, res) => {
   res.json({ ok: true });
 }));
 
-registerPageRoutes(app, { indexController: createIndexController(INDEX_FILE) });
+registerPageRoutes(app, { indexController: createIndexController(INDEX_FILE, publicAssetCache.versionHtml) });
 
 app.use((err, req, res, next) => {
   console.error(err);

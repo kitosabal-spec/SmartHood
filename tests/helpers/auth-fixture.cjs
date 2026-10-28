@@ -199,7 +199,7 @@ async function fixture(t, options = {}) {
     },
   };
   sandbox.require.resolve = realRequire.resolve;
-  vm.runInNewContext(fs.readFileSync(filename, 'utf8') + '\ndb = __testPool;', sandbox, { filename });
+  vm.runInNewContext((options.appSource || fs.readFileSync(filename, 'utf8')) + '\ndb = __testPool;', sandbox, { filename });
   const app = sandbox.module.exports.app;
   const server = await new Promise(resolve => { const server = app.listen(0, '127.0.0.1', () => resolve(server)); });
   t.after(() => new Promise(resolve => { server.close(resolve); server.closeAllConnections(); }));

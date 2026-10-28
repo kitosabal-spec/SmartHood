@@ -370,7 +370,7 @@ h1, h2, h3 { font-family: var(--font-display); font-weight: 700; line-height: 1.
 }
 .pub-hero-img-bg {
   position: absolute; inset: 0;
-  background-image: url('../images/IMG Sat.png');
+  background-image: url('../images/entrance.72d14dc29d8dbaa7.webp');
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;

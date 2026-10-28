@@ -12,6 +12,9 @@ let notifications = [];
 let pendingPostLoginView = null;
 let pendingPaymentSubmission = null;
 let notificationRefreshTimer = null;
+let notificationRequest = null;
+let notificationRefreshActive = false;
+let notificationGeneration = 0;
 let sidebarBadgeRefreshPending = false;
 let activePasswordResetToken = null;
 
@@ -177,6 +180,8 @@ async function seedData(isAuthenticated = false) {
 
 
 let dbCache = {};
+let dataSessionGeneration = 0;
+let publicDataRequest = null;
 
 // Global XSS Sanitizer Helper
 function escapeHtml(str) {
@@ -195,6 +200,7 @@ const announcementCommentsCache = {};
 
 const api = {
   async request(path, options = {}) {
+    const requestSessionGeneration = dataSessionGeneration;
     const headers = { ...(options.headers || {}) };
     if (!(options.body instanceof FormData)) {
       if (!headers['Content-Type']) headers['Content-Type'] = 'application/json';
@@ -209,7 +215,7 @@ const api = {
       const err = await response.json().catch(() => ({ error: 'Request failed.' }));
       const errMsg = err.error || 'Request failed.';
       if (path !== '/api/login' && (response.status === 401 || (response.status === 403 && errMsg.toLowerCase().includes('deactivated')))) {
-        if (typeof performLogout === 'function' && typeof currentUser !== 'undefined' && currentUser) {
+        if (requestSessionGeneration === dataSessionGeneration && typeof performLogout === 'function' && typeof currentUser !== 'undefined' && currentUser) {
           performLogout();
           if (typeof showLoginError === 'function') {
             showLoginError(errMsg || 'Your session has expired. Please sign in again.');
@@ -228,7 +234,13 @@ const api = {
   },
 
   async loadAll() {
-    dbCache = await this.request('/api/data');
+    const generation = dataSessionGeneration;
+    const userId = currentUser?.id;
+    const data = await this.request('/api/data');
+    if (generation !== dataSessionGeneration || currentUser?.id !== userId) {
+      throw new Error('Your session changed. Please retry.');
+    }
+    dbCache = data;
     return dbCache;
   },
 
@@ -245,9 +257,20 @@ const api = {
   },
 
   async loadPublic() {
-    const publicData = await this.request('/api/public-data');
-    dbCache = { ...dbCache, ...publicData };
-    return dbCache;
+    if (currentUser) return dbCache;
+    if (publicDataRequest?.generation === dataSessionGeneration) return publicDataRequest.promise;
+    const request = { generation: dataSessionGeneration };
+    request.promise = this.request('/api/public-data').then(publicData => {
+      // A slow public response must not overwrite the signed-in shared cache.
+      if (!currentUser && request.generation === dataSessionGeneration) {
+        dbCache = { ...dbCache, ...publicData };
+      }
+      return dbCache;
+    }).finally(() => {
+      if (publicDataRequest === request) publicDataRequest = null;
+    });
+    publicDataRequest = request;
+    return request.promise;
   },
 
   async login(username, password) {
@@ -579,6 +602,7 @@ async function handleLogin() {
   showLoading();
   try {
     const user = await api.login(username, password);
+    dataSessionGeneration++;
     currentRole = user.role;
     currentUser = user;
 
@@ -4190,9 +4214,18 @@ function updateNotifBadge() {
 let knownNotifIds = null;
 
 async function refreshNotifications() {
-  if (!currentUser) return;
+  if (!currentUser || document.hidden) return;
+  if (notificationRequest) {
+    await notificationRequest.catch(() => {});
+    return;
+  }
+  const userId = currentUser.id;
+  const generation = notificationGeneration;
+  const request = api.request('/api/notifications');
+  notificationRequest = request;
   try {
-    const latestNotifs = await api.request('/api/notifications');
+    const latestNotifs = await request;
+    if (generation !== notificationGeneration || currentUser?.id !== userId) return;
     if (Array.isArray(latestNotifs)) {
       dbCache.notifications = latestNotifs;
     }
@@ -4223,22 +4256,39 @@ async function refreshNotifications() {
     updateNotifBadge();
   } catch (error) {
     console.warn('Could not refresh notifications', error);
+  } finally {
+    if (notificationRequest === request) notificationRequest = null;
+    scheduleNotificationRefresh();
+  }
+}
+
+function scheduleNotificationRefresh() {
+  clearTimeout(notificationRefreshTimer);
+  notificationRefreshTimer = null;
+  if (notificationRefreshActive && currentUser && !document.hidden && !notificationRequest) {
+    notificationRefreshTimer = setTimeout(refreshNotifications, 5000);
   }
 }
 
 function startNotificationRefresh() {
-  if (notificationRefreshTimer) clearInterval(notificationRefreshTimer);
+  notificationRefreshActive = true;
+  clearTimeout(notificationRefreshTimer);
   refreshNotifications();
-  notificationRefreshTimer = setInterval(refreshNotifications, 5000);
 }
 
 function stopNotificationRefresh() {
-  if (notificationRefreshTimer) {
-    clearInterval(notificationRefreshTimer);
-    notificationRefreshTimer = null;
-  }
+  notificationRefreshActive = false;
+  notificationGeneration++;
+  clearTimeout(notificationRefreshTimer);
+  notificationRefreshTimer = null;
   knownNotifIds = null;
 }
+
+document.addEventListener('visibilitychange', () => {
+  clearTimeout(notificationRefreshTimer);
+  notificationRefreshTimer = null;
+  if (!document.hidden && notificationRefreshActive) refreshNotifications();
+});
 
 function toggleNotifPanel() {
   closeProfileDropdown();
@@ -4691,12 +4741,16 @@ function showLandingPage() {
   if (typeof closePortalFAQ === 'function') closePortalFAQ();
   document.getElementById('landingPage').classList.remove('hidden');
   document.getElementById('appShell').classList.add('hidden');
+  if (Object.prototype.hasOwnProperty.call(dbCache, 'board_of_directors')) renderPublicData();
+  applyStoredTheme();
+  setActivePubNav('hero');
+}
+
+function renderPublicData() {
   renderPublicAnnouncements();
   renderPublicLostFound();
   renderPublicBoardOfDirectors();
   updateHeroStat();
-  applyStoredTheme();
-  setActivePubNav('hero');
 }
 
 async function performLogout() {
@@ -4711,8 +4765,17 @@ async function performLogout() {
     localStorage.removeItem('sah_session');
   } catch {}
   stopNotificationRefresh();
+  dataSessionGeneration++;
   currentUser = null;
   currentRole = null;
+  // Retain only the same community content exposed by /api/public-data.
+  dbCache = {
+    announcements: db.get('announcements'),
+    lostFound: db.get('lostFound').filter(item => ['Approved', 'Posted', 'Claimed'].includes(item.status)),
+    board_of_directors: db.get('board_of_directors'),
+    board_current_term: typeof getCurrentBoardTerm === 'function' ? getCurrentBoardTerm() : '',
+  };
+  for (const id of Object.keys(announcementCommentsCache)) delete announcementCommentsCache[id];
   updateNotifBadge();
 
   // Wipe protected UI content from memory & DOM
@@ -4765,7 +4828,18 @@ async function init() {
       currentUser = session.user;
       currentRole = session.user.role;
     }
-    await seedData(Boolean(currentUser));
+    if (currentUser) {
+      await seedData(true);
+    } else {
+      // Static public content and login are usable without waiting for community
+      // records. Protected UI still waits for session verification and all data.
+      api.loadPublic().then(() => {
+        if (!currentUser) renderPublicData();
+      }).catch(error => {
+        console.warn('Could not load community updates', error);
+        if (!currentUser) showToast('error', 'Community Updates Unavailable', 'Please reload to try again. You can still sign in.');
+      });
+    }
     if (currentUser) {
       currentUser = db.getOne('users', currentUser.id) || currentUser;
       currentRole = currentUser.role;

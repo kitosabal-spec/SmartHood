@@ -48,7 +48,7 @@ test('application uses recipient-scoped notifications, relational assignments an
   assert.match(source, /JOIN billing_assignments ba ON ba\.billing_id = b\.id/);
   assert.match(source, /WHERE nr\.user_id = \? AND nr\.dismissed_at IS NULL/);
   assert.match(source, /SET archived_at = CURRENT_TIMESTAMP\(3\)/);
-  assert.match(source, /getScopedTableData\(table, requester\)/);
+  assert.match(source, /getScopedTableData\(table, requester, sharedReads\)/);
   assert.doesNotMatch(source.slice(source.indexOf('async function initializeApp')), /createTables\(\)/);
 });
 

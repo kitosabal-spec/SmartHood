@@ -27,7 +27,7 @@ async function renderPublicBoardOfDirectors() {
   let members = [];
   try {
     const cached = db.get('board_of_directors');
-    if (cached && cached.length) {
+    if (Object.prototype.hasOwnProperty.call(dbCache, 'board_of_directors')) {
       members = [...cached].sort((a, b) => (Number(a.display_order) || 0) - (Number(b.display_order) || 0));
     } else {
       members = await api.request('/api/board');
