@@ -1760,11 +1760,111 @@ async function executeCreateManualPayment() {
   }
 }
 
-// ── ADMIN PAYMENT REVIEW MODAL ──
+// Display-only progress: saved stages come exclusively from a payment record.
+function renderPaymentProgress(step, status = '') {
+  const labels = ['GCash Payment', 'Submit Proof', 'For Verification', 'Result'];
+  const check = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg>';
+  return `<ol class="payment-progress" aria-label="Payment progress">${labels.map((label, index) => {
+    const number = index + 1;
+    const current = number === step;
+    const complete = number < step || (current && status === 'approved');
+    const rejected = current && status === 'rejected';
+    return `<li class="payment-progress-step${complete ? ' is-complete' : ''}${current ? ' is-current' : ''}${rejected ? ' is-rejected' : ''}"${current ? ' aria-current="step"' : ''}>
+      <span class="payment-progress-circle" aria-hidden="true">${rejected ? '×' : complete ? check : number}</span>
+      <span class="payment-progress-label">${label}</span>
+      <span class="payment-progress-sr">${rejected ? 'Rejected' : complete ? 'Completed' : current ? 'Current step' : 'Upcoming'}</span>
+    </li>`;
+  }).join('')}</ol>`;
+}
 
-function viewPaymentDetail(id) {
+function renderSavedPaymentProgress(payment, summary) {
+  const status = payment.status;
+  if (!['pending', 'approved', 'rejected'].includes(status)) return '';
+  let message = 'Your payment proof has been submitted and is awaiting verification by the HOA Administrator.';
+  if (status === 'approved') {
+    message = 'Your payment has been approved by the HOA Administrator.';
+    if (summary?.remainingBalance > 0) {
+      message += ` This bill still has a remaining balance of ₱${summary.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.`;
+    }
+  } else if (status === 'rejected') {
+    message = 'Your payment proof was rejected. This payment has not reduced your billing balance.';
+  }
+  return `${renderPaymentProgress(status === 'pending' ? 3 : 4, status)}
+    <div class="payment-progress-message${status === 'rejected' ? ' is-rejected' : ''}" role="status">
+      <strong>${status === 'pending' ? 'For Verification' : status === 'approved' ? 'Approved' : 'Rejected'}</strong>
+      <p>${escapeHtml(message)}</p>
+    </div>`;
+}
+
+function getResidentPaymentSummary(bill, month, amount) {
+  const homeownerId = getCurrentHomeownerId();
+  const payments = db.get('payments');
+  if (bill) return getBillingPaymentSummary(bill, homeownerId, payments);
+  const related = payments.filter(p => p.homeownerId === homeownerId && p.monthly_dues_month === month);
+  const totalPaid = related.filter(p => p.status === 'approved').reduce((total, p) => total + Number(p.amount || 0), 0);
+  return { originalAmount: amount, totalPaid, remainingBalance: Math.max(0, amount - totalPaid),
+    pendingPayment: related.find(p => p.status === 'pending') || null };
+}
+
+let residentPaymentRefreshTimer = null;
+
+function residentPaymentSignature(payment) {
+  return JSON.stringify([payment, db.getOne('billings', payment.billingId), db.get('payments').filter(p =>
+    p.homeownerId === payment.homeownerId && p.billingId === payment.billingId)]);
+}
+
+function openResidentPaymentDetail(id) {
+  viewPaymentDetail(id, true);
+  const panel = document.getElementById('residentPaymentDetail');
+  if (panel?.dataset.paymentId === id) refreshResidentPaymentDetail(panel);
+}
+
+// Only refresh an open resident detail view. Never reopen a closed/replaced modal
+// or reuse another account's response after a session change.
+async function refreshResidentPaymentDetail(panel) {
+  clearTimeout(residentPaymentRefreshTimer);
+  const homeownerId = getCurrentHomeownerId();
+  const isCurrent = () => panel === document.getElementById('residentPaymentDetail') &&
+    !document.getElementById('modalOverlay')?.classList.contains('hidden') &&
+    homeownerId === getCurrentHomeownerId();
+  if (!isCurrent()) return;
+  try {
+    if (!document.hidden) {
+      const scrollTop = document.getElementById('modalBody').scrollTop;
+      await api.loadAll();
+      if (!isCurrent()) return;
+      const payment = db.getOne('payments', panel.dataset.paymentId);
+      if (!payment || payment.homeownerId !== homeownerId) { closeModal(); return; }
+      // Keep focus and scroll intact when nothing in the saved record changed.
+      const signature = residentPaymentSignature(payment);
+      if (signature !== panel.dataset.signature) {
+        viewPaymentDetail(payment.id, true);
+        panel = document.getElementById('residentPaymentDetail');
+        document.getElementById('modalBody').scrollTop = scrollTop;
+        if (document.getElementById('residentPaymentHistory')) renderHOHistory();
+      }
+      const notice = panel.querySelector('.payment-refresh-notice');
+      if (notice) notice.textContent = '';
+    }
+  } catch (error) {
+    if (isCurrent()) {
+      const notice = panel.querySelector('.payment-refresh-notice');
+      if (notice) notice.textContent = 'Could not refresh payment status. Showing the last saved status; retrying automatically.';
+    }
+  } finally {
+    if (isCurrent()) residentPaymentRefreshTimer = setTimeout(() => refreshResidentPaymentDetail(panel), 10000);
+  }
+}
+
+// ── PAYMENT REVIEW / RESIDENT DETAILS MODAL ──
+
+function viewPaymentDetail(id, resident = false) {
   const p = db.getOne('payments', id);
   if (!p) { showToast('error', 'Error', 'Payment record not found.'); return; }
+  if (resident && p.homeownerId !== getCurrentHomeownerId()) {
+    showToast('error', 'Access Denied', 'This payment does not belong to your account.');
+    return;
+  }
   const ho = getHomeownerById(p.homeownerId);
   const bill = db.getOne('billings', p.billingId);
   const recordedBy = db.getOne('users', p.recorded_by);
@@ -1779,7 +1879,18 @@ function viewPaymentDetail(id) {
   const buttons = [];
   buttons.push({ label: 'Close', cls: 'btn-secondary', action: closeModal });
 
-  if (p.status === 'pending' && canManagePayments()) {
+  if (resident && !isManual && p.status === 'rejected') {
+    const monthPayments = db.get('payments').filter(payment => payment.homeownerId === p.homeownerId && payment.monthly_dues_month === p.monthly_dues_month);
+    const canRetry = bill
+      ? paymentSummary.remainingBalance > 0 && !paymentSummary.pendingPayment
+      : p.monthly_dues_month && !monthPayments.some(payment => ['pending', 'approved'].includes(payment.status));
+    if (canRetry) buttons.push({
+      label: 'Submit Another Proof', cls: 'btn-primary',
+      action: () => openPayNowModal(bill ? bill.id : { month: p.monthly_dues_month, amount: Number(p.amount) }),
+    });
+  }
+
+  if (!resident && p.status === 'pending' && canManagePayments()) {
     buttons.push({
       label: 'Reject Payment',
       cls: 'btn-danger',
@@ -1792,8 +1903,9 @@ function viewPaymentDetail(id) {
     });
   }
 
-  openModal(isManual ? 'Review Manual Payment' : 'Review Payment Submission', `
-    <div class="payment-flow-modal">
+  openModal(resident ? 'Payment Details' : isManual ? 'Review Manual Payment' : 'Review Payment Submission', `
+    <div class="payment-flow-modal${resident ? ' resident-payment-modal' : ''}"${resident ? ` id="residentPaymentDetail" data-payment-id="${escapeHtml(p.id)}"` : ''}>
+      ${resident && !isManual ? renderSavedPaymentProgress(p, paymentSummary) : ''}
       <div class="grid-2 mb-16">
         <div class="report-summary-item">
           <div class="r-val" style="color:var(--teal-700)">${formattedAmount}</div>
@@ -1836,6 +1948,7 @@ function viewPaymentDetail(id) {
         </div>
       ` : ''}
 
+      ${resident ? '<p class="payment-refresh-notice" role="status"></p>' : ''}
       ${!isManual ? `<div>
         <label style="font-size:0.82rem;font-weight:700;color:var(--text);margin-bottom:6px;display:block">Uploaded GCash Receipt / Screenshot</label>
         ${p.receipt ? `
@@ -1856,6 +1969,7 @@ function viewPaymentDetail(id) {
       </div>` : ''}
     </div>
   `, buttons);
+  if (resident) document.getElementById('residentPaymentDetail').dataset.signature = residentPaymentSignature(p);
 }
 
 function openReceiptLightbox(imgUrl) {
@@ -2051,24 +2165,22 @@ async function openPaymentSettingsModal() {
 
       <div class="form-group">
         <label>GCash QR Code Image</label>
-        <div class="gcash-qr-section" style="margin-top:6px">
-          ${setting.qr_code_path ? `
-            <div class="gcash-qr-frame" id="ps_qr_display_frame">
-              <img src="${setting.qr_code_path}" class="gcash-qr-img" id="ps_qr_preview_img" alt="Current GCash QR Code"/>
+        <div class="gcash-qr-section" id="ps_qr_section" style="margin-top:6px">
+          <div id="ps_qr_current" class="gcash-qr-section">
+            <div class="gcash-qr-frame" id="ps_qr_display_frame" ${setting.qr_code_path ? '' : 'hidden'}>
+              <img ${setting.qr_code_path ? `src="${escapeHtml(setting.qr_code_path)}"` : ''} class="gcash-qr-img" id="ps_qr_preview_img" alt="Current GCash QR Code"/>
             </div>
-            <div style="display:flex;gap:8px;margin-top:8px">
-              <button type="button" class="btn btn-secondary btn-sm" onclick="document.getElementById('ps_qr_file_input').click()">Replace QR Image</button>
-              <button type="button" class="btn btn-danger btn-sm" onclick="removePaymentQrImage()">Remove QR</button>
-            </div>
-          ` : `
-            <div class="gcash-qr-placeholder" id="ps_qr_placeholder">
+            <div class="gcash-qr-placeholder" id="ps_qr_placeholder" ${setting.qr_code_path ? 'hidden' : ''}>
               <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
               <span>No QR Code Image Uploaded</span>
             </div>
-            <div style="margin-top:8px">
-              <button type="button" class="btn btn-primary btn-sm" onclick="document.getElementById('ps_qr_file_input').click()">Upload QR Code Image</button>
+            <div class="gcash-qr-actions">
+              <button type="button" id="ps_qr_choose" class="btn btn-secondary btn-sm" onclick="document.getElementById('ps_qr_file_input').click()">${setting.qr_code_path ? 'Replace QR Image' : 'Upload QR Code Image'}</button>
+              <button type="button" id="ps_qr_adjust" class="btn btn-secondary btn-sm" onclick="editPaymentQrImage(document.getElementById('ps_qr_preview_img').src)" ${setting.qr_code_path ? '' : 'hidden'}>Adjust / Crop</button>
+              <button type="button" id="ps_qr_remove" class="btn btn-danger btn-sm" onclick="removePaymentQrImage()" ${setting.qr_code_path ? '' : 'hidden'}>Remove QR</button>
             </div>
-          `}
+          </div>
+          <div id="ps_qr_editor" class="gcash-qr-editor" hidden></div>
           <input type="file" id="ps_qr_file_input" accept=".jpg,.jpeg,.png,.webp" style="display:none" onchange="uploadPaymentQrImage(this.files[0])"/>
           <div style="font-size:0.74rem;color:var(--text-3);margin-top:4px">Accepted formats: JPG, JPEG, PNG, WebP (Max 10 MB).</div>
         </div>
@@ -2083,6 +2195,8 @@ async function openPaymentSettingsModal() {
 async function uploadPaymentQrImage(file) {
   if (!canManagePayments()) return;
   if (!file) return;
+  // Allow selecting the same file again after cancelling or a failed load.
+  document.getElementById('ps_qr_file_input').value = '';
   const allowed = ['.jpg', '.jpeg', '.png', '.webp'];
   const ext = file.name.substring(file.name.lastIndexOf('.')).toLowerCase();
   if (!allowed.includes(ext)) {
@@ -2094,19 +2208,181 @@ async function uploadPaymentQrImage(file) {
     return;
   }
 
-  const formData = new FormData();
-  formData.append('qr', file);
+  const url = URL.createObjectURL(file);
+  try {
+    await editPaymentQrImage(url);
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+async function editPaymentQrImage(source) {
+  if (!canManagePayments()) return;
+  const section = document.getElementById('ps_qr_section');
+  const editor = document.getElementById('ps_qr_editor');
+  if (!section || section.qrBusy) return;
+  section.qrBusy = true;
+  try {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    await new Promise((resolve, reject) => {
+      img.onload = resolve;
+      img.onerror = () => reject(new Error('This image could not be opened. Please choose a valid JPG, PNG, or WebP image.'));
+      img.src = source;
+    });
+    if (!section.isConnected) return;
+    section.qrCrop = { img, zoom: 1, rotation: 0, x: 0, y: 0 };
+    editor.innerHTML = `
+      <strong>Adjust QR Image</strong>
+      <p id="ps_qr_help">Drag to position, then zoom to crop. Keep the entire QR code and its white border visible. Use arrow keys to move the image.</p>
+      <canvas id="ps_qr_canvas" width="600" height="600" tabindex="0" aria-label="QR crop preview. Use arrow keys to move the image." aria-describedby="ps_qr_help"></canvas>
+      <div class="gcash-qr-zoom"><label for="ps_qr_zoom">Zoom</label><input id="ps_qr_zoom" type="range" min="1" max="8" step="0.01" value="1"><output id="ps_qr_zoom_value" for="ps_qr_zoom">100%</output></div>
+      <div class="gcash-qr-actions">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="rotatePaymentQrImage()">Rotate 90°</button>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="resetPaymentQrCrop()">Reset</button>
+      </div>
+      <div class="gcash-qr-actions">
+        <button type="button" class="btn btn-secondary btn-sm" onclick="cancelPaymentQrCrop()">Cancel Crop</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="applyPaymentQrCrop()">Upload Cropped QR</button>
+      </div>`;
+    document.getElementById('ps_qr_current').hidden = true;
+    editor.hidden = false;
+    const canvas = document.getElementById('ps_qr_canvas');
+    const state = section.qrCrop;
+    const redraw = () => drawPaymentQrCrop(canvas, state);
+    document.getElementById('ps_qr_zoom').addEventListener('input', event => {
+      if (section.qrBusy) return;
+      state.zoom = Number(event.target.value);
+      document.getElementById('ps_qr_zoom_value').value = `${Math.round(state.zoom * 100)}%`;
+      redraw();
+    });
+    let drag = null;
+    canvas.addEventListener('pointerdown', event => {
+      if (section.qrBusy || (event.pointerType === 'mouse' && event.button !== 0)) return;
+      drag = { id: event.pointerId, x: event.clientX, y: event.clientY };
+      canvas.setPointerCapture(event.pointerId);
+      canvas.focus();
+    });
+    canvas.addEventListener('pointermove', event => {
+      if (!drag || drag.id !== event.pointerId || section.qrBusy) return;
+      const bounds = canvas.getBoundingClientRect();
+      state.x += (event.clientX - drag.x) / bounds.width;
+      state.y += (event.clientY - drag.y) / bounds.height;
+      drag.x = event.clientX;
+      drag.y = event.clientY;
+      redraw();
+    });
+    for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) {
+      canvas.addEventListener(type, () => { drag = null; });
+    }
+    canvas.addEventListener('keydown', event => {
+      if (section.qrBusy || !['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) return;
+      event.preventDefault();
+      const step = event.shiftKey ? 0.05 : 0.01;
+      state.x += event.key === 'ArrowLeft' ? -step : event.key === 'ArrowRight' ? step : 0;
+      state.y += event.key === 'ArrowUp' ? -step : event.key === 'ArrowDown' ? step : 0;
+      redraw();
+    });
+    redraw();
+    canvas.focus();
+  } catch (error) {
+    showToast('error', 'Image Unavailable', error.message);
+  } finally {
+    section.qrBusy = false;
+  }
+}
+
+function drawPaymentQrCrop(canvas, state) {
+  const { img, rotation, zoom } = state;
+  const scale = zoom / Math.max(img.naturalWidth, img.naturalHeight);
+  const width = (rotation % 180 ? img.naturalHeight : img.naturalWidth) * scale;
+  const height = (rotation % 180 ? img.naturalWidth : img.naturalHeight) * scale;
+  // Keep the image covering the crop where possible; fit smaller dimensions on white.
+  const limitX = Math.abs(width - 1) / 2;
+  const limitY = Math.abs(height - 1) / 2;
+  state.x = Math.max(-limitX, Math.min(limitX, state.x));
+  state.y = Math.max(-limitY, Math.min(limitY, state.y));
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.translate(canvas.width * (0.5 + state.x), canvas.height * (0.5 + state.y));
+  ctx.rotate(rotation * Math.PI / 180);
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(img, -img.naturalWidth * scale * canvas.width / 2, -img.naturalHeight * scale * canvas.height / 2,
+    img.naturalWidth * scale * canvas.width, img.naturalHeight * scale * canvas.height);
+  ctx.restore();
+}
+
+function rotatePaymentQrImage() {
+  const section = document.getElementById('ps_qr_section');
+  if (!section?.qrCrop || section.qrBusy) return;
+  const state = section.qrCrop;
+  state.rotation = (state.rotation + 90) % 360;
+  [state.x, state.y] = [-state.y, state.x];
+  drawPaymentQrCrop(document.getElementById('ps_qr_canvas'), state);
+}
+
+function resetPaymentQrCrop() {
+  const section = document.getElementById('ps_qr_section');
+  if (!section?.qrCrop || section.qrBusy) return;
+  Object.assign(section.qrCrop, { zoom: 1, rotation: 0, x: 0, y: 0 });
+  document.getElementById('ps_qr_zoom').value = '1';
+  document.getElementById('ps_qr_zoom_value').value = '100%';
+  drawPaymentQrCrop(document.getElementById('ps_qr_canvas'), section.qrCrop);
+}
+
+function cancelPaymentQrCrop() {
+  const section = document.getElementById('ps_qr_section');
+  if (!section || section.qrBusy) return;
+  section.qrCrop = null;
+  const editor = document.getElementById('ps_qr_editor');
+  editor.hidden = true;
+  editor.innerHTML = '';
+  document.getElementById('ps_qr_current').hidden = false;
+  document.getElementById('ps_qr_choose').focus();
+}
+
+async function applyPaymentQrCrop() {
+  if (!canManagePayments()) return;
+  const section = document.getElementById('ps_qr_section');
+  if (!section?.qrCrop || section.qrBusy) return;
+  section.qrBusy = true;
+  const controls = section.querySelectorAll('button, input');
+  controls.forEach(control => { control.disabled = true; });
 
   showLoading();
   try {
-    await api.uploadPaymentQr(formData);
-    await api.loadAll();
-    hideLoading();
+    const canvas = document.createElement('canvas');
+    const state = section.qrCrop;
+    canvas.width = canvas.height = Math.max(1, Math.min(2048, Math.round(Math.max(state.img.naturalWidth, state.img.naturalHeight) / state.zoom)));
+    drawPaymentQrCrop(canvas, state);
+    const blob = await new Promise(resolve => canvas.toBlob(resolve, 'image/png'));
+    if (!blob) throw new Error('Could not prepare the cropped image. Please try another image.');
+    if (blob.size > 10 * 1024 * 1024) throw new Error('The cropped image exceeds 10 MB. Please choose a smaller image.');
+    const formData = new FormData();
+    formData.append('qr', blob, 'gcash-qr.png');
+    const result = await api.uploadPaymentQr(formData);
+    if (!section.isConnected) return;
+    const preview = document.getElementById('ps_qr_preview_img');
+    // The private image URL is stable, so bypass any previously cached QR image.
+    const url = new URL(result.qr_code_path, window.location.href);
+    url.searchParams.set('v', Date.now());
+    preview.src = url.href;
+    document.getElementById('ps_qr_display_frame').hidden = false;
+    document.getElementById('ps_qr_placeholder').hidden = true;
+    document.getElementById('ps_qr_adjust').hidden = false;
+    document.getElementById('ps_qr_remove').hidden = false;
+    document.getElementById('ps_qr_choose').textContent = 'Replace QR Image';
+    section.qrBusy = false;
+    cancelPaymentQrCrop();
     showToast('success', 'QR Code Updated', 'GCash QR code image was successfully uploaded.');
-    openPaymentSettingsModal();
   } catch (error) {
-    hideLoading();
     showToast('error', 'Upload Failed', error.message || 'Could not upload QR code image.');
+  } finally {
+    section.qrBusy = false;
+    controls.forEach(control => { control.disabled = false; });
+    hideLoading();
   }
 }
 
@@ -2129,6 +2405,11 @@ async function removePaymentQrImage() {
 
 async function savePaymentSettings() {
   if (!canManagePayments()) return;
+  const qrSection = document.getElementById('ps_qr_section');
+  if (qrSection?.qrBusy || qrSection?.qrCrop) {
+    showToast('warning', 'Finish QR Adjustment', 'Upload the cropped QR image or cancel the crop before saving settings.');
+    return;
+  }
   const account_name = (document.getElementById('ps_account_name')?.value || '').trim();
   const account_number = (document.getElementById('ps_account_number')?.value || '').trim();
   const instructions = (document.getElementById('ps_instructions')?.value || '').trim();
@@ -2299,9 +2580,7 @@ function openPayNowModal(billingIdOrOpts) {
     return;
   }
 
-  const paymentSummary = bill
-    ? getBillingPaymentSummary(bill, getCurrentHomeownerId(), db.get('payments'))
-    : { originalAmount: amount, totalPaid: 0, remainingBalance: amount, pendingPayment: null };
+  const paymentSummary = getResidentPaymentSummary(bill, month, amount);
   if (paymentSummary.pendingPayment) {
     showToast('warning', 'Payment Pending', 'A payment for this billing is already pending admin verification.');
     return;
@@ -2353,6 +2632,7 @@ function openPayNowModal(billingIdOrOpts) {
 
   openModal('Pay Bill via GCash', `
     <div class="payment-flow-modal resident-payment-modal">
+      ${renderPaymentProgress(1)}
       <div class="payment-bill-summary">
         <div class="payment-bill-meta">
           <h4>${escapeHtml(title)}</h4>
@@ -2481,6 +2761,7 @@ function copyGcashNumber(number) {
 // ── RESIDENT PAYMENT SUBMISSION FORM ──
 
 let selectedPaymentReceiptFile = null;
+let paymentProofSubmitting = false;
 
 function openSubmitPaymentForm(billingIdOrOpts) {
   let bill = null;
@@ -2512,11 +2793,13 @@ function openSubmitPaymentForm(billingIdOrOpts) {
   }
 
 
-  const paymentSummary = bill
-    ? getBillingPaymentSummary(bill, getCurrentHomeownerId(), db.get('payments'))
-    : { originalAmount: amount, totalPaid: 0, remainingBalance: amount, pendingPayment: null };
+  const paymentSummary = getResidentPaymentSummary(bill, month, amount);
   if (paymentSummary.pendingPayment) {
     showToast('warning', 'Payment Pending', 'A payment for this billing is already pending admin verification.');
+    return;
+  }
+  if (paymentSummary.remainingBalance <= 0) {
+    showToast('info', 'Billing Paid', 'This billing has already been paid in full.');
     return;
   }
   amount = paymentSummary.remainingBalance;
@@ -2528,6 +2811,7 @@ function openSubmitPaymentForm(billingIdOrOpts) {
 
   openModal('Submit Payment Proof', `
     <div class="payment-flow-modal resident-payment-modal">
+      ${renderPaymentProgress(2)}
       <div class="payment-bill-summary">
         <div class="payment-bill-meta">
           <h4>${escapeHtml(title)}</h4>
@@ -2660,6 +2944,7 @@ function clearSelectedReceiptFile() {
 }
 
 async function executeSubmitPaymentProof(billingIdOrOpts) {
+  if (paymentProofSubmitting) return;
   let billingId = null;
   let month = null;
   let amount = 0;
@@ -2695,6 +2980,12 @@ async function executeSubmitPaymentProof(billingIdOrOpts) {
   const currentSummary = currentBill
     ? getBillingPaymentSummary(currentBill, getCurrentHomeownerId(), db.get('payments'))
     : { remainingBalance: amount };
+  const pendingPayment = currentSummary.pendingPayment || (!billingId && month && db.get('payments').find(p =>
+    p.homeownerId === getCurrentHomeownerId() && p.monthly_dues_month === month && p.status === 'pending'));
+  if (pendingPayment) {
+    showToast('warning', 'Payment Pending', 'A payment for this billing is already pending admin verification.');
+    return;
+  }
   if (!Number.isFinite(enteredAmount) || enteredAmount <= 0) {
     showToast('error', 'Invalid Amount', 'Payment amount must be greater than ₱0.');
     document.getElementById('sub_pay_amount')?.focus();
@@ -2709,6 +3000,11 @@ async function executeSubmitPaymentProof(billingIdOrOpts) {
     showToast('error', 'Receipt Required', 'Please upload a screenshot or photo of your GCash receipt.');
     return;
   }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(paymentDate) || !Number.isFinite(Date.parse(paymentDate)) || paymentDate > getLocalDateValue()) {
+    showToast('error', 'Invalid Payment Date', 'Please enter a valid payment date that is not in the future.');
+    document.getElementById('sub_pay_date')?.focus();
+    return;
+  }
 
   const formData = new FormData();
   if (billingId) formData.append('billingId', billingId);
@@ -2720,28 +3016,34 @@ async function executeSubmitPaymentProof(billingIdOrOpts) {
   formData.append('remarks', remarks);
   formData.append('receipt', selectedPaymentReceiptFile);
 
+  paymentProofSubmitting = true;
+  const homeownerId = getCurrentHomeownerId();
   showLoading();
   try {
     const res = await api.submitPayment(formData);
-    await api.loadAll();
-    syncHomeownerBalances();
-    hideLoading();
-    closeModal();
+    if (homeownerId !== getCurrentHomeownerId()) return;
+    // The POST response is a persisted server record. Retain it even if the
+    // subsequent data refresh fails; a refresh failure is not a failed payment.
+    const savedPayment = res.payment;
+    const payments = db.get('payments');
+    const index = payments.findIndex(p => p.id === savedPayment.id);
+    if (index < 0) payments.push(savedPayment);
+    else payments[index] = savedPayment;
     selectedPaymentReceiptFile = null;
-    showToast('success', 'Payment Submitted', 'Your payment proof has been submitted and is pending admin verification.');
-
-    // If currently on ho-pay-now or ho-billing, refresh dynamically
-    const contentArea = document.getElementById('contentArea');
-    if (contentArea && contentArea.querySelector('.paynow-table-wrap, .paynow-hero-card')) {
-      renderHOPayNow();
-    } else if (contentArea && contentArea.querySelector('.data-table')) {
-      renderHOBilling();
-    } else {
-      navigate('ho-history');
+    try {
+      await api.loadAll();
+    } catch (error) {
+      showToast('warning', 'Refresh Delayed', 'Your payment was saved. Payment details will retry refreshing automatically.');
     }
+    if (homeownerId !== getCurrentHomeownerId()) return;
+    showToast('success', 'Payment Submitted', 'Your payment proof has been submitted and is pending admin verification.');
+    navigate('ho-history');
+    openResidentPaymentDetail(savedPayment.id);
   } catch (error) {
-    hideLoading();
     showToast('error', 'Submission Failed', error.message || 'Could not submit payment. Please verify your reference number.');
+  } finally {
+    paymentProofSubmitting = false;
+    hideLoading();
   }
 }
 
@@ -2754,7 +3056,7 @@ function renderHOHistory() {
   area.innerHTML = `
   <div class="page-header">
     <div class="page-header-left">
-      <h2>Payment History</h2>
+      <h2 id="residentPaymentHistory">Payment History</h2>
       <p>Track your submitted GCash payments and review verification statuses.</p>
     </div>
   </div>
@@ -2772,6 +3074,7 @@ function renderHOHistory() {
               <th>Status</th>
               <th>Admin Remarks / Reason</th>
               <th>Receipt</th>
+              <th>Details</th>
             </tr>
           </thead>
           <tbody>
@@ -2786,7 +3089,7 @@ function renderHOHistory() {
                 if (!billTitleDisplay) billTitleDisplay = 'N/A';
                 const isAdvance = Boolean(!p.billingId && p.monthly_dues_month);
                 const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                let statusBadge = '<span class="badge badge-yellow">Pending</span>';
+                let statusBadge = '<span class="badge badge-yellow">Pending Verification</span>';
                 if (p.status === 'approved') statusBadge = '<span class="badge badge-green">Approved</span>';
                 if (p.status === 'rejected') statusBadge = '<span class="badge badge-red">Rejected</span>';
 
@@ -2816,8 +3119,9 @@ function renderHOHistory() {
                       </button>
                     ` : '—'}
                   </td>
+                  <td><button class="btn btn-secondary btn-sm" onclick="openResidentPaymentDetail('${escapeHtml(p.id)}')">Details</button></td>
                 </tr>`;
-              }).join('') || '<tr><td colspan="8"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-history"/></svg>No payment transactions found.</div></td></tr>'}
+              }).join('') || '<tr><td colspan="9"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-history"/></svg>No payment transactions found.</div></td></tr>'}
           </tbody>
         </table>
       </div>
@@ -3219,6 +3523,7 @@ if (typeof window !== 'undefined') {
   window.handlePayNowYearChange = handlePayNowYearChange;
   window.copyGcashNumber = copyGcashNumber;
   window.openSubmitPaymentForm = openSubmitPaymentForm;
+  window.openResidentPaymentDetail = openResidentPaymentDetail;
   window.openCreateManualPaymentModal = openCreateManualPaymentModal;
   window.updateManualPaymentBillings = updateManualPaymentBillings;
   window.updateManualPaymentSummary = updateManualPaymentSummary;
