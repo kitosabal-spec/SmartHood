@@ -1,5 +1,106 @@
 // SECTION 6: ADMIN — DASHBOARD
 
+// View-only state survives SPA navigation, without changing records or revenue-year storage.
+let adminDashboardPeriod = { preset: 'all', from: '', to: '' };
+const ADMIN_DASHBOARD_PERIODS = {
+  all: 'All Time', week: 'This Week', month: 'This Month', lastMonth: 'Last Month',
+  year: 'This Year', custom: 'Custom Date Range'
+};
+
+// Date-only and timezone-less database values represent Philippine calendar dates.
+// Explicit offsets are instants converted to UTC+08:00. Reject malformed dates rather
+// than allowing Date.parse to normalize impossible dates or infer ambiguous formats.
+function adminDashboardDate(value) {
+  if (typeof value !== 'string') return null;
+  const match = value.trim().match(/^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2})(\.\d{1,9})?)?(Z|[+-]\d{2}:\d{2})?)?$/);
+  if (!match) return null;
+  const [, y, m, d, h, min, sec, fraction, zone] = match;
+  const day = `${y}-${m}-${d}`;
+  const calendar = new Date(`${day}T00:00:00Z`);
+  if (Number(y) < 1 || !Number.isFinite(calendar.getTime()) || calendar.toISOString().slice(0, 10) !== day) return null;
+  if (h !== undefined && (Number(h) > 23 || Number(min) > 59 || Number(sec || 0) > 59)) return null;
+  if (zone && zone !== 'Z' && (Number(zone.slice(1, 3)) > 23 || Number(zone.slice(4)) > 59)) return null;
+  const instant = Date.parse(`${day}T${h || '00'}:${min || '00'}:${sec || '00'}${fraction || ''}${zone || '+08:00'}`);
+  if (!Number.isFinite(instant)) return null;
+  const localDay = new Date(instant + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  return { day: localDay, instant };
+}
+
+function adminDashboardRange(state = adminDashboardPeriod, now = new Date()) {
+  if (state.preset === 'all') return null;
+  if (state.preset === 'custom') {
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(state.from) && adminDashboardDate(state.from);
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(state.to) && adminDashboardDate(state.to);
+    if (!from || !to || from.day > to.day) throw new Error('Enter valid From and To dates, with From on or before To.');
+    return { from: from.day, to: to.day };
+  }
+  const today = new Date(now.getTime() + 8 * 60 * 60 * 1000);
+  if (state.preset === 'week') {
+    // Monday through Sunday, using the Philippine calendar even across months/years.
+    const monday = new Date(today);
+    monday.setUTCDate(today.getUTCDate() - (today.getUTCDay() + 6) % 7);
+    const sunday = new Date(monday);
+    sunday.setUTCDate(monday.getUTCDate() + 6);
+    return { from: monday.toISOString().slice(0, 10), to: sunday.toISOString().slice(0, 10) };
+  }
+  let year = today.getUTCFullYear();
+  let month = today.getUTCMonth() + 1;
+  if (state.preset === 'year') return { from: `${year}-01-01`, to: `${year}-12-31` };
+  if (state.preset === 'lastMonth' && --month === 0) { year--; month = 12; }
+  const prefix = `${year}-${String(month).padStart(2, '0')}`;
+  return { from: `${prefix}-01`, to: `${prefix}-${new Date(Date.UTC(year, month, 0)).getUTCDate()}` };
+}
+
+function adminDashboardIncludes(value, range) {
+  if (!range) return true; // All Time also retains undated legacy records.
+  const date = adminDashboardDate(value);
+  return Boolean(date && date.day >= range.from && date.day <= range.to);
+}
+
+function adminDashboardCollectionDate(payment) {
+  // Actual transaction date first. Legacy records use the first valid verification,
+  // review, then submission date as a documented proxy; never the dues billing month.
+  return [payment.payment_date, payment.verified_at, payment.reviewedAt, payment.submittedAt]
+    .find(value => adminDashboardDate(value)) || null;
+}
+
+function adminDashboardRecent(records, field, limit) {
+  return [...records].sort((a, b) => {
+    const aTime = adminDashboardDate(a[field])?.instant ?? -Infinity;
+    const bTime = adminDashboardDate(b[field])?.instant ?? -Infinity;
+    // Keep the original stable ordering for same-day submissions; billing ties
+    // retain the dashboard's existing descending ID order.
+    return (aTime === bTime ? 0 : bTime > aTime ? 1 : -1)
+      || (field === 'createdAt' ? String(b.id || '').localeCompare(String(a.id || '')) : 0);
+  }).slice(0, limit);
+}
+
+function changeAdminDashboardPeriod(preset) {
+  if (!Object.hasOwn(ADMIN_DASHBOARD_PERIODS, preset)) return;
+  if (preset === 'custom') {
+    document.getElementById('adminDashboardCustomDates').hidden = false;
+    document.getElementById('adminDashboardPeriodError').textContent = '';
+    document.getElementById('adminDashboardFrom')?.focus();
+    return;
+  }
+  adminDashboardPeriod = { preset, from: '', to: '' };
+  renderAdminDashboard();
+  document.getElementById('adminDashboardFilterButton')?.focus();
+}
+
+function applyAdminDashboardPeriod(event) {
+  if (event) event.preventDefault();
+  const next = { preset: 'custom', from: document.getElementById('adminDashboardFrom').value, to: document.getElementById('adminDashboardTo').value };
+  try { adminDashboardRange(next); } catch (error) {
+    document.getElementById('adminDashboardPeriodError').textContent = error.message;
+    return false;
+  }
+  adminDashboardPeriod = next;
+  renderAdminDashboard();
+  document.getElementById('adminDashboardFilterButton')?.focus();
+  return false;
+}
+
 const REVENUE_YEAR_STORAGE_KEYS_LIST = [
   'sah_revenue_year',
   'monthlyRevenueYear',
@@ -152,6 +253,8 @@ function changeAdminRevenueYear(delta) {
 
 if (typeof document !== 'undefined') {
   document.addEventListener('click', (e) => {
+    const filter = document.getElementById('adminDashboardFilter');
+    if (filter && !filter.contains(e.target)) filter.open = false;
     const wrap = document.getElementById('monthlyRevenueYearSelector');
     if (wrap && !wrap.contains(e.target)) {
       closeRevenueYearDropdown();
@@ -160,6 +263,11 @@ if (typeof document !== 'undefined') {
 
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
+      const filter = document.getElementById('adminDashboardFilter');
+      if (filter?.open) {
+        filter.open = false;
+        document.getElementById('adminDashboardFilterButton')?.focus();
+      }
       closeRevenueYearDropdown();
     }
   });
@@ -179,17 +287,21 @@ if (typeof window !== 'undefined') {
 
 
 function renderAdminDashboard() {
-  syncHomeownerBalances();
+  // Reporting is read-only: current balances come from the existing API/cache.
+  const range = adminDashboardRange();
   const homeowners = getHomeowners();
   const payments = db.get('payments');
-  const approved = payments.filter(p => p.status === 'approved');
-  const pending  = payments.filter(p => p.status === 'pending');
+  const periodPayments = payments.filter(p => adminDashboardIncludes(p.submittedAt, range));
+  const approved = payments.filter(p => p.status === 'approved' && adminDashboardIncludes(adminDashboardCollectionDate(p), range));
+  const pending = periodPayments.filter(p => p.status === 'pending');
   const totalCollected = approved.reduce((sum, payment) => sum + toMoneyNumber(payment.amount), 0);
   const billings = db.get('billings');
-  const totalBilled = billings.reduce((sum, billing) => sum + getBillingTotal(billing), 0);
+  const periodBillings = billings.filter(b => adminDashboardIncludes(b.createdAt, range));
+  const totalBilled = periodBillings.reduce((sum, billing) => sum + getBillingTotal(billing), 0);
   const totalOutstanding = homeowners.reduce((sum, user) => sum + toMoneyNumber(user.balance), 0);
   const complaints = db.get('complaints');
-  const reviewedComplaints = complaints.filter(c => normalizeComplaintStatus(c.status) === 'Reviewed').length;
+  const periodComplaints = complaints.filter(c => adminDashboardIncludes(c.dateFiled, range));
+  const reviewedComplaints = periodComplaints.filter(c => normalizeComplaintStatus(c.status) === 'Reviewed').length;
   const area = document.getElementById('contentArea');
 
   const getAnalysisYearFn = typeof getAnalysisYear === 'function'
@@ -227,27 +339,49 @@ function renderAdminDashboard() {
     ? buildMonthlyRevenueData
     : (typeof window !== 'undefined' && typeof window.buildMonthlyRevenueData === 'function' ? window.buildMonthlyRevenueData : () => []);
   const monthlyData = buildMonthlyRevenueDataFn(payments, adminRevenueYear);
-  const paymentCounts = paymentStatusCounts(payments);
+  const paymentCounts = paymentStatusCounts(periodPayments);
   const paymentTotal = paymentCounts.approved + paymentCounts.pending + paymentCounts.rejected;
 
   area.innerHTML = `
-  <div class="page-header">
+  <div class="page-header admin-dashboard-header">
     <div class="page-header-left">
       <h2>Dashboard</h2>
       <p>Welcome back, ${currentUser?.name || currentUser?.username || 'Admin'}. Here's your overview.</p>
     </div>
+    <details id="adminDashboardFilter" class="admin-dashboard-filter">
+      <summary id="adminDashboardFilterButton" class="btn btn-secondary btn-sm" aria-label="Filter reporting period" title="Filter reporting period">
+        <svg class="admin-dashboard-filter-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 4h16l-6 7v7l-4 2v-9z"/></svg>
+      </summary>
+    <form class="admin-dashboard-period" onsubmit="return applyAdminDashboardPeriod(event)" novalidate>
+      <div class="admin-dashboard-period-row">
+        <div class="form-group admin-dashboard-period-choice">
+          <label for="adminDashboardPeriod">Period</label>
+          <select id="adminDashboardPeriod" aria-label="Reporting period" onchange="changeAdminDashboardPeriod(this.value)">
+            ${Object.entries(ADMIN_DASHBOARD_PERIODS).map(([value, label]) => `<option value="${value}" ${adminDashboardPeriod.preset === value ? 'selected' : ''}>${label}</option>`).join('')}
+          </select>
+        </div>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="changeAdminDashboardPeriod('all')">Reset</button>
+      </div>
+      <div id="adminDashboardCustomDates" class="admin-dashboard-custom-dates" ${adminDashboardPeriod.preset === 'custom' ? '' : 'hidden'}>
+        <div class="form-group"><label for="adminDashboardFrom">From</label><input type="date" id="adminDashboardFrom" value="${adminDashboardPeriod.from}" aria-describedby="adminDashboardPeriodError" required></div>
+        <div class="form-group"><label for="adminDashboardTo">To</label><input type="date" id="adminDashboardTo" value="${adminDashboardPeriod.to}" aria-describedby="adminDashboardPeriodError" required></div>
+        <button type="submit" id="adminDashboardApply" class="btn btn-primary btn-sm">Apply</button>
+      </div>
+      <p id="adminDashboardPeriodError" class="admin-dashboard-period-error" role="alert"></p>
+    </form>
+    </details>
   </div>
 
   <div class="stat-grid admin-stat-grid">
     <div class="stat-card" style="--card-accent:#2271c3;--card-accent-bg:#eef5fd">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-users"/></svg></div>
       <div class="stat-value">${homeowners.length}</div>
-      <div class="stat-label">Total Homeowners</div>
+      <div class="stat-label" title="Current total, independent of reporting period">Total Homeowners</div>
     </div>
     <div class="stat-card" style="--card-accent:#16a34a;--card-accent-bg:#dcfce7">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-credit"/></svg></div>
       <div class="stat-value">₱${totalCollected.toLocaleString()}</div>
-      <div class="stat-label">Total Collected</div>
+      <div class="stat-label" title="Approved payments by transaction date (payment_date); legacy fallback: verified_at, reviewedAt, then submittedAt. Dues billing month is not used.">Total Collected</div>
     </div>
     <div class="stat-card" style="--card-accent:#177a80;--card-accent-bg:#e5f6f7">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-file"/></svg></div>
@@ -257,7 +391,7 @@ function renderAdminDashboard() {
     <div class="stat-card" style="--card-accent:#dc2626;--card-accent-bg:#fee2e2">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-clock"/></svg></div>
       <div class="stat-value">₱${totalOutstanding.toLocaleString()}</div>
-      <div class="stat-label">Outstanding Balance</div>
+      <div class="stat-label" title="Current balance, independent of reporting period">Outstanding Balance</div>
     </div>
     <div class="stat-card" style="--card-accent:#eab308;--card-accent-bg:#fef9c3">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-clock"/></svg></div>
@@ -267,14 +401,14 @@ function renderAdminDashboard() {
     <div class="stat-card" style="--card-accent:#dc2626;--card-accent-bg:#fee2e2">
       <div class="stat-icon"><svg width="22" height="22"><use href="#ico-flag"/></svg></div>
       <div class="stat-value">${reviewedComplaints}</div>
-      <div class="stat-label">Reviewed Complaints</div>
+      <div class="stat-label" title="Currently Reviewed complaints filed within the reporting period">Reviewed Complaints</div>
     </div>
   </div>
 
   <div class="charts-row">
     <div class="chart-card chart-card-wide">
       <div class="chart-header">
-        <h4>Monthly Revenue</h4>
+        <h4 title="Selected year only, independent of Period. Dues are grouped by billing month.">Monthly Revenue</h4>
         <div class="chart-year-selector" id="monthlyRevenueYearSelector">
           <button type="button" class="chart-year-btn chart-year-prev" id="revenuePrevYearBtn" onclick="changeAdminRevenueYear(-1)" title="Previous year" aria-label="Previous year" ${adminRevenueYear <= availableYears[0] ? 'disabled' : ''}>&lt;</button>
           <div class="chart-year-dropdown-wrap">
@@ -308,6 +442,7 @@ function renderAdminDashboard() {
         <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div> Pending (${paymentCounts.pending})</div>
         <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Rejected (${paymentCounts.rejected})</div>
       </div>
+      ${paymentTotal ? '' : '<p class="empty-note">No payment submissions in this period.</p>'}
     </div>
   </div>
 
@@ -320,7 +455,7 @@ function renderAdminDashboard() {
       <table class="data-table">
         <thead><tr><th>Billing</th><th>Amount</th><th>Due Date</th><th>Assigned</th></tr></thead>
         <tbody>
-          ${[...billings].sort((a, b) => `${b.createdAt || ''}-${b.id || ''}`.localeCompare(`${a.createdAt || ''}-${a.id || ''}`)).slice(0, 5).map(b => {
+          ${adminDashboardRecent(periodBillings, 'createdAt', 5).map(b => {
             const assignedIds = getAssignedHomeownerIds(b);
             return `<tr>
               <td><strong>${b.title}</strong></td>
@@ -328,7 +463,7 @@ function renderAdminDashboard() {
               <td>${b.dueDate || 'No due date'}</td>
               <td>${assignedIds.length} homeowner(s)</td>
             </tr>`;
-          }).join('') || '<tr><td colspan="4"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings created yet.</div></td></tr>'}
+          }).join('') || '<tr><td colspan="4"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings created in this period.</div></td></tr>'}
         </tbody>
       </table>
     </div>
@@ -365,22 +500,24 @@ function renderAdminDashboard() {
   ], total, 'Total', total);
 
   const tbody = document.getElementById('recentPaymentsTable');
-  const recentP = [...payments].sort((a,b) => (b.submittedAt || '').localeCompare(a.submittedAt || '')).slice(0, 5);
+  const recentP = adminDashboardRecent(periodPayments, 'submittedAt', 5);
+  tbody.innerHTML = recentP.length ? '' : '<tr><td colspan="3"><div class="no-results">No payments submitted in this period.</div></td></tr>';
   recentP.forEach(p => {
     const ho = getHomeownerById(p.homeownerId);
     tbody.innerHTML += `
       <tr>
         <td>${ho ? ho.name : 'Unknown'}</td>
-        <td>₱${p.amount.toLocaleString()}</td>
+        <td>₱${toMoneyNumber(p.amount).toLocaleString()}</td>
         <td>${badgeHtml(p.status)}</td>
       </tr>`;
   });
 
   // Recent Complaints Panel
   const cmpPanel = document.getElementById('recentComplaintsPanel');
-  const recentC = [...complaints].sort((a,b) => b.dateFiled.localeCompare(a.dateFiled)).slice(0, 4);
+  const recentC = adminDashboardRecent(periodComplaints, 'dateFiled', 4);
+  cmpPanel.innerHTML = '';
   if (!recentC.length) {
-    cmpPanel.innerHTML = '<p class="empty-note">No complaints filed.</p>';
+    cmpPanel.innerHTML = '<p class="empty-note">No complaints filed in this period.</p>';
   } else {
     recentC.forEach(c => {
       const ho = getHomeownerById(c.homeownerId);
@@ -394,6 +531,7 @@ function renderAdminDashboard() {
         </div>`;
     });
   }
+  applyResponsiveTableLabels(area);
 }
 
 function renderDonut(containerId, segments, total, centerLabel, centerVal) {

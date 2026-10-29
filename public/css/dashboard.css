@@ -1,3 +1,41 @@
+/* Administrator reporting controls reuse the existing form/button theme. */
+.page-header.admin-dashboard-header { align-items: flex-start; position: relative; padding-right: 48px; }
+.admin-dashboard-header .page-header-left { min-width: 0; }
+.admin-dashboard-filter { position: absolute; top: 0; right: 0; z-index: 20; }
+.admin-dashboard-filter > summary { list-style: none; width: 34px; height: 34px; padding: 0; justify-content: center; }
+.admin-dashboard-filter > summary::-webkit-details-marker { display: none; }
+.admin-dashboard-filter[open] > summary { border-color: var(--teal-500); color: var(--teal-600); }
+.admin-dashboard-period { position: absolute; top: calc(100% + 8px); right: 0; width: min(340px, calc(100vw - 40px)); box-sizing: border-box; padding: 14px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.admin-dashboard-period-row,
+.admin-dashboard-custom-dates { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+.admin-dashboard-period .form-group { margin: 0; min-width: 0; }
+.admin-dashboard-period-choice { display: flex; align-items: center; gap: 8px; }
+.admin-dashboard-filter-icon { display: block; flex-shrink: 0; }
+.admin-dashboard-period .form-group label { margin: 0; text-transform: none; letter-spacing: normal; }
+.admin-dashboard-period .form-group select,
+.admin-dashboard-period .form-group input { padding: 7px 10px; font-size: 0.82rem; min-width: 0; font-family: inherit; }
+.admin-dashboard-period-choice select { width: auto; max-width: 100%; }
+.admin-dashboard-custom-dates { margin-top: 10px; align-items: flex-end; }
+.admin-dashboard-custom-dates[hidden] { display: none; }
+.admin-dashboard-custom-dates .form-group { flex: 1 1 130px; }
+.admin-dashboard-custom-dates label { padding-bottom: 4px; }
+.admin-dashboard-custom-dates input { box-sizing: border-box; width: 100%; }
+.admin-dashboard-period-error { color: var(--red-600); font-size: 0.78rem; max-width: 380px; margin-top: 5px; }
+.admin-dashboard-period-error:empty { display: none; }
+.admin-dashboard-header + .admin-stat-grid + .charts-row .chart-header h4 { margin-bottom: 0; }
+[data-theme="dark"] .admin-dashboard-period input[type="date"] { color-scheme: dark; }
+@media (max-width: 900px) {
+  .page-header.admin-dashboard-header { align-items: stretch; }
+  .admin-dashboard-period-row,
+  .admin-dashboard-custom-dates { justify-content: flex-start; }
+  .admin-dashboard-custom-dates { max-width: 440px; }
+}
+@media (max-width: 400px) {
+  .admin-dashboard-period-choice { flex: 1 1 190px; }
+  .admin-dashboard-period-choice select { flex: 1; width: 0; }
+  .admin-dashboard-custom-dates .form-group { flex-basis: 120px; }
+}
+
 .stat-grid,
 .admin-stat-grid {
   display: grid;
