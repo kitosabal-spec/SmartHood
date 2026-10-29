@@ -135,13 +135,157 @@ const root = path.resolve(__dirname, '..');
     await page.getByRole('button', { name: "I've Paid — Submit Payment" }).click();
     assert.equal(await page.locator('#sub_pay_amount').inputValue(), '60.00');
     await page.evaluate(() => { closeModal(); renderHOHistory(); });
-    assert.equal(await page.getByRole('button', { name: 'Details', exact: true }).count(), 2);
+    assert.equal(await page.getByRole('button', { name: 'Details', exact: true }).count(), 1);
     await page.getByRole('button', { name: 'Details', exact: true }).last().click();
-    await active('Result');
-    assert.match(await page.locator('.payment-progress-message').innerText(), /Approved/);
+    assert.equal(await page.locator('.resident-payment-transaction .payment-progress').count(), 2);
+    await page.locator('[data-transaction-id="payment-1"] summary').click();
+    assert.match(await page.locator('[data-transaction-id="payment-1"] .payment-progress-message').innerText(), /Approved/);
     // A refresh started before close must not reopen the modal.
     await page.evaluate(async () => { const pending = refreshResidentPaymentDetail(document.getElementById('residentPaymentDetail')); closeModal(); await pending; });
     assert.equal(await page.locator('#modalOverlay').isVisible(), false);
+    // Grouped history uses the same saved records and refresh loop, with an
+    // independent progress indicator inside each expandable transaction.
+    server.billings[0].amount = 1000;
+    server.billings[0].title = 'Community improvements ' + 'LongBillingTitle'.repeat(9);
+    const receipt = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==';
+    server.payments = [
+      { id: 'partial-3', billingId: 'bill-1', homeownerId: 'home-1', amount: 500, status: 'pending', submittedAt: '2026-10-03', refNum: 'LONGREFERENCE'.repeat(20), receipt },
+      { id: 'partial-1', billingId: 'bill-1', homeownerId: 'home-1', amount: 300, status: 'approved', submittedAt: '2026-10-01', payment_date: '2026-09-30', payment_method: 'Cash', payment_source: 'manual_admin', remarks: 'Recorded at HOA office' },
+      { id: 'partial-2', billingId: 'bill-1', homeownerId: 'home-1', amount: 200, status: 'approved', submittedAt: '2026-10-02' },
+      { id: 'foreign', billingId: 'bill-1', homeownerId: 'home-2', amount: 1000, status: 'approved' },
+    ];
+    async function groupedHistory() {
+      await page.evaluate(async () => { closeModal(); await api.loadAll(); renderHOHistory(); });
+      await page.getByRole('button', { name: 'Details', exact: true }).first().click();
+    }
+    async function groupedLayout() {
+      const geometry = await page.evaluate(() => {
+        const body = document.getElementById('modalBody');
+        return { width: body.clientWidth, scroll: body.scrollWidth, documentWidth: document.documentElement.clientWidth,
+          documentScroll: document.documentElement.scrollWidth,
+          progress: [...document.querySelectorAll('.resident-payment-transaction .payment-progress')].map(el => ({
+            visible: getComputedStyle(el).display !== 'none', circles: [...el.querySelectorAll('.payment-progress-circle')].map(c => c.getBoundingClientRect().y),
+            labels: [...el.querySelectorAll('.payment-progress-label')].map(c => c.getBoundingClientRect().toJSON()) })) };
+      });
+      assert.ok(geometry.scroll <= geometry.width + 1, 'grouped modal has no horizontal overflow');
+      assert.ok(geometry.documentScroll <= geometry.documentWidth + 1, 'history has no page overflow');
+      geometry.progress.forEach(p => {
+        assert.ok(p.visible, 'progress is not collapsed');
+        assert.equal(new Set(p.circles).size, 1, 'stage circles align');
+        p.labels.slice(1).forEach((label, i) => assert.ok(label.x >= p.labels[i].right - 1, 'labels do not overlap'));
+      });
+    }
+    await groupedHistory();
+    assert.equal(await page.getByRole('button', { name: 'Details', exact: true }).count(), 1);
+    assert.equal(await page.locator('.resident-payment-transaction').count(), 3);
+    assert.equal(await page.locator('.resident-payment-transaction[open]').count(), 0, 'payments start collapsed');
+    assert.equal(await page.locator('[data-transaction-id="partial-1"] .payment-progress').isVisible(), false);
+    const firstToggle = page.locator('[data-transaction-id="partial-1"] summary');
+    assert.match(await firstToggle.innerText(), /Payment 1[\s\S]*Sep 30, 2026[\s\S]*Approved[\s\S]*₱300.00/);
+    await firstToggle.focus();
+    await page.keyboard.press('Enter');
+    assert.equal(await page.locator('[data-transaction-id="partial-1"] .payment-progress').isVisible(), true);
+    await page.keyboard.press('Space');
+    assert.equal(await page.locator('[data-transaction-id="partial-1"] .payment-progress').isVisible(), false);
+    for (const toggle of await page.locator('.resident-payment-toggle').all()) await toggle.click();
+    assert.deepEqual(await page.locator('.resident-payment-transaction').evaluateAll(els => els.map(el => el.dataset.transactionId)), ['partial-1', 'partial-2', 'partial-3']);
+    assert.deepEqual(await page.locator('.resident-payment-transaction').evaluateAll(els => els.map(el => el.querySelectorAll('.is-complete').length)), [4, 4, 2]);
+    assert.equal(await page.locator('progress').getAttribute('value'), '50');
+    assert.match(await page.locator('.resident-billing-summary').innerText(), /Partially Paid[\s\S]*For Verification/);
+    assert.match(await page.locator('[data-transaction-id="partial-1"]').innerText(), /Payment Recorded[\s\S]*Sep 30, 2026/);
+    await page.getByRole('button', { name: 'View Receipt', exact: true }).click();
+    assert.equal(await page.locator('#receiptLightbox img').getAttribute('src'), receipt);
+    await page.locator('#receiptLightbox button').click();
+    for (const theme of ['light', 'dark']) {
+      await page.evaluate(theme => document.documentElement.dataset.theme = theme, theme);
+      for (const width of [320, 375, 524, 768, 1280]) {
+        await page.setViewportSize({ width, height: 900 });
+        await groupedLayout();
+        if (process.env.PAYMENT_HISTORY_SCREENSHOT && [375, 1280].includes(width)) {
+          await page.evaluate(() => { document.getElementById('modalBody').scrollTop = 0; });
+          await page.screenshot({ path: process.env.PAYMENT_HISTORY_SCREENSHOT.replace(/\.png$/, `-${theme}-${width}.png`) });
+          if (width === 375) {
+            await page.locator('[data-transaction-id="partial-2"] summary').scrollIntoViewIfNeeded();
+            await page.screenshot({ path: process.env.PAYMENT_HISTORY_SCREENSHOT.replace(/\.png$/, `-${theme}-transaction.png`) });
+          }
+        }
+      }
+    }
+    if (process.env.PAYMENT_HISTORY_SCREENSHOT) await page.screenshot({ path: process.env.PAYMENT_HISTORY_SCREENSHOT });
+    await page.locator('[data-transaction-id="partial-2"] summary').click();
+    await page.locator('[data-transaction-id="partial-3"] summary').focus();
+    server.payments[0].status = 'approved';
+    await page.evaluate(() => refreshResidentPaymentDetail(document.getElementById('residentPaymentDetail')));
+    assert.deepEqual(await page.locator('.resident-payment-transaction').evaluateAll(els => els.map(el => el.open)), [true, false, true], 'refresh preserves independent dropdown states');
+    assert.equal(await page.evaluate(() => document.activeElement.closest('[data-transaction-id]')?.dataset.transactionId), 'partial-3', 'refresh preserves toggle focus');
+    assert.match(await page.locator('[data-transaction-id="partial-3"] summary').innerText(), /Approved/);
+    assert.equal(await page.locator('progress').getAttribute('value'), '100');
+    assert.equal(await page.locator('[data-transaction-id="partial-3"] .is-complete').count(), 4);
+    assert.match(await page.locator('.resident-history-table').innerText(), /Fully Paid/);
+    // Fresh page/session must restore all three saved approved transactions.
+    await boot();
+    await groupedHistory();
+    assert.equal(await page.locator('.resident-payment-transaction[open]').count(), 0, 'fresh session starts collapsed');
+    await page.locator('[data-transaction-id="partial-3"] summary').click();
+    assert.equal(await page.locator('progress').getAttribute('value'), '100');
+    assert.equal(await page.locator('.resident-payment-transaction .is-complete').count(), 12);
+    // Exercise the rejection branch from a pending saved record.
+    server.payments[0].status = 'pending';
+    await page.evaluate(() => refreshResidentPaymentDetail(document.getElementById('residentPaymentDetail')));
+    server.payments[0].status = 'rejected';
+    server.payments[0].rejection_reason = '<script>bad()</script> Blurry receipt';
+    await page.evaluate(() => refreshResidentPaymentDetail(document.getElementById('residentPaymentDetail')));
+    assert.equal(await page.locator('progress').getAttribute('value'), '50');
+    assert.equal(await page.locator('[data-transaction-id="partial-3"] .is-complete').count(), 3);
+    assert.equal(await page.locator('[data-transaction-id="partial-3"] .is-rejected .payment-progress-label').textContent(), 'Rejected');
+    assert.match(await page.locator('.rejection-reason-callout').innerText(), /Blurry receipt/);
+    assert.equal(await page.locator('.rejection-reason-callout script').count(), 0);
+    await page.getByRole('button', { name: 'Submit Another Proof' }).click();
+    await active('GCash Payment');
+    await page.getByRole('button', { name: "I've Paid — Submit Payment" }).click();
+    assert.equal(await page.locator('#sub_pay_amount').inputValue(), '500.00');
+    // New successful submission retains the rejected transaction in the group.
+    server.payments.push({ id: 'partial-4', billingId: 'bill-1', homeownerId: 'home-1', amount: 500, status: 'approved', submittedAt: '2026-10-04' });
+    await groupedHistory();
+    assert.equal(await page.locator('.resident-payment-transaction').count(), 4);
+    assert.equal(await page.locator('progress').getAttribute('value'), '100');
+    assert.equal(await page.locator('.is-rejected.payment-progress-step').count(), 1);
+    // Identical titles never merge different billings; missing billings stay visible.
+    server.billings.push({ ...server.billings[0], id: 'bill-2' });
+    server.payments.push({ id: 'separate', billingId: 'bill-2', homeownerId: 'home-1', amount: 1000, status: 'approved' },
+      { id: 'legacy', billingId: 'missing', homeownerId: 'home-1', amount: 50, status: 'approved' });
+    await groupedHistory();
+    assert.equal(await page.getByRole('button', { name: 'Details', exact: true }).count(), 3);
+    await page.evaluate(() => { closeModal(); openResidentPaymentDetail('legacy', true); });
+    assert.equal(await page.locator('progress').count(), 0);
+    assert.match(await page.locator('.resident-billing-summary').innerText(), /original billing amount is unavailable/);
+    // Read-only history access still rejects a foreign transaction even if cached.
+    await page.evaluate(() => { closeModal(); openResidentPaymentDetail('foreign', true); });
+    assert.equal(await page.locator('#modalOverlay').isVisible(), false);
+    assert.equal(await page.evaluate(() => toasts.at(-1)[1]), 'Access Denied');
+    await groupedHistory();
+    await page.evaluate(async () => {
+      const refresh = refreshResidentPaymentDetail(document.getElementById('residentPaymentDetail'));
+      window.homeownerId = 'home-2';
+      closeModal();
+      await refresh;
+    });
+    assert.equal(await page.locator('#modalOverlay').isVisible(), false, 'old account refresh cannot reopen details');
+    await page.evaluate(() => { window.homeownerId = 'home-1'; });
+    // An unlinked advance follows its saved ID when approval links it to a bill.
+    const advanceFields = { homeownerId: 'home-1', monthly_dues_month: '2026-12', payment_type: 'monthly_dues', payment_source: 'resident_submission', amount: 1000 };
+    server.payments.push({ ...advanceFields, id: 'advance-rejected', status: 'rejected', submittedAt: '2026-10-06' },
+      { ...advanceFields, id: 'advance-pending', status: 'pending', submittedAt: '2026-10-07' });
+    await page.evaluate(async () => { await api.loadAll(); openResidentPaymentDetail('advance-pending', true); });
+    assert.equal(await page.locator('.resident-payment-transaction').count(), 2);
+    assert.equal(await page.locator('progress').getAttribute('value'), '0');
+    server.billings.push({ id: 'december', title: 'December dues', amount: 1000, monthly_dues_month: '2026-12' });
+    Object.assign(server.payments.find(p => p.id === 'advance-pending'), { billingId: 'december', status: 'approved' });
+    await page.evaluate(() => refreshResidentPaymentDetail(document.getElementById('residentPaymentDetail')));
+    assert.equal(await page.locator('.resident-payment-transaction').count(), 1);
+    assert.equal(await page.locator('progress').getAttribute('value'), '100');
+    assert.equal(await page.evaluate(() => getResidentPaymentHistoryGroups().flatMap(g => g.payments).filter(p => p.id === 'advance-pending').length), 1);
+    await page.evaluate(() => closeModal());
     // Pending advance payments also block new submissions before an upload starts.
     await page.evaluate(() => {
       cache.payments.push({ id: 'advance', homeownerId: 'home-1', monthly_dues_month: '2026-11', status: 'pending' });
@@ -150,6 +294,6 @@ const root = path.resolve(__dirname, '..');
     assert.equal(await page.evaluate(() => toasts.at(-1)[1]), 'Payment Pending');
     assert.equal(await page.locator('#modalOverlay').isVisible(), false);
     assert.deepEqual(errors, []);
-    console.log('PASS: steps 1–4, Back to QR, invalid/server failures, duplicate-click guard, saved-proof refresh failure, pending and approval refresh, partial balance, fresh-session restoration, per-transaction history, rejection reason/retry, closed-modal guard, and 320/375/524/1280px layouts.');
+    console.log('PASS: submission steps, failures, duplicate guard, independent grouped transaction progress, approved-only totals, approval/rejection refresh, resubmission, cash, receipts, legacy records, same-title billings, advance linking, fresh-session restoration, account isolation, modal guards, and light/dark layouts at 320/375/524/768/1280px.');
   } finally { await browser.close(); }
 })().catch(error => { console.error(error); process.exitCode = 1; });

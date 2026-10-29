@@ -1504,3 +1504,83 @@ input[type="date"].filter-select {
 }
 
 
+
+/* Resident billing history: scoped to the grouped history and detail view. */
+.resident-history-table { table-layout: fixed; width: 100%; }
+.resident-history-table th:first-child { width: 24%; }
+.resident-history-table th:nth-child(5) { width: 8%; }
+.resident-history-table th:last-child { width: 9%; }
+.resident-history-table th,
+.resident-history-table td { white-space: normal; overflow-wrap: anywhere; }
+.resident-billing-status { display: flex; flex-wrap: wrap; gap: 5px; }
+.resident-billing-status .badge { white-space: normal; }
+.modal.resident-billing-modal {
+  width: min(800px, 95vw); max-width: 800px;
+  height: min(800px, 90vh); height: min(800px, 90dvh);
+  max-height: 90vh; max-height: 90dvh;
+}
+.resident-billing-modal .modal-body { overflow-y: auto; min-height: 0; scrollbar-gutter: stable; }
+.resident-billing-detail h4 { margin: 0; color: var(--text); overflow-wrap: anywhere; }
+.resident-billing-summary,
+.resident-payment-transaction {
+  padding: 18px; border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--surface); min-width: 0; overflow-wrap: anywhere;
+}
+.resident-billing-summary { background: var(--surface-2); }
+.resident-billing-summary > .resident-billing-status { margin-top: 12px; }
+.resident-billing-totals,
+.resident-transaction-info {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; margin: 18px 0;
+}
+.resident-billing-detail dt { color: var(--text-3); font-size: 0.78rem; margin-bottom: 4px; }
+.resident-billing-detail dd { margin: 0; color: var(--text); font-size: 0.88rem; overflow-wrap: anywhere; }
+.resident-billing-totals dd { font-weight: 700; font-size: 1rem; }
+.resident-billing-progress-label { display: flex; justify-content: space-between; gap: 12px; font-size: 0.85rem; }
+.resident-billing-progress {
+  display: block; width: 100%; height: 10px; margin-top: 8px;
+  border: 0; border-radius: 99px; overflow: hidden; appearance: none;
+  background: var(--border); color: var(--teal-700); accent-color: var(--teal-700);
+}
+.resident-billing-progress::-webkit-progress-bar { background: var(--border); }
+.resident-billing-progress::-webkit-progress-value { background: var(--teal-700); }
+.resident-billing-progress::-moz-progress-bar { background: var(--teal-700); }
+.resident-billing-note { margin: 8px 0 0; color: var(--text-3); font-size: 0.78rem; }
+.resident-payment-toggle { display: flex; align-items: center; gap: 12px; list-style: none; cursor: pointer; color: var(--text); border-radius: var(--radius-sm); }
+.resident-payment-toggle::-webkit-details-marker { display: none; }
+.resident-payment-toggle:focus-visible { outline: 2px solid var(--teal-500); outline-offset: 5px; }
+.resident-payment-heading { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; min-width: 0; flex: 1; }
+.resident-payment-heading .badge { white-space: normal; }
+.resident-payment-date { color: var(--text-2); font-size: 0.78rem; }
+.resident-payment-toggle-amount { max-width: 45%; overflow-wrap: anywhere; font-size: 0.92rem; }
+.resident-payment-chevron { flex-shrink: 0; color: var(--text-2); transition: transform 0.15s ease; }
+.resident-payment-transaction[open] > .resident-payment-toggle .resident-payment-chevron { transform: rotate(180deg); }
+.resident-payment-expanded { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border); }
+.resident-payment-expanded > .payment-progress { margin: 0 0 14px; }
+.resident-payment-transaction .rejection-reason-callout { margin: 12px 0; }
+.resident-billing-detail .payment-progress-step.is-current:not(.is-complete):not(.is-rejected) { color: var(--yellow-700, #a16207); }
+.resident-billing-detail .payment-progress-step.is-current:not(.is-complete):not(.is-rejected) .payment-progress-circle { background: var(--yellow-700, #a16207); border-color: var(--yellow-700, #a16207); }
+[data-theme="dark"] .resident-billing-detail .payment-progress-step.is-current:not(.is-complete):not(.is-rejected) { color: #fbbf24; }
+[data-theme="dark"] .resident-billing-detail .payment-progress-step.is-complete,
+[data-theme="dark"] .resident-billing-detail .payment-progress-message:not(.is-rejected) { color: var(--teal-300); }
+[data-theme="dark"] .resident-billing-detail dt,
+[data-theme="dark"] .resident-billing-detail .resident-billing-note { color: var(--text-2); }
+
+@media (max-width: 700px) {
+  .resident-history-wrapper { overflow: visible; }
+  .resident-history-table,
+  .resident-history-table tbody,
+  .resident-history-table tr,
+  .resident-history-table td { display: block; width: 100%; min-width: 0; box-sizing: border-box; }
+  .resident-history-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .resident-history-table tr { padding: 10px 14px; border-bottom: 1px solid var(--border); }
+  .resident-history-table td { display: grid; grid-template-columns: minmax(0, 40%) minmax(0, 1fr); gap: 12px; padding: 7px 0; border: 0; }
+  .resident-history-table td::before { content: attr(data-label); color: var(--text-3); font-weight: 600; font-size: 0.78rem; }
+  .resident-history-table td[colspan] { display: block; }
+  .resident-history-table td[colspan]::before { content: none; }
+  .resident-history-table td > * { min-width: 0; }
+  .resident-history-table td > button { justify-self: start; }
+}
+@media (max-width: 430px) {
+  .resident-billing-summary, .resident-payment-transaction { padding: 12px; }
+  .resident-billing-totals, .resident-transaction-info { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+}

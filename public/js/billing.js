@@ -1761,8 +1761,7 @@ async function executeCreateManualPayment() {
 }
 
 // Display-only progress: saved stages come exclusively from a payment record.
-function renderPaymentProgress(step, status = '') {
-  const labels = ['GCash Payment', 'Submit Proof', 'For Verification', 'Result'];
+function renderPaymentProgress(step, status = '', labels = ['GCash Payment', 'Submit Proof', 'For Verification', 'Result']) {
   const check = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" aria-hidden="true"><path d="m5 12 4 4 10-10"/></svg>';
   return `<ol class="payment-progress" aria-label="Payment progress">${labels.map((label, index) => {
     const number = index + 1;
@@ -1777,9 +1776,11 @@ function renderPaymentProgress(step, status = '') {
   }).join('')}</ol>`;
 }
 
-function renderSavedPaymentProgress(payment, summary) {
+function renderSavedPaymentProgress(payment, summary, grouped = false) {
   const status = payment.status;
-  if (!['pending', 'approved', 'rejected'].includes(status)) return '';
+  if (!['pending', 'approved', 'rejected'].includes(status)) {
+    return grouped ? `${renderPaymentProgress(1, '', ['Payment Details', 'Proof Submitted', 'For Verification', 'Approved'])}<div class="payment-progress-message"><strong>${escapeHtml(status || 'Unknown')}</strong><p>Verification progress is unavailable for this legacy record.</p></div>` : '';
+  }
   let message = 'Your payment proof has been submitted and is awaiting verification by the HOA Administrator.';
   if (status === 'approved') {
     message = 'Your payment has been approved by the HOA Administrator.';
@@ -1789,7 +1790,8 @@ function renderSavedPaymentProgress(payment, summary) {
   } else if (status === 'rejected') {
     message = 'Your payment proof was rejected. This payment has not reduced your billing balance.';
   }
-  return `${renderPaymentProgress(status === 'pending' ? 3 : 4, status)}
+  const labels = grouped ? ['Payment Details', payment.payment_source === 'manual_admin' ? 'Payment Recorded' : 'Proof Submitted', 'For Verification', status === 'rejected' ? 'Rejected' : 'Approved'] : undefined;
+  return `${renderPaymentProgress(status === 'pending' ? 3 : 4, status, labels)}
     <div class="payment-progress-message${status === 'rejected' ? ' is-rejected' : ''}" role="status">
       <strong>${status === 'pending' ? 'For Verification' : status === 'approved' ? 'Approved' : 'Rejected'}</strong>
       <p>${escapeHtml(message)}</p>
@@ -1808,13 +1810,14 @@ function getResidentPaymentSummary(bill, month, amount) {
 
 let residentPaymentRefreshTimer = null;
 
-function residentPaymentSignature(payment) {
+function residentPaymentSignature(payment, grouped = false) {
+  if (grouped) return JSON.stringify(getResidentPaymentHistoryGroups().find(group => group.payments.some(p => p.id === payment.id)));
   return JSON.stringify([payment, db.getOne('billings', payment.billingId), db.get('payments').filter(p =>
     p.homeownerId === payment.homeownerId && p.billingId === payment.billingId)]);
 }
 
-function openResidentPaymentDetail(id) {
-  viewPaymentDetail(id, true);
+function openResidentPaymentDetail(id, grouped = false) {
+  viewPaymentDetail(id, true, grouped);
   const panel = document.getElementById('residentPaymentDetail');
   if (panel?.dataset.paymentId === id) refreshResidentPaymentDetail(panel);
 }
@@ -1830,16 +1833,25 @@ async function refreshResidentPaymentDetail(panel) {
   if (!isCurrent()) return;
   try {
     if (!document.hidden) {
-      const scrollTop = document.getElementById('modalBody').scrollTop;
       await api.loadAll();
       if (!isCurrent()) return;
       const payment = db.getOne('payments', panel.dataset.paymentId);
       if (!payment || payment.homeownerId !== homeownerId) { closeModal(); return; }
       // Keep focus and scroll intact when nothing in the saved record changed.
-      const signature = residentPaymentSignature(payment);
+      const signature = residentPaymentSignature(payment, panel.dataset.grouped === 'true');
       if (signature !== panel.dataset.signature) {
-        viewPaymentDetail(payment.id, true);
+        const scrollTop = document.getElementById('modalBody').scrollTop;
+        const focusedPayment = document.activeElement?.dataset.receiptPaymentId;
+        const focusedSummary = document.activeElement?.matches('.resident-payment-toggle')
+          ? document.activeElement.closest('[data-transaction-id]').dataset.transactionId : null;
+        const expandedPayments = new Set(Array.from(panel.querySelectorAll('details[open][data-transaction-id]'), item => item.dataset.transactionId));
+        viewPaymentDetail(payment.id, true, panel.dataset.grouped === 'true');
         panel = document.getElementById('residentPaymentDetail');
+        panel.querySelectorAll('details[data-transaction-id]').forEach(item => {
+          item.open = expandedPayments.has(item.dataset.transactionId);
+          if (item.dataset.transactionId === focusedSummary) item.querySelector('summary').focus({ preventScroll: true });
+        });
+        if (focusedPayment) Array.from(panel.querySelectorAll('[data-receipt-payment-id]')).find(button => button.dataset.receiptPaymentId === focusedPayment)?.focus({ preventScroll: true });
         document.getElementById('modalBody').scrollTop = scrollTop;
         if (document.getElementById('residentPaymentHistory')) renderHOHistory();
       }
@@ -1858,13 +1870,14 @@ async function refreshResidentPaymentDetail(panel) {
 
 // ── PAYMENT REVIEW / RESIDENT DETAILS MODAL ──
 
-function viewPaymentDetail(id, resident = false) {
+function viewPaymentDetail(id, resident = false, grouped = false) {
   const p = db.getOne('payments', id);
   if (!p) { showToast('error', 'Error', 'Payment record not found.'); return; }
   if (resident && p.homeownerId !== getCurrentHomeownerId()) {
     showToast('error', 'Access Denied', 'This payment does not belong to your account.');
     return;
   }
+  if (resident && grouped) { renderResidentBillingDetail(p); return; }
   const ho = getHomeownerById(p.homeownerId);
   const bill = db.getOne('billings', p.billingId);
   const recordedBy = db.getOne('users', p.recorded_by);
@@ -1981,7 +1994,7 @@ function openReceiptLightbox(imgUrl) {
   overlay.className = 'receipt-lightbox-overlay';
   overlay.onclick = () => overlay.remove();
   overlay.innerHTML = `
-    <img src="${imgUrl}" class="receipt-lightbox-img" alt="Enlarged Receipt Screenshot" onclick="event.stopPropagation()"/>
+    <img src="${escapeHtml(imgUrl)}" class="receipt-lightbox-img" alt="Enlarged Receipt Screenshot" onclick="event.stopPropagation()"/>
     <button style="position:absolute;top:20px;right:20px;background:#fff;border:0;border-radius:50%;width:36px;height:36px;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.4)" onclick="document.getElementById('receiptLightbox').remove()">
       <svg width="18" height="18"><use href="#ico-x"/></svg>
     </button>
@@ -3049,86 +3062,176 @@ async function executeSubmitPaymentProof(billingIdOrOpts) {
 
 // ── RESIDENT PAYMENT HISTORY ──
 
-function renderHOHistory() {
-  const myPayments = db.get('payments').filter(p => p.homeownerId === getCurrentHomeownerId());
-  const area = document.getElementById('contentArea');
-
-  area.innerHTML = `
-  <div class="page-header">
-    <div class="page-header-left">
-      <h2 id="residentPaymentHistory">Payment History</h2>
-      <p>Track your submitted GCash payments and review verification statuses.</p>
-    </div>
-  </div>
-  <div class="section-card">
-    <div class="section-card-body no-pad">
-      <div class="table-wrapper">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Billing Title</th>
-              <th>Amount</th>
-              <th>Method</th>
-              <th>Reference #</th>
-              <th>Payment Date</th>
-              <th>Status</th>
-              <th>Admin Remarks / Reason</th>
-              <th>Receipt</th>
-              <th>Details</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${[...myPayments]
-              .sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '') || (b.id || '').localeCompare(a.id || ''))
-              .map(p => {
-                const bill = db.getOne('billings', p.billingId);
-                let billTitleDisplay = bill ? bill.title : '';
-                if (!billTitleDisplay && p.monthly_dues_month) {
-                  billTitleDisplay = `Monthly Dues - ${formatBillingMonth(p.monthly_dues_month)}`;
-                }
-                if (!billTitleDisplay) billTitleDisplay = 'N/A';
-                const isAdvance = Boolean(!p.billingId && p.monthly_dues_month);
-                const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-                let statusBadge = '<span class="badge badge-yellow">Pending Verification</span>';
-                if (p.status === 'approved') statusBadge = '<span class="badge badge-green">Approved</span>';
-                if (p.status === 'rejected') statusBadge = '<span class="badge badge-red">Rejected</span>';
-
-                let remarksDisplay = '—';
-                if (p.status === 'rejected') {
-                  remarksDisplay = `<strong class="payment-remarks-text" style="color:var(--red-600)">${escapeHtml(p.rejection_reason || p.remarks || 'Rejected by admin')}</strong>`;
-                } else if (p.remarks) {
-                  remarksDisplay = `<span class="payment-remarks-text">${escapeHtml(p.remarks)}</span>`;
-                }
-
-                return `<tr>
-                  <td>
-                    <strong>${escapeHtml(billTitleDisplay)}</strong>
-                    ${isAdvance ? ' <span class="badge badge-teal" style="font-size:0.68rem;padding:1px 6px">Advance</span>' : ''}
-                  </td>
-                  <td class="amount-paid">${formattedAmount}</td>
-                  <td><span class="badge ${p.payment_method === 'Cash' ? 'badge-cash' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span></td>
-                  <td><code style="font-size:0.84rem;font-weight:700;color:var(--text)">${escapeHtml(p.refNum)}</code></td>
-                  <td>${escapeHtml(p.payment_date || p.submittedAt || '—')}</td>
-                  <td>${statusBadge}</td>
-                  <td class="payment-remarks-cell">${remarksDisplay}</td>
-                  <td>
-                    ${p.receipt ? `
-                      <button class="btn btn-secondary btn-sm" onclick="openReceiptLightbox('${p.receipt}')">
-                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:4px"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                        View
-                      </button>
-                    ` : '—'}
-                  </td>
-                  <td><button class="btn btn-secondary btn-sm" onclick="openResidentPaymentDetail('${escapeHtml(p.id)}')">Details</button></td>
-                </tr>`;
-              }).join('') || '<tr><td colspan="9"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-history"/></svg>No payment transactions found.</div></td></tr>'}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  </div>`;
+function residentPaymentTime(payment) {
+  const value = payment.created_at || payment.submittedAt || payment.payment_date;
+  const time = value ? new Date(value).getTime() : NaN;
+  return Number.isFinite(time) ? time : 0;
 }
 
+function formatResidentPaymentDate(value) {
+  if (!value) return '—';
+  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value + 'T00:00:00' : value);
+  return Number.isFinite(date.getTime())
+    ? date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
+    : String(value);
+}
+
+function formatResidentPaymentMoney(amount) {
+  return amount == null ? 'Unavailable' : '₱' + Number(amount).toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+// Presentation only: never link, merge, or write payment records. A saved billing
+// ID always wins over month metadata, including after an advance is linked by admin.
+function getResidentPaymentHistoryGroups() {
+  const homeownerId = getCurrentHomeownerId();
+  if (!homeownerId) return [];
+  const groups = new Map();
+  for (const payment of db.get('payments').filter(p => p.homeownerId === homeownerId)) {
+    const advance = !payment.billingId && payment.payment_type === 'monthly_dues' &&
+      /^\d{4}-(0[1-9]|1[0-2])$/.test(payment.monthly_dues_month || '');
+    const key = JSON.stringify([homeownerId, payment.billingId ? 'billing' : advance ? 'monthly_dues' : 'payment',
+      payment.billingId || (advance ? payment.monthly_dues_month : payment.id)]);
+    if (!groups.has(key)) groups.set(key, { key, billing: payment.billingId ? db.getOne('billings', payment.billingId) : null,
+      billingId: payment.billingId || null, advance, payments: [] });
+    groups.get(key).payments.push(payment);
+  }
+  return Array.from(groups.values()).map(group => {
+    group.payments.sort((a, b) => residentPaymentTime(a) - residentPaymentTime(b) || String(a.id).localeCompare(String(b.id)));
+    const first = group.payments[0];
+    group.title = group.billing?.title || (first.monthly_dues_month && /^\d{4}-(0[1-9]|1[0-2])$/.test(first.monthly_dues_month)
+      ? 'Monthly Dues - ' + formatBillingMonth(first.monthly_dues_month)
+      : group.billingId ? 'Unavailable billing (' + group.billingId + ')' : 'Legacy payment');
+    if (group.billing) {
+      group.summary = getBillingPaymentSummary(group.billing, homeownerId, group.payments);
+    } else {
+      // The submission endpoint validates unlinked advance dues as FULL payments.
+      // Infer their obligation only for explicit resident advances with a consistent
+      // saved amount. Do not apply today's dues rate or invent totals for legacy rows.
+      const amount = Number(first.amount);
+      const knownAdvance = group.advance && amount > 0 && Number.isFinite(amount) &&
+        group.payments.every(p => p.payment_source === 'resident_submission' && Number(p.amount) === amount);
+      const totalPaid = Math.round(group.payments.filter(p => p.status === 'approved')
+        .reduce((sum, p) => sum + toMoneyNumber(p.amount), 0) * 100) / 100;
+      const originalAmount = knownAdvance ? amount : null;
+      const remainingBalance = knownAdvance ? Math.max(0, Math.round((amount - totalPaid) * 100) / 100) : null;
+      group.summary = { originalAmount, totalPaid, remainingBalance,
+        pendingPayment: group.payments.find(p => p.status === 'pending') || null,
+        status: knownAdvance ? (remainingBalance <= 0 ? 'paid' : totalPaid > 0 ? 'partially_paid' : 'unpaid') : 'unknown' };
+    }
+    group.progress = group.summary.originalAmount > 0
+      ? Math.min(100, Math.max(0, Math.round(group.summary.totalPaid / group.summary.originalAmount * 10000) / 100)) : null;
+    return group;
+  }).sort((a, b) => residentPaymentTime(b.payments[b.payments.length - 1]) - residentPaymentTime(a.payments[a.payments.length - 1]) || a.key.localeCompare(b.key));
+}
+
+function renderResidentBillingStatus(group) {
+  const { summary, payments } = group;
+  const badges = [];
+  if (summary.status === 'paid') badges.push('<span class="badge badge-green">Fully Paid</span>');
+  else if (summary.status === 'partially_paid') badges.push('<span class="badge badge-teal">Partially Paid</span>');
+  else if (summary.totalPaid > 0) badges.push('<span class="badge badge-green">Approved payments</span>');
+  else badges.push('<span class="badge badge-gray">Unpaid</span>');
+  if (summary.pendingPayment) badges.push('<span class="badge badge-yellow">For Verification</span>');
+  if (payments.some(p => p.status === 'rejected')) badges.push('<span class="badge badge-red">Rejected' + (payments.length > 1 ? ' payment' : '') + '</span>');
+  return '<div class="resident-billing-status">' + badges.join('') + '</div>';
+}
+
+function renderResidentBillingDetail(payment) {
+  const group = getResidentPaymentHistoryGroups().find(item => item.payments.some(p => p.id === payment.id));
+  if (!group) return;
+  const summary = group.summary;
+  const buttons = [{ label: 'Close', cls: 'btn-secondary', action: closeModal }];
+  const rejected = group.payments.find(p => p.status === 'rejected' && p.payment_source !== 'manual_admin');
+  const monthPayments = db.get('payments').filter(p => p.homeownerId === payment.homeownerId && p.monthly_dues_month === payment.monthly_dues_month);
+  const canRetry = rejected && (group.billing
+    ? summary.remainingBalance > 0 && !summary.pendingPayment
+    : group.advance && !monthPayments.some(p => ['pending', 'approved'].includes(p.status)));
+  if (canRetry) buttons.push({ label: 'Submit Another Proof', cls: 'btn-primary',
+    action: () => openPayNowModal(group.billing ? group.billing.id : { month: payment.monthly_dues_month, amount: Number(rejected.amount) }) });
+  openModal('Billing Payment Details', `
+    <div id="residentPaymentDetail" class="payment-flow-modal resident-payment-modal resident-billing-detail" data-payment-id="${escapeHtml(payment.id)}" data-grouped="true">
+      <section class="resident-billing-summary" aria-label="Billing summary">
+        <h4>${escapeHtml(group.title)}</h4>
+        ${group.advance ? '<span class="badge badge-teal">Advance Monthly Dues</span>' : ''}
+        ${renderResidentBillingStatus(group)}
+        <dl class="resident-billing-totals">
+          <div><dt>Original Billing Amount</dt><dd>${formatResidentPaymentMoney(summary.originalAmount)}</dd></div>
+          <div><dt>Total Approved Payments</dt><dd>${formatResidentPaymentMoney(summary.totalPaid)}</dd></div>
+          <div><dt>Remaining Balance</dt><dd>${formatResidentPaymentMoney(summary.remainingBalance)}</dd></div>
+          <div><dt>Submitted Payments</dt><dd>${group.payments.length}</dd></div>
+        </dl>
+        ${group.progress == null
+          ? '<p class="resident-billing-note">The original billing amount is unavailable for this record. Balance and billing progress cannot be determined.</p>'
+          : `<div class="resident-billing-progress-label"><span>Billing Progress</span><strong>${group.progress}%</strong></div>
+             <progress class="resident-billing-progress" aria-label="Approved billing payment progress" max="100" value="${group.progress}">${group.progress}%</progress>
+             <p class="resident-billing-note">Only approved payments count toward billing progress.</p>`}
+      </section>
+      <h4 class="resident-transactions-title">Payment Transactions</h4>
+      ${group.payments.map((p, index) => `
+        <details class="resident-payment-transaction" data-transaction-id="${escapeHtml(p.id)}" aria-label="Payment ${index + 1}">
+          <summary class="resident-payment-toggle">
+            <span class="resident-payment-heading">
+              <strong>Payment ${index + 1}</strong>
+              <span class="resident-payment-date">${escapeHtml(formatResidentPaymentDate(p.payment_date || p.created_at || p.submittedAt))}</span>
+              <span class="badge ${p.status === 'approved' ? 'badge-green' : p.status === 'pending' ? 'badge-yellow' : p.status === 'rejected' ? 'badge-red' : 'badge-gray'}">${escapeHtml(p.status === 'pending' ? 'For Verification' : p.status === 'approved' ? 'Approved' : p.status === 'rejected' ? 'Rejected' : p.status || 'Unknown')}</span>
+            </span>
+            <strong class="resident-payment-toggle-amount">${formatResidentPaymentMoney(p.amount)}</strong>
+            <svg class="resident-payment-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+          </summary>
+          <div class="resident-payment-expanded">
+          ${renderSavedPaymentProgress(p, summary, true)}
+          <dl class="resident-transaction-info">
+            <div><dt>Submitted Amount</dt><dd>${formatResidentPaymentMoney(p.amount)}</dd></div>
+            <div><dt>Payment Method</dt><dd><span class="badge ${p.payment_method === 'Cash' ? 'badge-cash' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span></dd></div>
+            <div><dt>Reference Number</dt><dd>${escapeHtml(p.refNum || '—')}</dd></div>
+            <div><dt>Payment Date</dt><dd>${escapeHtml(formatResidentPaymentDate(p.payment_date || p.submittedAt))}</dd></div>
+            <div><dt>Submission Date</dt><dd>${escapeHtml(formatResidentPaymentDate(p.created_at || p.submittedAt))}</dd></div>
+            <div><dt>Verification Status</dt><dd>${escapeHtml(p.status === 'pending' ? 'For Verification' : p.status === 'approved' ? 'Approved' : p.status === 'rejected' ? 'Rejected' : p.status || 'Unknown')}</dd></div>
+            ${p.payment_source === 'manual_admin' ? '<div><dt>Payment Source</dt><dd>Manual / Admin Recorded</dd></div>' : ''}
+            ${p.remarks ? `<div><dt>Remarks / Notes</dt><dd>${escapeHtml(p.remarks)}</dd></div>` : ''}
+          </dl>
+          ${p.status === 'rejected' ? `<div class="rejection-reason-callout"><strong>Rejection Reason:</strong><div>${escapeHtml(p.rejection_reason || p.remarks || 'No reason specified')}</div></div>` : ''}
+          ${p.receipt ? `<button type="button" class="btn btn-secondary btn-sm" data-receipt-payment-id="${escapeHtml(p.id)}">View Receipt</button>` : '<p class="resident-billing-note">No receipt attached.</p>'}
+          </div>
+        </details>`).join('')}
+      <p class="payment-refresh-notice" role="status"></p>
+    </div>`, buttons, 'resident-billing-modal');
+  const panel = document.getElementById('residentPaymentDetail');
+  panel.dataset.signature = residentPaymentSignature(payment, true);
+  document.getElementById('modalBody').scrollTop = 0;
+  panel.querySelectorAll('[data-receipt-payment-id]').forEach(button => button.addEventListener('click', () => {
+    const p = db.getOne('payments', button.dataset.receiptPaymentId);
+    if (p?.homeownerId === getCurrentHomeownerId() && p.receipt) openReceiptLightbox(p.receipt);
+  }));
+}
+
+function renderHOHistory() {
+  const groups = getResidentPaymentHistoryGroups();
+  const area = document.getElementById('contentArea');
+  area.innerHTML = `
+    <div class="page-header"><div class="page-header-left">
+      <h2 id="residentPaymentHistory">Payment History</h2>
+      <p>Review each billing and its payment transactions.</p>
+    </div></div>
+    <div class="section-card"><div class="section-card-body no-pad">
+      <div class="table-wrapper resident-history-wrapper">
+        <table class="data-table resident-history-table">
+          <thead><tr><th>Billing Title</th><th>Total Bill</th><th>Amount Paid</th><th>Remaining Balance</th><th>Payments</th><th>Status</th><th>Details</th></tr></thead>
+          <tbody>${groups.map(group => `
+            <tr>
+              <td data-label="Billing Title"><strong>${escapeHtml(group.title)}</strong>${group.advance ? ' <span class="badge badge-teal">Advance</span>' : ''}</td>
+              <td data-label="Total Bill">${formatResidentPaymentMoney(group.summary.originalAmount)}</td>
+              <td data-label="Amount Paid" class="amount-paid">${formatResidentPaymentMoney(group.summary.totalPaid)}</td>
+              <td data-label="Remaining Balance">${formatResidentPaymentMoney(group.summary.remainingBalance)}</td>
+              <td data-label="Payments">${group.payments.length}</td>
+              <td data-label="Status">${renderResidentBillingStatus(group)}</td>
+              <td data-label="Details"><button type="button" class="btn btn-secondary btn-sm" data-history-payment-id="${escapeHtml(group.payments[0].id)}">Details</button></td>
+            </tr>`).join('') || '<tr><td colspan="7"><div class="no-results">No payment transactions found.</div></td></tr>'}</tbody>
+        </table>
+      </div>
+    </div></div>`;
+  area.querySelectorAll('[data-history-payment-id]').forEach(button => button.addEventListener('click', () => openResidentPaymentDetail(button.dataset.historyPaymentId, true)));
+}
 function renderHOPayments() {
   renderHOPayNow();
 }
