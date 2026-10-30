@@ -733,10 +733,7 @@ function getSortedAnnouncements() {
   all.sort((a, b) => {
     const timeA = getAnnouncementTimestamp(a);
     const timeB = getAnnouncementTimestamp(b);
-    if (timeA && timeB && timeA !== timeB) {
-      return timeB - timeA;
-    }
-    return 0;
+    return timeB - timeA;
   });
   const hasDates = all.some(a => a.created_at || a.date);
   const baseList = hasDates ? all : [...db.get('announcements')].reverse();
@@ -2088,11 +2085,34 @@ function renderHOAnnouncements() {
 }
 
 
+let publicAnnouncementResizeObserver = null;
+
+function updatePublicAnnouncementPreviews(grid) {
+  grid.querySelectorAll('.pub-ann-card').forEach(card => {
+    const overflows = ['.pub-ann-card-title', '.pub-ann-card-body'].some(selector => {
+      const text = card.querySelector(selector);
+      return text && text.scrollHeight > text.clientHeight + 1;
+    });
+    card.querySelector('.pub-ann-see-more').hidden = !overflows;
+  });
+}
+
+function openPublicAnnouncementDetails(id) {
+  const announcement = db.getOne('announcements', id);
+  if (!announcement) return;
+  openModal('Community Announcement', `
+    ${announcement.title ? `<h3 class="pub-ann-detail-title">${escapeHtml(announcement.title)}</h3>` : ''}
+    <div class="pub-ann-detail-text">${escapeHtml(announcement.content || announcement.description || '')}</div>
+  `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
+}
+
 function renderPublicAnnouncements() {
   const grid = document.getElementById('pubAnnGrid');
   if (!grid) return;
-  const allSorted = typeof getSortedAnnouncements === 'function' ? getSortedAnnouncements() : [...db.get('announcements')].reverse();
-  const announcements = allSorted.slice(0, 6);
+  publicAnnouncementResizeObserver?.disconnect();
+  // Match the portal's pinned-first ordering, then limit the public feed.
+  // Unpinned posts retain their chronological position in getSortedAnnouncements().
+  const announcements = getSortedAnnouncements().slice(0, 6);
   const catColors = { Maintenance: '#2271c3', Emergency: '#dc2626', Events: '#16a34a', Security: '#d97706', General: '#177a80', Others: '#7c3aed' };
   if (!announcements.length) {
     grid.innerHTML = `<div class="no-results" style="grid-column:1/-1"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-megaphone"/></svg>No announcements at this time.</div>`;
@@ -2116,7 +2136,7 @@ function renderPublicAnnouncements() {
         </div>
       </div>
       ${hasImages ? `
-        <div style="position:relative;width:100%;height:150px;overflow:hidden;border-radius:6px;margin:10px 0;cursor:pointer;background:#091a1c;" onclick="openAnnouncementLightbox('${a.id}', 0)">
+        <div class="pub-ann-card-media" style="position:relative;width:100%;overflow:hidden;border-radius:6px;margin:10px 0;cursor:pointer;background:#091a1c;" onclick="openAnnouncementLightbox('${a.id}', 0)">
           ${isFirstVideo ? `
             <video src="${escapeHtml(images[0])}#t=0.5" preload="metadata" muted playsinline style="width:100%;height:100%;object-fit:cover;display:block;"></video>
             <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,0.35);">
@@ -2132,11 +2152,21 @@ function renderPublicAnnouncements() {
           ` : ''}
         </div>
       ` : ''}
-      ${a.content || a.description ? `<div class="pub-ann-card-body">${escapeHtml(a.content || a.description)}</div>` : ''}
+      <div class="pub-ann-card-body">${escapeHtml(a.content || a.description || '')}</div>
+      <div class="pub-ann-card-more"><button type="button" class="pub-ann-see-more" data-announcement-id="${escapeHtml(a.id)}" onclick="openPublicAnnouncementDetails(this.dataset.announcementId)" aria-haspopup="dialog" hidden>See more</button></div>
       <div class="pub-ann-card-meta">
         <span>${formatCommunityDate(a.created_at || a.date)}</span>
         <span class="badge" style="background:${accentColor}18;color:${accentColor};font-weight:700;">${escapeHtml(a.category || 'General')}</span>
       </div>
     </div>`;
   }).join('');
+  requestAnimationFrame(() => {
+    updatePublicAnnouncementPreviews(grid);
+    if (typeof ResizeObserver !== 'undefined') {
+      publicAnnouncementResizeObserver?.disconnect();
+      publicAnnouncementResizeObserver = new ResizeObserver(() => updatePublicAnnouncementPreviews(grid));
+      publicAnnouncementResizeObserver.observe(grid);
+    }
+    document.fonts?.ready.then(() => updatePublicAnnouncementPreviews(grid));
+  });
 }

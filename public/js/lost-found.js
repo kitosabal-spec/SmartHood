@@ -20,7 +20,8 @@ function lostFoundTypeBadge(type) {
 function getApprovedLostFoundPosts() {
   return db.get('lostFound')
     .filter(report => ['Approved', 'Posted'].includes(report.status))
-    .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
+    // Compare actual instants (including time zone offsets); undated posts go last.
+    .sort((a, b) => (Date.parse(b.createdAt) || 0) - (Date.parse(a.createdAt) || 0));
 }
 
 const ALLOWED_LF_IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp'];

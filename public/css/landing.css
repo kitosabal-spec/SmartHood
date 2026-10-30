@@ -96,7 +96,17 @@
 #landingPage .pub-section-title em { font-style: normal; color: var(--teal-600); }
 #landingPage .pub-section-sub { margin: 12px 0 0; max-width: 610px; font-size: .94rem; }
 #landingPage :is(.pub-ann-card, .pub-lostfound-card, .pub-about-card, .pub-contact-card, .pub-board-card) { border-radius: 8px; box-shadow: none; border-color: var(--border); }
-#landingPage .pub-ann-card { border-left-width: 1px; border-top: 3px solid var(--ann-color, var(--teal-600)); padding: 24px; }
+#landingPage .pub-ann-card { border-left-width: 1px; border-top: 3px solid var(--ann-color, var(--teal-600)); padding: 24px; height: 400px; min-width: 0; overflow: hidden; }
+#landingPage .pub-ann-card-top { flex-shrink: 0; }
+#landingPage .pub-ann-card-title { min-width: 0; overflow-wrap: anywhere; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+#landingPage .pub-ann-card-media { flex-shrink: 0; height: 150px; }
+#landingPage .pub-ann-card-body { min-height: 0; overflow: hidden; overflow-wrap: anywhere; white-space: pre-wrap; }
+#landingPage .pub-ann-card-more { flex: 0 0 28px; padding-top: 4px; }
+#landingPage .pub-ann-see-more { padding: 0; background: none; border: 0; color: var(--teal-600); font: inherit; font-size: .85rem; font-weight: 700; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
+#landingPage .pub-ann-see-more:focus-visible { outline: 2px solid var(--teal-600); outline-offset: 3px; }
+#landingPage .pub-ann-card-meta { flex-shrink: 0; flex-wrap: wrap; overflow-wrap: anywhere; }
+.pub-ann-detail-text { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); line-height: 1.7; }
+.pub-ann-detail-title { margin-bottom: 16px; overflow-wrap: anywhere; }
 #landingPage .pub-lostfound-actions { justify-content: flex-start; margin: 0 0 28px; }
 #landingPage .pub-about-layout { gap: 64px; }
 #landingPage .pub-about-card { background: transparent; padding: 22px; }
@@ -134,7 +144,22 @@
   #landingPage .pub-section { padding: 52px 0; }
   #landingPage .pub-section-header { margin-bottom: 28px; }
   #landingPage .pub-about-layout { grid-template-columns: 1fr; gap: 32px; }
-  #landingPage :is(.pub-ann-grid, .pub-lostfound-grid) { grid-template-columns: 1fr; }
+  #landingPage :is(.pub-ann-grid, .pub-lostfound-grid) { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  #landingPage .pub-ann-card { padding: 12px; }
+  #landingPage .pub-ann-card-top { flex-direction: column; gap: 6px; }
+  #landingPage .pub-ann-card-top > div:last-child { flex-wrap: wrap; max-width: 100%; }
+  #landingPage .pub-ann-card-title { font-size: .85rem; }
+  #landingPage .pub-ann-card-media { height: 110px; }
+  #landingPage .pub-ann-card-body { font-size: .8rem; }
+  #landingPage .pub-ann-card-meta { gap: 6px; font-size: .7rem; }
+  #landingPage .pub-ann-card-meta .badge { white-space: normal; }
+  #landingPage .pub-lostfound-card { min-width: 0; overflow-wrap: anywhere; }
+  #landingPage .pub-lostfound-body { padding: 12px; }
+  #landingPage .pub-lostfound-meta { flex-wrap: wrap; gap: 6px; }
+  #landingPage .pub-lostfound-body h3 { font-size: .9rem; }
+  #landingPage .pub-lostfound-body p { font-size: .8rem; }
+  #landingPage .pub-lostfound-image { height: 110px; }
+  #landingPage .pub-lostfound-image :is(img, video) { width: 100%; height: 100%; object-fit: cover; }
 }
 @media (max-width: 480px) {
   #landingPage .pub-nav-inner { padding: 0 16px; gap: 8px; }
@@ -220,7 +245,7 @@
   #landingPage *, #landingPage *::before, #landingPage *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
 }
 
-/* Mobile Home: a compact, photo-led welcome card. Desktop is intentionally unchanged. */
+/* Mobile Home: one continuous emerald surface, softly blended into the entrance photo. */
 @media (max-width: 768px) {
   #landingPage .pub-nav-inner {
     height: 64px;
@@ -247,7 +272,7 @@
   #landingPage .pub-home {
     min-height: auto;
     padding-top: 64px;
-    background: #f1f4ee;
+    background: linear-gradient(180deg, #edf3ed, #fafaf7);
   }
   #landingPage .pub-hero {
     display: flex;
@@ -259,28 +284,27 @@
     padding: 0;
     overflow: hidden;
     border: 1px solid rgba(255, 255, 255, .09);
-    border-radius: 22px;
-    background: #17312b;
-    box-shadow: 0 16px 38px rgba(26, 58, 49, .16);
+    border-radius: 24px;
+    background: radial-gradient(ellipse at 100% 0%, rgba(99, 163, 126, .3), transparent 65%),
+      linear-gradient(155deg, #234c40 0%, #173a32 48%, #102a25 100%);
+    box-shadow: 0 12px 32px rgba(26, 58, 49, .12);
   }
   #landingPage .pub-hero::after {
-    inset: auto 0 0;
-    height: 208px;
-    background: linear-gradient(180deg, rgba(23, 49, 43, .52) 0%, transparent 35%, rgba(7, 18, 15, .5) 100%);
+    content: none;
   }
   #landingPage .pub-hero-content {
     width: 100%;
     max-width: none;
-    padding: 24px 20px 22px;
+    padding: 28px 24px 0;
   }
   #landingPage .pub-hero-badge {
     align-self: flex-start;
     width: fit-content;
-    margin: 0 0 18px;
+    margin: 0 0 26px;
     padding: 7px 10px;
     border: 1px solid rgba(197, 225, 213, .18);
     border-radius: 999px;
-    background: rgba(255, 255, 255, .06);
+    background: rgba(255, 255, 255, .07);
     color: #dce9e3;
     font-size: .67rem;
     font-weight: 600;
@@ -291,66 +315,80 @@
     height: 14px;
   }
   #landingPage .pub-hero-title {
-    margin-bottom: 14px;
-    font-size: clamp(2.45rem, 12.2vw, 3.25rem);
-    line-height: .98;
-    letter-spacing: -.055em;
+    margin-bottom: 18px;
+    font-size: clamp(2.3rem, 10.6vw, 3.6rem);
+    line-height: 1.06;
+    letter-spacing: -.045em;
   }
   #landingPage .pub-hero-welcome {
-    margin-bottom: 10px;
-    color: #a9cabe;
-    font-size: .78rem;
+    margin-bottom: 14px;
+    color: #c1dac8;
+    font-size: .7rem;
     font-weight: 600;
     letter-spacing: .14em;
     text-transform: uppercase;
   }
   #landingPage .pub-hero-sub {
-    max-width: 32rem;
-    margin: 0 0 20px;
-    color: #d4e1dc;
-    font-size: .88rem;
-    line-height: 1.55;
+    max-width: 27rem;
+    margin: 0 0 24px;
+    color: #e0ebe4;
+    font-size: .9rem;
+    line-height: 1.7;
   }
   #landingPage .pub-hero-btns {
     display: grid;
     grid-template-columns: 1.15fr 1fr;
-    gap: 9px;
+    gap: 10px;
     width: 100%;
     max-width: none;
   }
   #landingPage .pub-hero-btns :is(.pub-btn-cta, .pub-btn-secondary) {
     width: 100%;
     min-width: 0;
-    min-height: 46px;
-    padding: 10px 12px;
+    min-height: 48px;
+    padding: 12px 10px;
     border-radius: 12px;
     font-size: .78rem;
   }
   #landingPage .pub-hero .pub-btn-secondary {
-    background: rgba(255, 255, 255, .055);
-    border-color: rgba(218, 234, 227, .28);
+    background: rgba(255, 255, 255, .07);
+    border-color: rgba(218, 234, 227, .38);
   }
   #landingPage .pub-hero-photo {
     position: relative;
     inset: auto;
     order: 2;
     width: 100%;
-    height: 208px;
-    min-height: 208px;
+    height: clamp(240px, 60vw, 320px);
+    min-height: 240px;
+    margin-top: -8px;
+  }
+  #landingPage .pub-hero-photo::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+    background: linear-gradient(180deg, transparent 48%, rgba(8, 25, 19, .72) 100%);
   }
   #landingPage .pub-hero-photo img {
     height: 100%;
     border-radius: 0;
     object-position: center 64%;
+    /* Fade the image itself so there is no hard seam against either theme. */
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 42%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 42%);
   }
   #landingPage .pub-hero-photo figcaption {
-    right: 16px;
-    bottom: 14px;
-    gap: 3px;
-    font-size: .65rem;
+    right: 24px;
+    bottom: 20px;
+    left: 24px;
+    gap: 5px;
+    text-align: left;
+    font-size: .72rem;
   }
   #landingPage .pub-hero-photo figcaption span:first-child {
-    font-size: .58rem;
+    font-size: .6rem;
+    color: #d7e7dc;
   }
 
   #landingPage .pub-band {
@@ -387,17 +425,18 @@
   }
 
   [data-theme="dark"] #landingPage .pub-home { background: var(--bg); }
-  [data-theme="dark"] #landingPage .pub-hero::after {
-    background: linear-gradient(180deg, rgba(18, 22, 31, .5) 0%, transparent 35%, rgba(8, 10, 15, .6) 100%);
+  [data-theme="dark"] #landingPage .pub-hero {
+    background: radial-gradient(ellipse at 100% 0%, rgba(79, 136, 112, .22), transparent 65%),
+      linear-gradient(155deg, #1b3532 0%, #142b29 48%, #101e22 100%);
   }
   [data-theme="dark"] #landingPage .pub-band {
     background: var(--surface-2);
     border-color: var(--border);
   }
+  [data-theme="dark"] #landingPage .pub-band-item { color: var(--text-2); }
 }
 
 @media (max-width: 350px) {
+  #landingPage .pub-hero-content { padding-inline: 20px; }
   #landingPage .pub-hero-btns { grid-template-columns: 1fr; }
-  #landingPage .pub-hero-photo { height: 190px; min-height: 190px; }
-  #landingPage .pub-hero::after { height: 190px; }
 }
