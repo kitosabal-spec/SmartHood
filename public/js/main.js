@@ -43,6 +43,7 @@ const ASSIGNABLE_PERMISSION_GROUPS = [
     modules: [
       { id: 'billing', label: 'Billing', icon: 'ico-file', desc: 'View billing records' },
       { id: 'payments', label: 'Payments', icon: 'ico-credit', desc: 'View payment records' },
+      { id: 'disbursements', label: 'Disbursements', icon: 'ico-wallet', section: 'MANAGEMENT', desc: 'View association expenses' },
       { id: 'complaints', label: 'Complaints', icon: 'ico-flag', desc: 'Review complaints, post admin responses, resolve' },
       { id: 'vehicles', label: 'Vehicles', icon: 'ico-parking', desc: 'Approve vehicle registrations and RFID stickers' },
       { id: 'lostfound', label: 'Lost & Found', icon: 'ico-search', desc: 'Manage community lost & found listings' },
@@ -67,6 +68,7 @@ const MODULE_PERMISSIONS = [
   { id: 'announcements', label: 'Announcements',        section: 'MANAGEMENT',  icon: 'ico-megaphone',  desc: 'Post notices, multi-photo updates, comments' },
   { id: 'billing',       label: 'Billing',              section: 'MANAGEMENT',  icon: 'ico-file',       desc: 'View billing records' },
   { id: 'payments',      label: 'Payments',             section: 'MANAGEMENT',  icon: 'ico-credit',     desc: 'View payment records' },
+  { id: 'disbursements', label: 'Disbursements', icon: 'ico-wallet', section: 'MANAGEMENT', desc: 'View association expenses' },
   { id: 'complaints',    label: 'Complaints',           section: 'MANAGEMENT',  icon: 'ico-flag',       desc: 'Review complaints, post admin responses, resolve' },
   { id: 'amenities',     label: 'Amenity Management',   section: 'MANAGEMENT',  icon: 'ico-building',   desc: 'Facility reservation approvals and schedules' },
   { id: 'vehicles',      label: 'Vehicles',             section: 'MANAGEMENT',  icon: 'ico-parking',    desc: 'Approve vehicle registrations and RFID stickers' },
@@ -85,6 +87,7 @@ const ADMIN_NAV = [
   { id: 'homeowners',     icon: 'ico-users',       label: 'Homeowners',      section: 'MAIN' },
   { id: 'billing',        icon: 'ico-file',        label: 'Billing',         section: 'MANAGEMENT' },
   { id: 'payments',       icon: 'ico-credit',      label: 'Payments',        section: 'MANAGEMENT' },
+  { id: 'disbursements', label: 'Disbursements', icon: 'ico-wallet', section: 'MANAGEMENT', desc: 'View association expenses' },
   { id: 'amenities',      icon: 'ico-building',    label: 'Amenity Bookings', section: 'MANAGEMENT' },
   { id: 'vehicles',       icon: 'ico-parking',     label: 'Vehicle Management', section: 'MANAGEMENT' },
   { id: 'lostfound',      icon: 'ico-search',      label: 'Lost and Found',   section: 'MANAGEMENT' },
@@ -1148,13 +1151,14 @@ function renderView(viewId) {
     'homeowners':        renderHomeowners,
     'billing':           renderBilling,
     'payments':          renderPayments,
+    'disbursements':      () => renderDisbursements(),
     'amenities':         renderAmenityBookingsAdmin,
     'vehicles':          renderVehicleManagement,
     'lostfound':         renderLostFoundManagement,
     'complaints':        renderAdminComplaints,
     'announcements':     renderAnnouncements,
     'board':             renderBoardOfDirectorsManagement,
-    'reports':           renderReports,
+    'reports':           () => { activeReportTab = 'overview'; renderReports(); },
     'auditlog':          renderAuditLog,
     'users':             renderUserManagement,
     'settings':          renderSettings,
@@ -1708,6 +1712,7 @@ async function exportReportsExcel() {
   if (button) { button.disabled = true; button.setAttribute('aria-busy', 'true'); }
   try {
     const data = getReportExportData();
+    if (typeof fetchDisbursementReport === 'function') data.expenses = await fetchDisbursementReport(data.range);
     showToast('info', 'Preparing Download', 'Creating the Reports & Analytics Excel workbook.');
     const ExcelJS = await loadReportsExcelLibrary();
     const logo = await loadReportWorkbookLogo();
@@ -1730,7 +1735,8 @@ window.exportReportsFinancialCSV = exportReportsFinancialCSV;
 window.exportReportsCSV = exportReportsFinancialCSV;
 window.exportReportsSummaryCSV = exportReportsFinancialCSV;
 window.exportReportsExcel = exportReportsExcel;
-window.downloadReports = () => document.getElementById('reportsExportFormat')?.value === 'csv'
+window.downloadReports = () => document.getElementById('reportsExportFormat')?.value.endsWith('-csv')
+  ? exportDisbursementCSV(document.getElementById('reportsExportFormat').value) : document.getElementById('reportsExportFormat')?.value === 'csv'
   ? exportReportsFinancialCSV() : exportReportsExcel();
 
 // Reports use the date that best represents activity for each record type. Payments
@@ -1859,27 +1865,133 @@ function getReportsData() {
     totalDue, totalPaid, totalOutstanding, analysisYear, monthlyData };
 }
 
-function renderReports() {
-  if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
-  syncHomeownerBalances();
-  currentReportsData = getReportsData();
-  const { complaints, approved, pending, rejected, totalDue, totalPaid, totalOutstanding,
-    analysisYear, monthlyData, reportUsers } = currentReportsData;
+const REPORT_TABS = [
+  ['overview', 'Overview'], ['collections', 'Collections'],
+  ['disbursements', 'Disbursements'], ['community', 'Community Reports'],
+];
+let activeReportTab = 'overview';
+let reportsFinancialRequest = null;
+const formatReportMoney = value => new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(value);
 
-  const area = document.getElementById('contentArea');
-  area.innerHTML = `
-  <div class="reports-page">
-  <div class="page-header">
-    <div class="page-header-left"><h2>Reports & Analytics</h2><p>Financial summaries and collection reports.</p></div>
+function reportSummaryCard(label, value, icon, tone = '', id = '') {
+  return `<div class="report-summary-item"><div class="r-lbl"><svg width="16" height="16" aria-hidden="true"><use href="#${icon}"/></svg>${label}</div><div class="r-val ${tone}" ${id ? `id="${id}"` : ''}>${value}</div></div>`;
+}
+
+function getReportOverviewHTML(data) {
+  const expenses = data.expenses;
+  const unavailable = data.expenseError ? 'Unavailable' : 'Loading…';
+  const totalCollected = expenses ? expenses.totalCollections : data.totalPaid;
+  const cards = [
+    reportSummaryCard('Total Billed', formatReportMoney(data.totalDue), 'ico-file'),
+    reportSummaryCard('Total Collected', formatReportMoney(totalCollected), 'ico-credit', 'report-value-collected', 'reportTotalCollected'),
+    reportSummaryCard('Total Disbursements', expenses ? formatReportMoney(expenses.totalDisbursements) : unavailable, 'ico-wallet', '', 'reportTotalDisbursements'),
+    reportSummaryCard('Outstanding Balance', formatReportMoney(data.totalOutstanding), 'ico-clock'),
+    reportSummaryCard('Net Cash Movement', expenses ? formatReportMoney(expenses.netCashMovement) : unavailable, 'ico-chart', 'report-value-net', 'reportNetCashMovement'),
+  ].join('');
+  const max = expenses ? Math.max(expenses.totalCollections, expenses.totalDisbursements, 1) : 1;
+  const comparison = expenses ? (expenses.totalCollections || expenses.totalDisbursements
+    ? [['Total Collections', expenses.totalCollections, 'collections'], ['Total Disbursements', expenses.totalDisbursements, 'expenses']].map(([label, value, type]) =>
+      `<div class="report-comparison-row"><div><span>${label}</span><strong>${formatReportMoney(value)}</strong></div><div class="report-comparison-track" aria-hidden="true"><div class="report-comparison-bar ${type}" style="width:${value / max * 100}%"></div></div></div>`).join('')
+    : '<p class="report-empty">No collections or disbursements in this reporting period.</p>')
+    : `<p class="report-empty" role="status">${data.expenseError ? 'Financial comparison unavailable. Please retry.' : 'Loading financial comparison…'}</p>`;
+  return `<div class="report-summary-grid report-overview-cards" aria-live="polite">${cards}</div>
+    <div class="report-overview-detail">
+      <div class="section-card"><div class="section-card-header"><h3>Collections & Disbursements</h3></div><div class="section-card-body report-comparison">${comparison}</div></div>
+      <div class="section-card"><div class="section-card-header"><h3>Financial Breakdown</h3></div><div class="section-card-body">
+        <dl class="report-breakdown">
+          <div><dt>Total Collections</dt><dd>${formatReportMoney(totalCollected)}</dd></div>
+          <div><dt>Total Disbursements</dt><dd>${expenses ? formatReportMoney(expenses.totalDisbursements) : unavailable}</dd></div>
+          <div><dt>Net Cash Movement</dt><dd>${expenses ? formatReportMoney(expenses.netCashMovement) : unavailable}</dd></div>
+        </dl>
+        <p class="report-section-note">Net cash movement is collections minus expenses, not the actual HOA bank balance. Expenses do not reduce homeowner billing balances.</p>
+        ${data.expenseError ? '<button class="btn btn-secondary btn-sm" onclick="renderReports()">Retry financial reports</button>' : ''}
+      </div></div>
+    </div>`;
+}
+
+function updateReportPrintContext() {
+  const context = document.getElementById('reportPrintContext');
+  if (context && currentReportsData) context.textContent = `${REPORT_TABS.find(([id]) => id === activeReportTab)[1]} · Reporting period: ${getReportPeriod(currentReportsData.range).label}`;
+}
+
+function keepReportTabVisible() {
+  const tab = document.getElementById(`report-tab-${activeReportTab}`);
+  const list = tab?.parentElement;
+  if (!list) return;
+  const buttonBounds = tab.getBoundingClientRect(), listBounds = list.getBoundingClientRect();
+  if (buttonBounds.left < listBounds.left) list.scrollLeft += buttonBounds.left - listBounds.left;
+  else if (buttonBounds.right > listBounds.right) list.scrollLeft += buttonBounds.right - listBounds.right;
+}
+
+function switchReportTab(id, focus = false) {
+  if (!userHasModulePermission('reports') || !REPORT_TABS.some(([key]) => key === id)) return;
+  activeReportTab = id;
+  REPORT_TABS.forEach(([key]) => {
+    const tab = document.getElementById(`report-tab-${key}`);
+    const panel = document.getElementById(`report-panel-${key}`);
+    if (tab) { tab.setAttribute('aria-selected', String(key === id)); tab.tabIndex = key === id ? 0 : -1; }
+    if (panel) panel.hidden = key !== id;
+  });
+  if (focus) document.getElementById(`report-tab-${id}`)?.focus();
+  keepReportTabVisible();
+  updateReportPrintContext();
+}
+
+function handleReportTabKey(event) {
+  const index = REPORT_TABS.findIndex(([id]) => event.target.id === `report-tab-${id}`);
+  if (index < 0 || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+  event.preventDefault();
+  const next = event.key === 'Home' ? 0 : event.key === 'End' ? REPORT_TABS.length - 1
+    : (index + (event.key === 'ArrowRight' ? 1 : -1) + REPORT_TABS.length) % REPORT_TABS.length;
+  switchReportTab(REPORT_TABS[next][0], true);
+}
+
+async function printReports() {
+  if (!userHasModulePermission('reports')) return;
+  const snapshot = currentReportsData, actor = currentUser?.id;
+  if (['overview', 'disbursements'].includes(activeReportTab)) {
+    await reportsFinancialRequest;
+    if (!snapshot?.expenses) { showToast('error', 'Print Unavailable', 'Wait for the financial report to load or retry.'); return; }
+  }
+  if (snapshot !== currentReportsData || actor !== currentUser?.id || !userHasModulePermission('reports')) return;
+  // Print the complete filtered schedules for the selected tab, then restore
+  // the on-screen pages. Exports continue to use their independent full snapshot.
+  const billingState = { ...billingCollectionPaginationState }, balanceState = { ...hoBalancePaginationState };
+  const expenseState = typeof expenseHistoryPage !== 'undefined' ? { page: expenseHistoryPage, size: expenseHistoryPageSize } : null;
+  try {
+    if (activeReportTab === 'collections') {
+      billingCollectionPaginationState = { page: 1, pageSize: Math.max(1, snapshot.billings.length) };
+      hoBalancePaginationState = { page: 1, pageSize: Math.max(1, (currentHOBalanceFiltered || snapshot.reportUsers).length) };
+      renderBillingCollectionTable(); renderHOBalanceReportTable();
+    } else if (activeReportTab === 'disbursements' && expenseState) {
+      expenseHistoryPage = 1; expenseHistoryPageSize = Math.max(1, expenseHistory.length); renderExpenseHistory();
+    }
+    window.print();
+  } finally {
+    billingCollectionPaginationState = billingState; hoBalancePaginationState = balanceState;
+    if (expenseState) { expenseHistoryPage = expenseState.page; expenseHistoryPageSize = expenseState.size; }
+    if (snapshot === currentReportsData && currentView === 'reports') {
+      renderBillingCollectionTable(); renderHOBalanceReportTable();
+      if (expenseState && document.getElementById('expenseHistoryRows')) renderExpenseHistory();
+    }
+  }
+}
+
+function getReportsHeaderHTML() {
+  return `  <div class="page-header">
+    <div class="page-header-left"><h2>Reports & Analytics</h2><p>Financial, collection, expense, and community reports.</p></div>
     <div class="page-header-actions">
       <select class="filter-select" id="reportsExportFormat" aria-label="Report download format">
         <option value="xlsx">Excel (.xlsx)</option>
-        <option value="csv">CSV (.csv)</option>
+        <option value="csv">Collections CSV (.csv)</option>
+        <option value="expenses-csv">Disbursements CSV (.csv)</option>
+        <option value="expense-summary-csv">Expense Summary CSV (.csv)</option>
+        <option value="financial-csv">Financial Summary CSV (.csv)</option>
       </select>
       <button class="btn btn-primary" id="reportsDownloadButton" onclick="downloadReports()" title="Download the selected report format">
         <svg width="15" height="15"><use href="#ico-download"/></svg> Download Report
       </button>
-      <button class="btn btn-secondary" onclick="window.print()">
+      <button class="btn btn-secondary" id="reportsPrintButton" onclick="printReports()">
         <svg width="15" height="15"><use href="#ico-printer"/></svg> Print Report
       </button>
     </div>
@@ -1904,13 +2016,12 @@ function renderReports() {
       <input class="reports-date-input" id="reportsEndDate" type="date" value="${reportsDateFilterState.endDate}" onchange="updateReportsDateFilter()" aria-label="Report end date">` : ''}
   </div>
 
-  <div class="report-summary-grid">
-    <div class="report-summary-item"><div class="r-lbl"><svg width="16" height="16" aria-hidden="true"><use href="#ico-file"/></svg>Total Billed</div><div class="r-val">₱${totalDue.toLocaleString()}</div></div>
-    <div class="report-summary-item"><div class="r-lbl"><svg width="16" height="16" aria-hidden="true"><use href="#ico-credit"/></svg>Total Collected</div><div class="r-val" style="color:var(--green-600)">₱${totalPaid.toLocaleString()}</div></div>
-    <div class="report-summary-item"><div class="r-lbl"><svg width="16" height="16" aria-hidden="true"><use href="#ico-clock"/></svg>Outstanding</div><div class="r-val" style="color:var(--red-600)">₱${totalOutstanding.toLocaleString()}</div></div>
-    <div class="report-summary-item"><div class="r-lbl"><svg width="16" height="16" aria-hidden="true"><use href="#ico-users"/></svg>Homeowners with Activity</div><div class="r-val">${reportUsers.length}</div></div>
-  </div>
+`;
+}
 
+function getReportCollectionsHTML(data) {
+  const { approved, pending, rejected, analysisYear, monthlyData, reportUsers } = data;
+  return `<p class="report-section-note">${reportUsers.length} homeowners with activity in this reporting period.</p>
   <div class="reports-analytics">
     <div class="chart-card reports-monthly">
       <h4>Monthly Collections (${analysisYear})</h4>
@@ -1925,27 +2036,14 @@ function renderReports() {
       <div class="reports-status-body">
       <div class="donut-wrap" id="reportDonut"></div>
       <div class="donut-legend">
-        <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div> Approved (${approved.length})</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div> Pending (${pending.length})</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Rejected (${rejected.length})</div>
-      </div>
-      </div>
-    </div>
-    <div class="chart-card">
-      <h4>Complaint Status</h4>
-      <div class="reports-status-body">
-      <div class="donut-wrap" id="complaintDonut"></div>
-      <div class="donut-legend">
-        <div class="legend-item"><div class="legend-dot" style="background:#2271c3"></div> Reviewed (${complaints.filter(c=>normalizeComplaintStatus(c.status)==='Reviewed').length})</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#d97706"></div> In Progress (${complaints.filter(c=>c.status==='In Progress').length})</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#16a34a"></div> Resolved (${complaints.filter(c=>c.status==='Resolved').length})</div>
-        <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Rejected (${complaints.filter(c=>c.status==='Rejected').length})</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--green-600)"></div> Approved (${approved.length})</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--yellow-500)"></div> Pending (${pending.length})</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--red-600)"></div> Rejected (${rejected.length})</div>
       </div>
       </div>
     </div>
     </div>
   </div>
-
   <div class="section-card reports-billing">
       <div class="section-card-header">
         <h3>Collection by Billing</h3>
@@ -1986,6 +2084,24 @@ function renderReports() {
     <div id="hoBalancePagination"></div>
   </div>
 
+`;
+}
+
+function getReportCommunityHTML(data) {
+  const { complaints } = data;
+  return `<div class="report-community-status">    <div class="chart-card">
+      <h4>Complaint Status</h4>
+      <div class="reports-status-body">
+      <div class="donut-wrap" id="complaintDonut"></div>
+      <div class="donut-legend">
+        <div class="legend-item"><div class="legend-dot" style="background:var(--blue-500)"></div> Reviewed (${complaints.filter(c=>normalizeComplaintStatus(c.status)==='Reviewed').length})</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--amber-500)"></div> In Progress (${complaints.filter(c=>c.status==='In Progress').length})</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--green-600)"></div> Resolved (${complaints.filter(c=>c.status==='Resolved').length})</div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--red-600)"></div> Rejected (${complaints.filter(c=>c.status==='Rejected').length})</div>
+      </div>
+      </div>
+    </div>
+</div>
   <div class="section-card">
     <div class="section-card-header">
       <div><h3>Complaint Summary</h3></div>
@@ -1998,7 +2114,7 @@ function renderReports() {
           ${complaints.map(c => {
             const ho = getHomeownerById(c.homeownerId);
             return `<tr>
-              <td>${ho ? ho.name : 'Unknown'}</td>
+              <td>${escapeHtml(ho ? ho.name : 'Unknown')}</td>
               <td>${complaintCategoryBadge(c.category)}</td>
               <td>${typeof formatComplaintDate === 'function' ? formatComplaintDate(c.dateOfOccurrence || c.dateFiled) : (c.dateOfOccurrence || c.dateFiled)}</td>
               <td>${typeof formatComplaintDate === 'function' ? formatComplaintDate(c.dateFiled) : c.dateFiled}</td>
@@ -2010,31 +2126,56 @@ function renderReports() {
       </div>
     </div>
   </div>
-  </div>`;
+`;
+}
 
-  renderMonthlyBarChart('reportBarChart', monthlyData, analysisYear);
+function renderReports() {
+  if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
+  syncHomeownerBalances();
+  currentReportsData = getReportsData();
+  const { complaints, approved, pending, rejected, analysisYear, monthlyData, reportUsers } = currentReportsData;
+  const area = document.getElementById('contentArea');
+  area.innerHTML = `<div class="reports-page">
+    ${getReportsHeaderHTML()}
+    <div class="report-tabs" role="tablist" aria-label="Report sections" onkeydown="handleReportTabKey(event)">
+      ${REPORT_TABS.map(([id, label]) => `<button type="button" role="tab" id="report-tab-${id}" aria-controls="report-panel-${id}" aria-selected="${activeReportTab === id}" tabindex="${activeReportTab === id ? 0 : -1}" onclick="switchReportTab('${id}')">${label}</button>`).join('')}
+    </div>
+    <p class="report-print-context" id="reportPrintContext"></p>
+    <section class="report-tab-panel" role="tabpanel" id="report-panel-overview" aria-labelledby="report-tab-overview" tabindex="0" ${activeReportTab !== 'overview' ? 'hidden' : ''}>${getReportOverviewHTML(currentReportsData)}</section>
+    <section class="report-tab-panel" role="tabpanel" id="report-panel-collections" aria-labelledby="report-tab-collections" tabindex="0" ${activeReportTab !== 'collections' ? 'hidden' : ''}>${getReportCollectionsHTML(currentReportsData)}</section>
+    <section class="report-tab-panel" role="tabpanel" id="report-panel-disbursements" aria-labelledby="report-tab-disbursements" tabindex="0" ${activeReportTab !== 'disbursements' ? 'hidden' : ''}><div id="disbursementReportPanel" aria-live="polite"></div></section>
+    <section class="report-tab-panel" role="tabpanel" id="report-panel-community" aria-labelledby="report-tab-community" tabindex="0" ${activeReportTab !== 'community' ? 'hidden' : ''}>${getReportCommunityHTML(currentReportsData)}</section>
+  </div>`;
+  if (monthlyData.some(month => month.v > 0)) renderMonthlyBarChart('reportBarChart', monthlyData, analysisYear);
+  else document.getElementById('reportBarChart').innerHTML = '<p class="report-empty">No approved collections in this analysis year for the selected period.</p>';
 
   const total = approved.length + pending.length + rejected.length;
-  renderDonut('reportDonut', [
-    { value: approved.length, color: '#16a34a' },
-    { value: pending.length,  color: '#eab308' },
-    { value: rejected.length, color: '#dc2626' },
+  if (total) renderDonut('reportDonut', [
+    { value: approved.length, color: 'var(--green-600)' },
+    { value: pending.length,  color: 'var(--yellow-500)' },
+    { value: rejected.length, color: 'var(--red-600)' },
   ], total, 'Payments', total);
 
+  else document.getElementById('reportDonut').innerHTML = '<p class="report-empty">No payments in this period.</p>';
+
   const cmpTotal = complaints.length;
-  renderDonut('complaintDonut', [
-    { value: complaints.filter(c=>normalizeComplaintStatus(c.status)==='Reviewed').length, color: '#2271c3' },
-    { value: complaints.filter(c=>c.status==='In Progress').length, color: '#d97706' },
-    { value: complaints.filter(c=>c.status==='Resolved').length,    color: '#16a34a' },
-    { value: complaints.filter(c=>c.status==='Rejected').length,    color: '#dc2626' },
+  if (cmpTotal) renderDonut('complaintDonut', [
+    { value: complaints.filter(c=>normalizeComplaintStatus(c.status)==='Reviewed').length, color: 'var(--blue-500)' },
+    { value: complaints.filter(c=>c.status==='In Progress').length, color: 'var(--amber-500)' },
+    { value: complaints.filter(c=>c.status==='Resolved').length,    color: 'var(--green-600)' },
+    { value: complaints.filter(c=>c.status==='Rejected').length,    color: 'var(--red-600)' },
   ], cmpTotal, 'Complaints', complaints.length);
 
+  else document.getElementById('complaintDonut').innerHTML = '<p class="report-empty">No complaints in this period.</p>';
+
+  reportsFinancialRequest = typeof renderDisbursementReport === 'function' ? renderDisbursementReport(currentReportsData.range) : null;
   billingCollectionPaginationState.page = 1;
   renderBillingCollectionTable();
-
   hoBalancePaginationState.page = 1;
   currentHOBalanceFiltered = null;
   renderHOBalanceReportTable(reportUsers, true);
+  keepReportTabVisible();
+  updateReportPrintContext();
 }
 
 let billingCollectionPaginationState = { page: 1, pageSize: 5 };
@@ -2184,7 +2325,7 @@ function renderHOBalanceReportTable(filtered = null, resetPage = false) {
         </div>
       </td>
       <td>${escapeHtml(u.block || '—')}, ${escapeHtml(u.lot || '—')}</td>
-      <td class="${balance > 0 ? 'amount-due' : 'amount-paid'}">₱${balance.toLocaleString()}</td>
+      <td class="${balance > 0 ? 'amount-due' : 'amount-paid'}">${formatReportMoney(balance)}</td>
       <td>${balance > 0 ? '<span class="badge badge-red">With Balance</span>' : '<span class="badge badge-green">Clear</span>'}</td>
     </tr>
   `;
@@ -2315,7 +2456,7 @@ function getAuditEventParts(record) {
 
 function getAuditEventTitle(record) {
   const entities = {
-    homeowners: 'homeowner', users: 'account', billings: 'billing', payments: 'payment',
+    homeowners: 'homeowner', users: 'account', billings: 'billing', payments: 'payment', disbursements: 'disbursement',
     payment_settings: 'payment settings', complaints: 'complaint', amenityBookings: 'amenity booking',
     vehicleRegistrations: 'vehicle registration', lostFound: 'lost and found report',
     announcements: 'announcement', appSettings: 'system settings', schema: 'database schema',
@@ -2359,6 +2500,7 @@ function getAuditEventDetails(record) {
     is_active: 'Active', is_pinned: 'Pinned', urgent: 'Urgent', 'billing status': 'Billing status',
     billing: 'Billing reference', 'homeowner record': 'Homeowner reference',
     amenity: 'Amenity', startTime: 'Start time', endTime: 'End time',
+    expense_category: 'Expense category', transaction_date: 'Transaction date',
   };
   const enums = {
     active: 'Active', inactive: 'Inactive', deactivated: 'Deactivated', pending: 'Pending', approved: 'Approved',
@@ -2371,6 +2513,7 @@ function getAuditEventDetails(record) {
     if (value === '(empty)') return 'Not set';
     if (value === '[redacted]') return null;
     if (field === 'amenity') return AMENITIES.includes(value) ? value : null;
+    if (field === 'expense_category') return ['Gasoline', 'Payroll', 'Extra Labor', 'Hermicide', 'Papers', 'Utensils', 'Maintenance', 'Water Bill', 'Electric Bill', 'Security Services', 'Internet', 'Remittances (SSS, PhilHealth, Pag-IBIG)', 'Others'].includes(value) ? value : null;
     if (field === 'startTime' || field === 'endTime') {
       if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return null;
       const [hour, minute] = value.split(':').map(Number);
@@ -2381,7 +2524,7 @@ function getAuditEventDetails(record) {
       return field === 'lotArea' ? `${Number(value)} m²` : new Intl.NumberFormat('en-PH', { style: 'currency', currency: 'PHP' }).format(Number(value));
     }
     if (['is_active', 'is_pinned', 'urgent'].includes(field)) return value === '1' ? 'Yes' : value === '0' ? 'No' : null;
-    if (['dueDate', 'bookingDate', 'payment_date', 'monthly_dues_month'].includes(field)) {
+    if (['dueDate', 'bookingDate', 'payment_date', 'monthly_dues_month', 'transaction_date'].includes(field)) {
       const match = value.match(/^(\d{4})-(\d{2})(?:-(\d{2}))?$/);
       if (!match) return null;
       const date = new Date(`${match[1]}-${match[2]}-${match[3] || '01'}T12:00:00Z`);
@@ -2389,7 +2532,7 @@ function getAuditEventDetails(record) {
       return new Intl.DateTimeFormat('en-PH', { timeZone: 'UTC', year: 'numeric', month: 'short', ...(match[3] ? { day: 'numeric' } : {}) }).format(date);
     }
     if (field === 'permissions') {
-      const names = { '*': 'Full administrator access', resident: 'Resident', billing: 'Billing', payments: 'Payments',
+      const names = { '*': 'Full administrator access', resident: 'Resident', billing: 'Billing', payments: 'Payments', disbursements: 'Disbursements',
         complaints: 'Complaints', vehicles: 'Vehicles', lostfound: 'Lost and found', announcements: 'Announcements',
         amenities: 'Amenities', reports: 'Reports', auditlog: 'Audit log' };
       if (value === '(none)') return 'None';
@@ -3575,6 +3718,7 @@ async function saveCreateAccount() {
 const RESIDENT_ASSIGNABLE_MODULES = [
   { id: 'billing',       label: 'Billing',            icon: 'ico-file',      desc: 'View billing records' },
   { id: 'payments',      label: 'Payments',           icon: 'ico-credit',    desc: 'View payment records' },
+  { id: 'disbursements', label: 'Disbursements', icon: 'ico-wallet', section: 'MANAGEMENT', desc: 'View association expenses' },
   { id: 'complaints',    label: 'Complaints',         icon: 'ico-flag',      desc: 'Review & resolve complaints' },
   { id: 'vehicles',      label: 'Vehicles',           icon: 'ico-parking',   desc: 'Vehicle & RFID stickers' },
   { id: 'lostfound',     label: 'Lost & Found',       icon: 'ico-search',    desc: 'Lost & found directory' },
@@ -4002,6 +4146,7 @@ function openModal(title, bodyHtml, buttons = [], modalClass = '') {
 }
 
 function closeModal() {
+  if (typeof restoreDisbursementForm === 'function') restoreDisbursementForm();
   if (pendingPhotoFile || pendingPhotoPreviewUrl) {
     cancelProfilePhotoSelect();
   }

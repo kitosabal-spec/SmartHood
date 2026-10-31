@@ -1,0 +1,27 @@
+.disbursement-fields, .expense-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
+.disbursement-fields .form-group { min-width: 0; margin-bottom: 0; }
+.disbursement-fields input, .disbursement-fields select { width: 100%; min-width: 0; }
+.disbursement-save { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+.disbursement-modal { width: min(960px, 95vw); max-width: 960px; }
+#disbursementReportPanel { display: grid; gap: 24px; }
+[data-theme="dark"] .disbursements-page input[type="date"],
+[data-theme="dark"] .disbursement-modal input[type="date"] { color-scheme: dark; }
+.expense-filters { flex-wrap: wrap; }
+.expense-filters label { color: var(--text-2); font-size: .85rem; }
+.disbursements-page .expense-records-header { display: flex; flex-direction: row; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px 20px; }
+.expense-records-total { display: flex; align-items: center; flex-wrap: wrap; gap: 6px 14px; margin-left: auto; padding: 9px 14px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface-2); }
+.expense-records-total span { color: var(--text-2); font-size: .78rem; }
+.expense-records-total strong { color: var(--text); font-size: 1.05rem; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.expense-filter-error { margin: 12px 0 0; color: var(--red-600); font-size: .85rem; }
+.expense-summary span { display: block; color: var(--text-2); }
+.expense-summary strong { display: block; font-size: 1.5rem; margin-top: 8px; overflow-wrap: anywhere; }
+.expense-chart-row { display: grid; grid-template-columns: 70px minmax(40px, 1fr) minmax(110px, auto); align-items: center; gap: 16px; margin: 12px 0; }
+.expense-chart-row strong { text-align: right; font-size: .85rem; }
+.expense-bar-track { background: var(--border); border-radius: 5px; overflow: hidden; }
+.expense-bar { height: 20px; background: var(--teal-600); border-radius: 5px; }
+@media (max-width: 700px) {
+  .expense-records-total { margin-left: 0; max-width: 100%; }
+  .disbursement-fields, .expense-summary { grid-template-columns: 1fr; }
+  .expense-chart-row { gap: 8px; }
+  .expense-filters > *, .expense-filters input { max-width: 100%; }
+}

@@ -8,7 +8,7 @@ function auditDatabase() {
   const authExecute = pool.execute;
   const tables = {
     users: pool.users, homeowners: [{ id: 'home-1', name: 'Resident', lotArea: 100 }],
-    auditLog: [], billings: [], payments: [], complaints: [], amenityBookings: [],
+    auditLog: [], billings: [], payments: [], disbursements: [], complaints: [], amenityBookings: [],
     vehicleRegistrations: [], lostFound: [], announcements: [], appSettings: [],
     payment_settings: [], notifications: [], notification_recipients: [], billing_assignments: [],
     announcement_comments: [], announcement_reactions: [], board_of_directors: [], storage_objects: [],
@@ -103,6 +103,7 @@ function auditDatabase() {
     if (select && tables[select[2]]) {
       let rows = tables[select[2]];
       let where = select[3] || '';
+      if (where.includes('voided_at IS NULL')) rows = rows.filter(row => row.voided_at == null);
       if (where.includes('archived_at IS NULL')) rows = rows.filter(row => row.archived_at == null);
       let i = 0;
       // Extract the simple AND predicates used by the tested routes.

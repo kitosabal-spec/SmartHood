@@ -154,6 +154,18 @@ function buildReportsWorkbook(ExcelJS, data, logo = null) {
     `Search: ${data.balanceFilters.search || '(none)'} | Status: ${data.balanceFilters.status === 'due' ? 'With Balance' : data.balanceFilters.status === 'clear' ? 'Clear' : 'All Statuses'} | All ${data.balanceRows.length} matching homeowners. Balances and clearance use the selected period.`,
     ['Total', '', '', '', balanceTotal, '']);
 
+  if (data.expenses) {
+    const expenses = data.expenses;
+    sheetTable('Disbursements', ['Record ID', 'Transaction Date', 'Expense Category', 'Amount (PHP)'], [42, 22, 46, 24],
+      expenses.records.map(r => [r.id, r.transaction_date, r.expense_category, Number(r.amount)]), [4],
+      'Active recorded expenses, filtered by transaction date. Voided records are excluded; audit history is retained.', ['', '', 'Total', expenses.totalDisbursements]);
+    sheetTable('Expense Summary', ['Expense Category', 'Amount (PHP)'], [55, 30], expenses.categories, [2],
+      'Expenses grouped by category within the selected reporting period.', ['Total', expenses.totalDisbursements]);
+    sheetTable('Financial Summary', ['Measure', 'Amount (PHP)'], [55, 30], [
+      ['Total Collections', expenses.totalCollections], ['Total Disbursements', expenses.totalDisbursements], ['Net Cash Movement', expenses.netCashMovement],
+    ], [2], 'Approved collections less active expenses. Net cash movement is not the HOA bank balance. Opening balances and other cash adjustments are not included. Collection dates follow the existing review/payment/submission date precedence; expenses use transaction dates.');
+  }
+
   book.worksheets.forEach(sheet => {
     const lastColumn = sheet.getColumn(sheet.columnCount).letter;
     sheet.pageSetup.printArea = `A1:${lastColumn}${sheet.rowCount}`;

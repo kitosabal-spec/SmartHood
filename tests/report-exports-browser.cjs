@@ -17,7 +17,7 @@ const server = http.createServer((req, res) => {
   const pathname = new URL(req.url, 'http://localhost').pathname;
   if (pathname === '/') {
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    return res.end('<!doctype html><html><head><link rel="stylesheet" href="/public/css/style.css"></head><body><div id="contentArea"></div><div id="toastContainer"></div><script src="/public/js/report-workbook.js"></script><script src="/test-main.js"></script><script src="/public/js/dashboard.js"></script></body></html>');
+    return res.end('<!doctype html><html><head><link rel="stylesheet" href="/public/css/style.css"><link rel="stylesheet" href="/public/css/reports.css"></head><body><div id="contentArea"></div><div id="toastContainer"></div><script src="/public/js/report-workbook.js"></script><script src="/test-main.js"></script><script src="/public/js/dashboard.js"></script></body></html>');
   }
   if (pathname === '/test-main.js') {
     res.setHeader('Content-Type', 'text/javascript; charset=utf-8');
@@ -27,6 +27,7 @@ const server = http.createServer((req, res) => {
     '/public/vendor/exceljs-4.4.0.min.js': require.resolve('exceljs/dist/exceljs.min.js'),
     '/public/js/report-workbook.js': path.join(root, 'public/js/report-workbook.js'),
     '/public/js/dashboard.js': path.join(root, 'public/js/dashboard.js'),
+    '/public/css/reports.css': path.join(root, 'public/css/reports.css'),
     '/public/css/style.css': path.join(root, 'public/css/style.css'),
     '/public/images/SH%20Logo.png': path.join(root, 'public/images/SH Logo.png'),
   };
@@ -60,6 +61,7 @@ const server = http.createServer((req, res) => {
       window.avatarHTML = () => '';
       renderReports();
     }, fixture);
+    await page.getByRole('tab', {name:'Collections',exact:true}).click();
     await page.locator('#hoBalanceStatusFilter').selectOption('due');
     const excelDownload = page.waitForEvent('download');
     await page.locator('#reportsDownloadButton').click();

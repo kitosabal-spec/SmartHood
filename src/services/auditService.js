@@ -4,7 +4,7 @@ const { AsyncLocalStorage } = require('node:async_hooks');
 const crypto = require('node:crypto');
 
 const AUDITED_TABLES = new Set([
-  'homeowners', 'users', 'billings', 'payments', 'payment_settings',
+  'homeowners', 'users', 'billings', 'payments', 'disbursements', 'payment_settings',
   'complaints', 'amenityBookings', 'vehicleRegistrations', 'lostFound',
   'announcements', 'appSettings',
 ]);
@@ -17,8 +17,8 @@ const visibleEnums = new Set([
 ]);
 const enumFields = new Set(['status', 'role', 'registrationStatus', 'paymentStatus', 'payment_method', 'payment_type']);
 const numberFields = new Set(['amount', 'balance', 'lotArea', 'fee', 'is_active', 'is_pinned', 'urgent']);
-const permissionValues = new Set(['*', 'resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog']);
-const dateFields = new Set(['dueDate', 'monthly_dues_month', 'payment_date', 'bookingDate']);
+const permissionValues = new Set(['*', 'resident', 'billing', 'payments', 'disbursements', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog']);
+const dateFields = new Set(['dueDate', 'monthly_dues_month', 'payment_date', 'bookingDate', 'transaction_date']);
 const amenityValues = new Set(['Basketball Court', 'Clubhouse', 'Chairs', 'Tables', 'Ladder']);
 
 // Values are denied by default. Free text (including complaint content,
@@ -28,6 +28,7 @@ function safeValue(field, value) {
   if (enumFields.has(field) && visibleEnums.has(value)) return value;
   if (numberFields.has(field) && (typeof value === 'boolean' || Number.isFinite(Number(value)))) return String(Number(value));
   if (dateFields.has(field) && /^\d{4}-\d{2}(?:-\d{2})?$/.test(value)) return value;
+  if (field === 'expense_category' && require('./disbursementService').EXPENSE_CATEGORIES.includes(value)) return value;
   if (field === 'amenity' && amenityValues.has(value)) return value;
   if (['startTime', 'endTime'].includes(field) && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return value;
   if (field === 'permissions') {

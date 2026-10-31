@@ -4768,6 +4768,10 @@ app.get('/api/amenity-availability', asyncHandler(async (req, res) => {
   }));
 }));
 
+require('./services/disbursementService').registerDisbursementRoutes(app, {
+  all, get, run, requirePermission, requireFinancialAdmin, asyncHandler, auditedHandler, recordAuditLog, changeSummary,
+});
+
 app.get('/api/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
@@ -5416,7 +5420,7 @@ app.post('/api/homeowners/:id/account', auditedHandler(async (req, res) => {
     return res.status(400).json({ error: 'The current Terms & Conditions and Privacy Policy must be accepted before registration.' });
   }
 
-  const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
+  const validPermissions = ['resident', 'billing', 'payments', 'disbursements', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
   const rawPermissions = Array.isArray(req.body.permissions) ? req.body.permissions : [];
   const permissions = [...new Set(rawPermissions.filter(permission => validPermissions.includes(permission)))];
   if (permissions.length === 0) {
@@ -5521,7 +5525,7 @@ app.post('/api/users', auditedHandler(async (req, res) => {
     permissions = ['*'];
   } else {
     const rawPerms = Array.isArray(req.body.permissions) ? req.body.permissions : [];
-    const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
+    const validPermissions = ['resident', 'billing', 'payments', 'disbursements', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
     permissions = rawPerms.filter(p => validPermissions.includes(p));
     // If no permission specified for homeowner, default to resident
     if (permissions.length === 0) {
@@ -5602,7 +5606,7 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
     } else {
       req.body.role = 'homeowner';
       const perms = Array.isArray(req.body.permissions) ? [...req.body.permissions] : [];
-      const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
+      const validPermissions = ['resident', 'billing', 'payments', 'disbursements', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
       const clean = perms.filter(p => validPermissions.includes(p));
       if (clean.length === 0) {
         return res.status(400).json({ error: 'Select at least one module for this account. Resident Portal is optional.' });
@@ -5808,7 +5812,7 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
         req.body.permissions = ['*'];
       } else if (req.body.permissions !== undefined || existing.role === 'admin') {
         const rawPerms = Array.isArray(req.body.permissions) ? [...req.body.permissions] : [];
-        const validPermissions = ['resident', 'billing', 'payments', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
+        const validPermissions = ['resident', 'billing', 'payments', 'disbursements', 'complaints', 'vehicles', 'lostfound', 'announcements', 'amenities', 'reports', 'auditlog'];
         const clean = rawPerms.filter(p => validPermissions.includes(p));
         if (clean.length === 0) {
           return res.status(400).json({ error: 'Select at least one module for this account. Resident Portal is optional.' });
