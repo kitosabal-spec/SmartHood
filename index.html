@@ -16,7 +16,7 @@
   <link rel="stylesheet" href="public/css/lost-found.css" />
   <link rel="stylesheet" href="public/css/profile.css" />
   <link rel="stylesheet" href="public/css/board-of-directors.css" />
-  <link rel="stylesheet" href="public/css/landing.css?v=14" />
+  <link rel="stylesheet" href="public/css/landing.css?v=15" />
   <link rel="stylesheet" href="public/css/legal.css?v=1.0.0" />
   <link rel="stylesheet" href="public/css/faq.css?v=1.1.1" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -514,11 +514,21 @@
         </div>
       </div>
       <div class="pub-contact-map">
-        <div class="pub-map-placeholder">
-          <svg style="width:40px;height:40px;color:var(--text-3)"><use href="#ico-map"/></svg>
-          <p>San Alfonso Homes</p>
-          <span style="font-size:0.85rem;color:var(--text-3)">Pacol, Naga City, Camarines Sur, Philippines</span>
-        </div>
+        <!-- Verified in Google Maps via Share > Embed a map: San Alfonso Homes Mini Park, Brgy. Pacol, Naga City. -->
+        <iframe
+          class="pub-map-embed"
+          title="Google Map of San Alfonso Homes Mini Park, Pacol, Naga City, Camarines Sur, Philippines"
+          src="https://www.google.com/maps/embed?pb=!1m18!1m12!1m3!1d3877.2136850179686!2d123.2449973!3d13.644761699999998!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m3!1m2!1s0x33a1f2971ee92075%3A0x878ffdba4534aabe!2sSan%20Alfonso%20Homes%20Mini%20Park!5e0!3m2!1sen!2sph!4v1793412632554!5m2!1sen!2sph"
+          width="600"
+          height="350"
+          loading="lazy"
+          referrerpolicy="strict-origin-when-cross-origin"
+          allowfullscreen>
+        </iframe>
+        <p class="pub-map-fallback">
+          Map unavailable or need directions?
+          <a class="pub-contact-link" href="https://www.google.com/maps/place/San+Alfonso+Homes+Mini+Park/@13.6447617,123.2449973,17z/data=!3m1!4b1!4m6!3m5!1s0x33a1f2971ee92075:0x878ffdba4534aabe!8m2!3d13.6447617!4d123.2449973!16s%2Fg%2F11c6rbmg6l" target="_blank" rel="noopener noreferrer">Open San Alfonso Homes Mini Park in Google Maps (new tab)</a>
+        </p>
       </div>
     </div>
   </section>

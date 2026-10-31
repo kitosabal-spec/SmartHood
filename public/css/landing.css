@@ -116,6 +116,9 @@
 #landingPage .pub-contact-link { color: var(--text-2); font-weight: 400; line-height: inherit; text-decoration: none; text-underline-offset: 3px; }
 #landingPage .pub-contact-link:hover { color: var(--text); text-shadow: 0.3px 0 currentColor, -0.3px 0 currentColor; text-decoration: underline; }
 #landingPage .pub-contact-map { background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
+#landingPage .pub-map-embed { display: block; width: 100%; height: clamp(300px, 40vw, 350px); border: 0; }
+#landingPage .pub-map-fallback { margin: 0; padding: 12px 16px; border-top: 1px solid var(--border); color: var(--text-2); font-size: .85rem; line-height: 1.7; overflow-wrap: anywhere; }
+#landingPage .pub-map-fallback a { text-decoration: underline; }
 #landingPage .pub-footer { background: #213e39; padding: 24px 32px; }
 #landingPage .pub-footer-bottom { border: 0; padding: 0; font-size: .8rem !important; font-weight: 400 !important; color: #dce4db !important; }
 
