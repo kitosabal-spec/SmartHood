@@ -42,6 +42,8 @@ const { createAdminEmailService, AdminEmailError } = require('./services/adminEm
 const { createAmenityService } = require('./services/amenityService');
 const { createAmenityBillingService } = require('./services/amenityBillingService');
 const amenityService = createAmenityService({ get, all });
+const { createVehicleService, VehicleError } = require('./services/vehicleService');
+const vehicleService = createVehicleService({ get, saveRecord, createServerNotification });
 
 const { AUDITED_TABLES, changeSummary, createAuditService } = require('./services/auditService');
 const audit = createAuditService({ getPool: () => db, resolveActor: getRequester });
@@ -202,7 +204,7 @@ const tableConfig = {
     booleanColumns: [],
   },
   vehicleRegistrations: {
-    columns: ['id', 'homeownerId', 'ownerName', 'block', 'lot', 'plateNumber', 'vehicleType', 'registrantType', 'fee', 'registrationStatus', 'paymentStatus', 'stickerNumber', 'remarks', 'createdAt', 'updatedAt', 'releasedAt'],
+    columns: ['id', 'homeownerId', 'ownerName', 'block', 'lot', 'registrationLocation', 'plateNumber', 'activePlateKey', 'vehicleType', 'registrantType', 'fee', 'registrationStatus', 'paymentStatus', 'stickerNumber', 'remarks', 'createdAt', 'updatedAt', 'releasedAt'],
     jsonColumns: [],
     booleanColumns: [],
   },
@@ -739,7 +741,7 @@ function validateTable(req, res) {
   return table;
 }
 
-async function saveRecord(table, item) {
+async function saveRecord(table, item, { insertOnly = false } = {}) {
   if (table === 'auditLog') throw new Error('Use the server audit writer.');
   if (table === 'billings' && item.dueDate !== undefined) {
     item.dueDate = item.dueDate || null;
@@ -752,7 +754,7 @@ async function saveRecord(table, item) {
 
   const columns = tableConfig[table].columns;
   const sqlTable = tableName(table);
-  const existing = await get(`SELECT * FROM ${sqlTable} WHERE \`id\` = ?${audit.current() ? ' FOR UPDATE' : ''}`, [item.id]);
+  const existing = insertOnly ? null : await get(`SELECT * FROM ${sqlTable} WHERE \`id\` = ?${audit.current() ? ' FOR UPDATE' : ''}`, [item.id]);
   const values = columns.map((column) => serializeValue(table, column, item[column]));
 
   if (existing) {
@@ -4910,6 +4912,7 @@ app.put('/api/:table', auditedHandler(async (req, res) => {
   const allowed = await checkTableAccess(req, res, table, 'update');
   if (!allowed) return;
   if (table === 'amenityBookings') return res.status(405).json({ error: 'Use individual booking requests and reviews.' });
+  if (table === 'vehicleRegistrations') return res.status(405).json({ error: 'Use individual vehicle registrations and reviews.' });
   if (table === 'appSettings') await amenityService.lock();
   if (table === 'users') return res.status(405).json({ error: 'Bulk account replacement is disabled. Use individual account management and verified administrator email changes.' });
   if (!Array.isArray(req.body)) {
@@ -5235,6 +5238,13 @@ async function createServerNotification(title, message, options = {}) {
     return;
   }
   try {
+    // Vehicle property links always identify a homeowner, even if an unrelated
+    // login account happens to use that same ID.
+    if (options.homeownerId) {
+      const account = await get("SELECT id FROM users WHERE homeowner_id = ? AND status = 'active' AND archived_at IS NULL", [options.homeownerId]);
+      if (!account) return;
+      options = { accountId: account.id, userIds: [account.id] };
+    }
     const id = 'n' + Date.now().toString(36) + crypto.randomBytes(3).toString('hex');
     const time = new Date().toLocaleTimeString();
     const audience = options.audience || (options.roles ? 'roles' : (options.userIds ? 'users' : 'all'));
@@ -5244,7 +5254,9 @@ async function createServerNotification(title, message, options = {}) {
       [id, title, message, time, audience, JSON.stringify(targetIds), JSON.stringify([])]
     );
     let recipients = [];
-    if (audience === 'all') {
+    if (options.accountId) {
+      recipients = [{ id: options.accountId }];
+    } else if (audience === 'all') {
       recipients = await all("SELECT id FROM users WHERE status = 'active'");
     } else if (audience === 'roles' && targetIds.length) {
       const placeholders = targetIds.map(() => '?').join(', ');
@@ -5562,6 +5574,13 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'create');
   if (!allowed) return;
+  if (table === 'vehicleRegistrations') {
+    const vehicle = await vehicleService.register(req.body, {
+      canManage: allowed.role === 'admin' || userHasPermission(allowed, 'vehicles'),
+      ownId: requesterHomeownerId(allowed),
+    });
+    return res.status(201).json(vehicle);
+  }
   if (table === 'amenityBookings' || table === 'appSettings') await amenityService.lock();
   // A create permission must not turn a chosen ID into an unlogged/unauthorized
   // overwrite (in particular, public lost-and-found submissions).
@@ -5641,11 +5660,6 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
     req.body.updatedAt = nowIso;
   }
 
-  if ((table === 'amenityBookings' || table === 'vehicleRegistrations') && allowed.role !== 'admin') {
-    const managePermission = table === 'amenityBookings' ? 'amenities' : 'vehicles';
-    if (!userHasPermission(allowed, managePermission)) req.body.homeownerId = requesterHomeownerId(allowed);
-  }
-
   if (table === 'amenityBookings') {
     if (allowed.role !== 'admin' && !userHasPermission(allowed, 'amenities')) {
       // Resident input cannot forge ownership, approval, or review metadata.
@@ -5706,6 +5720,12 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'update');
   if (!allowed) return;
+  if (table === 'vehicleRegistrations') {
+    const { before, after } = await vehicleService.manage(req.params.id, req.body);
+    const notification = importantStatusEmail(table, before, after);
+    if (notification) await emailHomeowners([notification.homeownerId], () => notification.email);
+    return res.json(after);
+  }
   if (table === 'amenityBookings' || table === 'appSettings') await amenityService.lock();
   if (table === 'amenityBookings') {
     const existing = await get('SELECT * FROM amenityBookings WHERE id = ? AND archived_at IS NULL FOR UPDATE', [req.params.id]);
@@ -5919,7 +5939,7 @@ app.delete('/api/:table/:id', auditedHandler(async (req, res) => {
     if (!existing) return res.status(404).json({ error: 'Record not found.' });
     const statusUpdate = table === 'users'
       ? ", status = 'deactivated'"
-      : (table === 'billings' ? ", status = 'inactive'" : '');
+      : (table === 'billings' ? ", status = 'inactive'" : table === 'vehicleRegistrations' ? ', activePlateKey = NULL' : '');
     await run(
       `UPDATE ${tableName(table)} SET archived_at = CURRENT_TIMESTAMP(3), archived_by = ?${statusUpdate} WHERE id = ?`,
       [allowed.id, req.params.id]
@@ -5992,6 +6012,7 @@ app.delete('/api/:table/:id', auditedHandler(async (req, res) => {
 registerPageRoutes(app, { indexController: createIndexController(INDEX_FILE, publicAssetCache.versionHtml) });
 
 app.use((err, req, res, next) => {
+  if (err instanceof VehicleError) return res.status(err.status).json({ error: err.message });
   console.error(err);
   res.status(500).json({ error: 'Server error. Check the VS Code terminal.' });
 });

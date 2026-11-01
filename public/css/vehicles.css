@@ -3,6 +3,10 @@
    ══════════════════════════════════════════════════════════════ */
 
 /* ── REGISTRATION FEE PANEL ── */
+#vehicleEntry [hidden] { display: none; }
+#vehicleEntry .form-group { margin-bottom: 12px; }
+.vehicle-entry-status { display: flex; gap: 6px; }
+
 .vehicle-fee-panel {
   background: var(--teal-50);
   border: 1px solid var(--teal-100);

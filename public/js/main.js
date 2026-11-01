@@ -22,8 +22,6 @@ const ROLES = { ADMIN: 'admin', HOMEOWNER: 'homeowner' };
 const COMPLAINT_STATUSES = ['Reviewed', 'In Progress', 'Resolved', 'Rejected'];
 const DEFAULT_DUES_RATE_PER_SQM = 5.725;
 const AMENITIES = ['Basketball Court', 'Clubhouse', 'Chairs', 'Tables', 'Ladder'];
-const VEHICLE_TYPES = ['Car', 'Motorcycle', 'Tricycle', 'Van', 'Truck', 'SUV', 'Other'];
-const VEHICLE_REGISTRATION_FEES = { homeowner: 200, nonHomeowner: 250 };
 const ROLE_LABELS = {
   admin: 'Administrator',
   homeowner: 'Resident',
@@ -532,12 +530,16 @@ const db = {
     return this.get(key).find(x => x.id === id);
   },
   async save(key, item) {
+    const generation = dataSessionGeneration;
     const arr = this.get(key);
     const existingIndex = arr.findIndex(x => x.id === item.id);
     const isUpdate = existingIndex >= 0;
 
     // Send to API first and WAIT for MySQL confirmation
     const saved = await api.save(key, item, isUpdate);
+    if (key === 'vehicleRegistrations' && generation !== dataSessionGeneration) {
+      throw new Error('Your session changed. Reopen My Vehicles or Vehicle Management to check the registration.');
+    }
     const resultItem = (saved && typeof saved === 'object') ? { ...item, ...saved } : item;
 
     // Update in-memory dbCache only upon successful persistence

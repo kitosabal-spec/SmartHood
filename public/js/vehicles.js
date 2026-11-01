@@ -42,7 +42,7 @@ function vehiclePaymentStatusBadge(status) {
 }
 
 function getVehicleLocation(vehicle) {
-  return [vehicle.block, vehicle.lot].filter(Boolean).join(' ') || 'N/A';
+  return [vehicle.block, vehicle.lot].filter(Boolean).join(' ') || vehicle.registrationLocation || 'N/A';
 }
 
 function isVehicleStickerTaken(stickerNumber, currentId = null) {
@@ -192,32 +192,94 @@ function confirmSubmitVehicleRegistration() {
   );
 }
 
-function submitVehicleRegistration({ registrantType, ownerName, block, lot, plateNumber, vehicleType }) {
-  const today = getLocalDateValue();
-  const vehicle = {
-    id: db.newId('vr'),
-    homeownerId: getCurrentHomeownerId(),
-    ownerName,
-    block,
-    lot,
-    plateNumber,
-    vehicleType,
-    registrantType,
-    fee: getVehicleRegistrationFee(registrantType),
-    registrationStatus: 'Pending',
-    paymentStatus: 'Unpaid',
-    stickerNumber: null,
-    remarks: '',
-    createdAt: today,
-    updatedAt: today,
-    releasedAt: '',
-  };
-  db.save('vehicleRegistrations', vehicle);
-  addNotification('Vehicle Registration Submitted', `${currentUser.name} submitted vehicle ${plateNumber} for review.`, { roles: ['admin', 'security'] });
-  logAction(`Submitted vehicle registration: ${plateNumber} for ${ownerName}`);
+async function submitVehicleRegistration(vehicle, onBehalf = false) {
+  try {
+    await db.save('vehicleRegistrations', { ...vehicle, selfRegistration: !onBehalf });
+  } catch (error) {
+    showToast('error', 'Registration Not Saved', safeVehicleEscape(error.message));
+    return false;
+  }
   closeModal();
-  showToast('success', 'Registration Submitted', 'Your vehicle registration is pending admin review.');
-  renderHOVehicles();
+  showToast('success', 'Registration Submitted', 'The vehicle registration is pending review.');
+  if (onBehalf) renderVehicleManagement();
+  else renderHOVehicles();
+  return true;
+}
+
+function openAdminVehicleRegistration(draft = {}) {
+  if (!canManageVehicles()) return;
+  const esc = safeVehicleEscape;
+  const properties = new Map(getHomeowners().map(h => [
+    [h.name, /^\d/.test(h.block) ? 'Block ' + h.block : h.block,
+      /^\d/.test(h.lot) ? 'Lot ' + h.lot : h.lot, h.id].filter(Boolean).join(' · '), h,
+  ]));
+  openModal('Add Vehicle', `
+    <form id="vehicleEntry">
+      <div class="grid-2">
+        <div class="form-group"><label for="vr_registrantType">Registration type</label>
+          <select id="vr_registrantType"><option value="homeowner">Homeowner</option><option value="nonHomeowner">Non-homeowner</option></select></div>
+        <div class="form-group"><label for="vr_vehicleType">Vehicle type</label>
+          <select id="vr_vehicleType">${VEHICLE_TYPES.map(t => `<option>${esc(t)}</option>`).join('')}</select></div>
+      </div>
+      <div class="form-group" hidden><label for="vr_ownerName">Vehicle owner’s full name *</label>
+        <input id="vr_ownerName" maxlength="255" value="${esc(draft.ownerName || '')}"></div>
+      <div class="form-group"><label id="vr_propertyLabel" for="vr_property">Homeowner *</label>
+        <input id="vr_property" list="vr_properties" autocomplete="off" placeholder="Search by name, block or lot" value="${esc(draft.propertyLabel || '')}">
+        <datalist id="vr_properties">${Array.from(properties.keys(), label => `<option value="${esc(label)}"></option>`).join('')}</datalist></div>
+      <div class="form-group" hidden><label for="vr_location">Reason or registration location *</label>
+        <input id="vr_location" maxlength="255" value="${esc(draft.registrationLocation || '')}"></div>
+      <div class="grid-2">
+        <div class="form-group"><label for="vr_plateNumber">Plate number *</label>
+          <input id="vr_plateNumber" required maxlength="255" placeholder="ABC 1234" value="${esc(draft.plateNumber || '')}"></div>
+        <div class="form-group"><label for="vr_fee">Registration fee</label><input id="vr_fee" readonly></div>
+      </div>
+      <div class="vehicle-entry-status">${vehicleRegistrationStatusBadge('Pending')} ${vehiclePaymentStatusBadge('Unpaid')}</div>
+    </form>`, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Register Vehicle', cls: 'btn-primary', action: () => form.requestSubmit() },
+  ]);
+  const form = document.getElementById('vehicleEntry');
+  const { vr_registrantType: type, vr_vehicleType: vehicleType, vr_ownerName: owner,
+    vr_property: property, vr_location: location, vr_plateNumber: plate, vr_fee: fee } = form.elements;
+  type.value = draft.registrantType || 'homeowner';
+  vehicleType.value = draft.vehicleType || VEHICLE_TYPES[0];
+  function updateFields() {
+    const homeowner = type.value === 'homeowner';
+    owner.parentElement.hidden = homeowner;
+    owner.disabled = homeowner;
+    owner.required = !homeowner;
+    document.getElementById('vr_propertyLabel').textContent = homeowner ? 'Homeowner *' : 'Associated homeowner / property (optional)';
+    property.required = homeowner;
+    property.setCustomValidity(property.value && !properties.has(property.value) ? 'Select a property from the list.' : '');
+    location.disabled = homeowner || Boolean(property.value);
+    location.parentElement.hidden = location.disabled;
+    location.required = !location.disabled;
+    fee.value = formatPeso(getVehicleRegistrationFee(type.value));
+  }
+  type.onchange = property.oninput = updateFields;
+  plate.oninput = () => { plate.value = plate.value.toUpperCase(); };
+  updateFields();
+  form.onsubmit = event => {
+    event.preventDefault();
+    const selected = properties.get(property.value);
+    const vehicle = { registrantType: type.value, vehicleType: vehicleType.value, homeownerId: selected?.id || null,
+      ownerName: owner.disabled ? selected?.name : owner.value.trim(), plateNumber: plate.value.trim().toUpperCase(),
+      registrationLocation: location.disabled ? null : location.value.trim() };
+    if (!vehicle.ownerName || !/[A-Z0-9]/.test(vehicle.plateNumber) || !/^[A-Z0-9 -]+$/.test(vehicle.plateNumber) ||
+        (!selected && !vehicle.registrationLocation)) {
+      showToast('error', 'Check Registration', 'Enter the owner, a valid plate, and a property or registration reason.');
+      return;
+    }
+    const back = () => openAdminVehicleRegistration({ ...vehicle, propertyLabel: property.value });
+    openModal('Confirm Vehicle Registration', `Register <strong>${esc(vehicle.plateNumber)}</strong> for
+      <strong>${esc(vehicle.ownerName)}</strong> with a fee of <strong>${esc(fee.value)}</strong>?`, [
+      { label: 'Back', cls: 'btn-secondary', action: back },
+      { label: 'Confirm Registration', cls: 'btn-primary', action: async event => {
+        for (const button of event.currentTarget.parentElement.children) button.disabled = true;
+        if (!await submitVehicleRegistration(vehicle, true)) back();
+      } },
+    ], 'modal-confirm');
+  };
 }
 
 function renderAdminVehicleRow(vehicle) {
@@ -292,6 +354,7 @@ function renderVehicleManagement(filtered = null) {
   area.innerHTML = `
   <div class="page-header">
     <div class="page-header-left"><h2>Vehicle Management</h2><p>Review registrations, track payments, and release physical stickers.</p></div>
+    ${canManageVehicles() ? '<div class="page-header-actions"><button class="btn btn-primary" onclick="openAdminVehicleRegistration()"><svg class="btn-ico"><use href="#ico-plus"/></svg> Add Vehicle</button></div>' : ''}
   </div>
   <div class="stats-grid vehicles-stats-grid">
     <div class="stat-card"><div class="stat-icon"><svg width="22" height="22"><use href="#ico-clock"/></svg></div><div class="stat-info"><span class="stat-value">${pendingCount}</span><span class="stat-label">Pending</span></div></div>
@@ -333,6 +396,7 @@ function filterVehicles() {
       vehicle.ownerName,
       vehicle.block,
       vehicle.lot,
+      vehicle.registrationLocation,
       vehicle.plateNumber,
       vehicle.vehicleType,
       vehicle.stickerNumber,
@@ -354,6 +418,7 @@ function openVehicleAdminModal(id) {
   openModal('Manage Vehicle Registration', `
     <div class="vehicle-detail-grid">
       <div><span>Owner</span><strong>${safeVehicleEscape(vehicle.ownerName)}</strong></div>
+      ${vehicle.registrantType === 'nonHomeowner' && vehicle.homeownerId ? `<div><span>Associated homeowner</span><strong>${safeVehicleEscape(getHomeownerById(vehicle.homeownerId)?.name || vehicle.homeownerId)}</strong></div>` : ''}
       <div><span>Location</span><strong>${safeVehicleEscape(getVehicleLocation(vehicle))}</strong></div>
       <div><span>Plate Number</span><strong>${safeVehicleEscape(vehicle.plateNumber)}</strong></div>
       <div><span>Vehicle Type</span><strong>${safeVehicleEscape(vehicle.vehicleType)}</strong></div>
@@ -393,7 +458,7 @@ function openVehicleAdminModal(id) {
   ]);
 }
 
-function saveVehicleAdminChanges(id) {
+async function saveVehicleAdminChanges(id) {
   const vehicle = db.getOne('vehicleRegistrations', id);
   if (!vehicle) return;
   const stickerNumber = normalizeStickerNumber(document.getElementById('vm_stickerNumber').value);
@@ -419,15 +484,17 @@ function saveVehicleAdminChanges(id) {
   }
 
   const today = getLocalDateValue();
-  vehicle.paymentStatus = paymentStatus;
-  vehicle.registrationStatus = registrationStatus;
-  vehicle.stickerNumber = stickerNumber || null;
-  vehicle.remarks = document.getElementById('vm_remarks').value.trim();
-  vehicle.updatedAt = today;
-  vehicle.releasedAt = releaseSticker ? (vehicle.releasedAt || today) : '';
-  db.save('vehicleRegistrations', vehicle);
-  addNotification('Vehicle Registration Updated', `${vehicle.plateNumber} is now ${vehicle.registrationStatus}.`, { userIds: [vehicle.homeownerId] });
-  logAction(`Updated vehicle registration: ${vehicle.plateNumber} (${vehicle.registrationStatus}, ${vehicle.paymentStatus})`);
+  const button = document.querySelector('#modalFooter .btn-primary');
+  button.disabled = true;
+  try {
+    await db.save('vehicleRegistrations', { id, registrationStatus, paymentStatus, stickerNumber,
+      remarks: document.getElementById('vm_remarks').value.trim(), releasedAt: releaseSticker ? today : '' });
+  } catch (error) {
+    showToast('error', 'Changes Not Saved', safeVehicleEscape(error.message));
+    return;
+  } finally {
+    button.disabled = false;
+  }
   closeModal();
   showToast('success', 'Vehicle Updated', 'Vehicle registration details have been saved.');
   renderVehicleManagement();

@@ -19,6 +19,13 @@ function auditDatabase() {
   pool.rollbacks = 0;
   pool.execute = async (sql, values = []) => {
     const q = sql.replace(/`/g, '').replace(/\s+/g, ' ').trim();
+    if (q.includes("REGEXP_REPLACE(UPPER(plateNumber)")) {
+      return [tables.vehicleRegistrations.filter(v => !v.activePlateKey && !v.archived_at && v.id !== values[1] &&
+        ['Approved', 'Pending'].includes(v.registrationStatus) && v.plateNumber.toUpperCase().replace(/[^A-Z0-9]/g, '') === values[0])];
+    }
+    if (q.includes('UPPER(TRIM(stickerNumber))')) {
+      return [tables.vehicleRegistrations.filter(v => v.id !== values[1] && v.stickerNumber?.trim().toUpperCase() === values[0])];
+    }
     if (q === 'SELECT id FROM amenity_availability_lock WHERE id = 1 FOR UPDATE') return [[{ id: 1 }]];
     if (q.startsWith('SELECT id FROM amenityBookings WHERE amenity = ?')) {
       return [tables.amenityBookings.filter(row => row.amenity === values[0] && row.bookingDate === values[1] &&
@@ -125,6 +132,9 @@ function auditDatabase() {
         return [column, token === '?' ? values[i++] : token === 'NULL' ? null : token === 'NOW()' ? new Date().toISOString() : token.replace(/^'|'$/g, '')];
       }));
       const primaryKey = insert[1] === 'storage_objects' ? 'object_key' : 'id';
+      if (insert[1] === 'vehicleRegistrations' && tables.vehicleRegistrations.some(v => v.activePlateKey && v.activePlateKey === row.activePlateKey)) {
+        throw Object.assign(new Error('Duplicate uq_vehicle_active_plate'), { code: 'ER_DUP_ENTRY' });
+      }
       if (tables[insert[1]].some(x => x[primaryKey] === row[primaryKey])) throw Object.assign(new Error('duplicate'), { code: 'ER_DUP_ENTRY' });
       tables[insert[1]].push(row);
       return [{ affectedRows: 1 }];
@@ -174,7 +184,7 @@ function auditDatabase() {
 }
 
 async function auditFixture(t, options = {}) {
-  const pool = auditDatabase();
+  const pool = options.pool || auditDatabase();
   const fs = require('node:fs');
   const path = require('node:path');
   const uploadDir = fs.mkdtempSync(path.join(require('node:os').tmpdir(), 'smarthood-audit-test-'));
