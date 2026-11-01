@@ -39,12 +39,12 @@ function fixture() {
     async render() { context.renderReports(); await run('reportsFinancialRequest'); } };
 }
 
-test('four semantic tabs preserve snapshots, dates, search and pagination without fetching on switches', async () => {
+test('three semantic tabs preserve snapshots, dates, search and pagination without fetching on switches', async () => {
   const f = fixture(); await f.render();
   const { run, elements, requests } = f;
   assert.equal(run('activeReportTab'), 'overview');
-  assert.equal((elements.contentArea.innerHTML.match(/role="tab"/g) || []).length, 4);
-  assert.match(elements.contentArea.innerHTML, /Financial, collection, expense, and community reports\./);
+  assert.equal((elements.contentArea.innerHTML.match(/role="tab"/g) || []).length, 3);
+  assert.doesNotMatch(elements.contentArea.innerHTML, /community|complaint/i);
   const snapshot = run('currentReportsData');
   assert.equal(snapshot.totalDue, 1200);
   assert.equal(snapshot.totalPaid, 1000.5);
@@ -57,10 +57,10 @@ test('four semantic tabs preserve snapshots, dates, search and pagination withou
   run('filterHOBalanceReport(); changeHOBalancePage(2); changeBillingCollectionPage(2); changeExpenseHistoryPage(2)');
   const before = run('JSON.stringify(getReportExportData())');
   const rows = elements.hoBalanceTableBody.innerHTML;
-  for (const tab of ['collections', 'disbursements', 'community', 'overview']) {
+  for (const tab of ['collections', 'disbursements', 'overview']) {
     run(`switchReportTab('${tab}')`);
     assert.equal(run('currentReportsData'), snapshot);
-    for (const key of ['overview', 'collections', 'disbursements', 'community']) {
+    for (const key of ['overview', 'collections', 'disbursements']) {
       assert.equal(elements['report-panel-' + key].hidden, tab !== key);
       assert.equal(elements['report-tab-' + key].attributes['aria-selected'], String(tab === key));
       assert.equal(elements['report-tab-' + key].tabIndex, tab === key ? 0 : -1);
@@ -78,17 +78,17 @@ test('four semantic tabs preserve snapshots, dates, search and pagination withou
 test('keyboard tabs wrap, support Home/End and reject unauthorized changes', async () => {
   const f = fixture(); await f.render();
   const key = (id, key) => f.context.handleReportTabKey({ target: { id: 'report-tab-' + id }, key, preventDefault() {} });
-  key('overview', 'ArrowLeft'); assert.equal(f.run('activeReportTab'), 'community'); assert.equal(f.focused(), 'report-tab-community');
-  key('community', 'ArrowRight'); assert.equal(f.run('activeReportTab'), 'overview');
-  key('overview', 'End'); assert.equal(f.run('activeReportTab'), 'community');
-  key('community', 'Home'); assert.equal(f.run('activeReportTab'), 'overview');
+  key('overview', 'ArrowLeft'); assert.equal(f.run('activeReportTab'), 'disbursements'); assert.equal(f.focused(), 'report-tab-disbursements');
+  key('disbursements', 'ArrowRight'); assert.equal(f.run('activeReportTab'), 'overview');
+  key('overview', 'End'); assert.equal(f.run('activeReportTab'), 'disbursements');
+  key('disbursements', 'Home'); assert.equal(f.run('activeReportTab'), 'overview');
   f.run("currentUser={id:'resident',role:'homeowner',permissions:['resident']}; switchReportTab('collections')");
   assert.equal(f.run('activeReportTab'), 'overview');
   const count = f.requests.length; f.context.renderReports(); assert.equal(f.requests.length, count);
   assert.equal(f.notices.at(-1)[1], 'Access Denied');
 });
 
-test('shared date changes retain the active tab and update both financial and community snapshots', async () => {
+test('shared date changes retain the active tab and update the financial snapshot', async () => {
   const f = fixture(); await f.render();
   f.run("switchReportTab('disbursements')");
   f.elements.reportsDateFilter.value = 'date';
@@ -97,7 +97,7 @@ test('shared date changes retain the active tab and update both financial and co
   assert.equal(f.run('activeReportTab'), 'disbursements');
   assert.equal(f.run('currentReportsData.expenses.totalDisbursements'), 0);
   assert.equal(f.run('currentReportsData.expenses.totalCollections'), 20);
-  assert.equal(f.run('currentReportsData.complaints.length'), 0);
+  assert.equal(f.run('currentReportsData.totalPaid'), 0);
   assert.match(f.elements.disbursementReportPanel.innerHTML, /No recorded expenses/);
   assert.match(f.elements.contentArea.innerHTML, /id="report-panel-disbursements"[^>]*tabindex="0" >/);
   f.run("switchReportTab('overview')"); assert.equal(f.run('reportsDateFilterState.date'), '2026-11-20');

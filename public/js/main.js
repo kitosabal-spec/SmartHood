@@ -1761,10 +1761,6 @@ function getReportBillingDate(billing) {
   return billing.createdAt || billing.dueDate;
 }
 
-function getReportComplaintDate(complaint) {
-  return complaint.dateFiled || complaint.createdAt || complaint.dateOfOccurrence;
-}
-
 function getDateRangeFilter(state = reportsDateFilterState) {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1847,7 +1843,6 @@ function getReportsData() {
   const payments = filterByDateRange(db.get('payments'), getReportPaymentDate, range);
   const billings = filterByDateRange(db.get('billings'), getReportBillingDate, range);
   const users = getHomeowners();
-  const complaints = filterByDateRange(db.get('complaints'), getReportComplaintDate, range);
   const activeHomeownerIds = new Set([
     ...billings.flatMap(getAssignedHomeownerIds),
     ...payments.map(payment => payment.homeownerId),
@@ -1861,13 +1856,13 @@ function getReportsData() {
   const totalOutstanding = Math.max(0, totalDue - totalPaid);
   const analysisYear = getAnalysisYear(payments, billings);
   const monthlyData = buildMonthlyRevenueData(payments, analysisYear);
-  return { range, billings, payments, users, reportUsers, complaints, approved, pending, rejected,
+  return { range, billings, payments, users, reportUsers, approved, pending, rejected,
     totalDue, totalPaid, totalOutstanding, analysisYear, monthlyData };
 }
 
 const REPORT_TABS = [
   ['overview', 'Overview'], ['collections', 'Collections'],
-  ['disbursements', 'Disbursements'], ['community', 'Community Reports'],
+  ['disbursements', 'Disbursements'],
 ];
 let activeReportTab = 'overview';
 let reportsFinancialRequest = null;
@@ -1979,7 +1974,7 @@ async function printReports() {
 
 function getReportsHeaderHTML() {
   return `  <div class="page-header">
-    <div class="page-header-left"><h2>Reports & Analytics</h2><p>Financial, collection, expense, and community reports.</p></div>
+    <div class="page-header-left"><h2>Reports & Analytics</h2><p>Financial overview, collections, and disbursements.</p></div>
     <div class="page-header-actions">
       <select class="filter-select" id="reportsExportFormat" aria-label="Report download format">
         <option value="xlsx">Excel (.xlsx)</option>
@@ -2087,53 +2082,11 @@ function getReportCollectionsHTML(data) {
 `;
 }
 
-function getReportCommunityHTML(data) {
-  const { complaints } = data;
-  return `<div class="report-community-status">    <div class="chart-card">
-      <h4>Complaint Status</h4>
-      <div class="reports-status-body">
-      <div class="donut-wrap" id="complaintDonut"></div>
-      <div class="donut-legend">
-        <div class="legend-item"><div class="legend-dot" style="background:var(--blue-500)"></div> Reviewed (${complaints.filter(c=>normalizeComplaintStatus(c.status)==='Reviewed').length})</div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--amber-500)"></div> In Progress (${complaints.filter(c=>c.status==='In Progress').length})</div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--green-600)"></div> Resolved (${complaints.filter(c=>c.status==='Resolved').length})</div>
-        <div class="legend-item"><div class="legend-dot" style="background:var(--red-600)"></div> Rejected (${complaints.filter(c=>c.status==='Rejected').length})</div>
-      </div>
-      </div>
-    </div>
-</div>
-  <div class="section-card">
-    <div class="section-card-header">
-      <div><h3>Complaint Summary</h3></div>
-    </div>
-    <div class="section-card-body no-pad">
-      <div class="table-wrapper">
-      <table class="data-table">
-        <thead><tr><th>Homeowner</th><th>Category</th><th>Date of Occurrence</th><th>Date Filed</th><th>Status</th></tr></thead>
-        <tbody>
-          ${complaints.map(c => {
-            const ho = getHomeownerById(c.homeownerId);
-            return `<tr>
-              <td>${escapeHtml(ho ? ho.name : 'Unknown')}</td>
-              <td>${complaintCategoryBadge(c.category)}</td>
-              <td>${typeof formatComplaintDate === 'function' ? formatComplaintDate(c.dateOfOccurrence || c.dateFiled) : (c.dateOfOccurrence || c.dateFiled)}</td>
-              <td>${typeof formatComplaintDate === 'function' ? formatComplaintDate(c.dateFiled) : c.dateFiled}</td>
-              <td>${complaintStatusBadge(c.status)}</td>
-            </tr>`;
-          }).join('') || '<tr><td colspan="5"><div class="no-results">No complaints on record.</div></td></tr>'}
-        </tbody>
-      </table>
-      </div>
-    </div>
-  </div>
-`;
-}
-
 function renderReports() {
   if (!canViewReports()) { showToast('error', 'Access Denied', 'You do not have access to financial reports.'); return; }
   syncHomeownerBalances();
   currentReportsData = getReportsData();
-  const { complaints, approved, pending, rejected, analysisYear, monthlyData, reportUsers } = currentReportsData;
+  const { approved, pending, rejected, analysisYear, monthlyData, reportUsers } = currentReportsData;
   const area = document.getElementById('contentArea');
   area.innerHTML = `<div class="reports-page">
     ${getReportsHeaderHTML()}
@@ -2144,7 +2097,6 @@ function renderReports() {
     <section class="report-tab-panel" role="tabpanel" id="report-panel-overview" aria-labelledby="report-tab-overview" tabindex="0" ${activeReportTab !== 'overview' ? 'hidden' : ''}>${getReportOverviewHTML(currentReportsData)}</section>
     <section class="report-tab-panel" role="tabpanel" id="report-panel-collections" aria-labelledby="report-tab-collections" tabindex="0" ${activeReportTab !== 'collections' ? 'hidden' : ''}>${getReportCollectionsHTML(currentReportsData)}</section>
     <section class="report-tab-panel" role="tabpanel" id="report-panel-disbursements" aria-labelledby="report-tab-disbursements" tabindex="0" ${activeReportTab !== 'disbursements' ? 'hidden' : ''}><div id="disbursementReportPanel" aria-live="polite"></div></section>
-    <section class="report-tab-panel" role="tabpanel" id="report-panel-community" aria-labelledby="report-tab-community" tabindex="0" ${activeReportTab !== 'community' ? 'hidden' : ''}>${getReportCommunityHTML(currentReportsData)}</section>
   </div>`;
   if (monthlyData.some(month => month.v > 0)) renderMonthlyBarChart('reportBarChart', monthlyData, analysisYear);
   else document.getElementById('reportBarChart').innerHTML = '<p class="report-empty">No approved collections in this analysis year for the selected period.</p>';
@@ -2157,16 +2109,6 @@ function renderReports() {
   ], total, 'Payments', total);
 
   else document.getElementById('reportDonut').innerHTML = '<p class="report-empty">No payments in this period.</p>';
-
-  const cmpTotal = complaints.length;
-  if (cmpTotal) renderDonut('complaintDonut', [
-    { value: complaints.filter(c=>normalizeComplaintStatus(c.status)==='Reviewed').length, color: 'var(--blue-500)' },
-    { value: complaints.filter(c=>c.status==='In Progress').length, color: 'var(--amber-500)' },
-    { value: complaints.filter(c=>c.status==='Resolved').length,    color: 'var(--green-600)' },
-    { value: complaints.filter(c=>c.status==='Rejected').length,    color: 'var(--red-600)' },
-  ], cmpTotal, 'Complaints', complaints.length);
-
-  else document.getElementById('complaintDonut').innerHTML = '<p class="report-empty">No complaints in this period.</p>';
 
   reportsFinancialRequest = typeof renderDisbursementReport === 'function' ? renderDisbursementReport(currentReportsData.range) : null;
   billingCollectionPaginationState.page = 1;

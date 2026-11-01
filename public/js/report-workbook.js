@@ -119,7 +119,7 @@ function buildReportsWorkbook(ExcelJS, data, logo = null) {
   ].forEach((row, i) => tableRow(summary, row, { currency: [2], stripe: i % 2 === 1 }));
   mergedLine(summary, 'Scope and counting notes', { fill: colors.dark, bold: true, height: 26 });
   [
-    'Date selection matches the page’s browser-local boundaries: billings use createdAt, then dueDate; payments use reviewedAt, payment_date, submittedAt, then createdAt; complaints use dateFiled, createdAt, then dateOfOccurrence. Only the generation timestamp is converted to Asia/Manila.',
+    'Date selection matches the page’s browser-local boundaries: billings use createdAt, then dueDate; payments use reviewedAt, payment_date, submittedAt, then createdAt. Only the generation timestamp is converted to Asia/Manila.',
     'Monthly allocation uses monthly_dues_month first, otherwise payment_date, reviewedAt, then submittedAt. The analysis year is the page’s derived year (' + data.analysisYear + '), not a different dashboard year selection. The selected date period is applied before allocation.',
     'Partial payments contribute their approved amount but remain not fully paid until the existing payment-summary helper marks the account paid. Billing-account totals count the same homeowner again for each billing or advance month; they are not unique homeowner counts.',
     `Homeowner Balances filters — Search: ${data.balanceFilters.search || '(none)'}; Status: ${data.balanceFilters.status === 'due' ? 'With Balance' : data.balanceFilters.status === 'clear' ? 'Clear' : 'All Statuses'}. These filters affect only that worksheet and its reconciliation difference.`,
@@ -142,13 +142,6 @@ function buildReportsWorkbook(ExcelJS, data, logo = null) {
   sheetTable('Payment Status', ['Payment Status', 'Payment Count', 'Payment Amount (PHP)'], [30, 20, 40], paymentRows, [3],
     'Counts match the page legend. Pending and rejected amounts are shown for review only and are not collected revenue.',
     ['Total (displayed statuses)', paymentRows.reduce((sum, row) => sum + row[1], 0), paymentRows.reduce((sum, row) => sum + row[2], 0)]);
-
-  const complaintRows = ['Reviewed', 'In Progress', 'Resolved', 'Rejected'].map(status => [status,
-    data.complaints.filter(c => status === 'Reviewed' ? normalizeComplaintStatus(c.status) === status : c.status === status).length]);
-  const displayedComplaints = complaintRows.reduce((sum, row) => sum + row[1], 0);
-  sheetTable('Complaint Status', ['Complaint Status', 'Complaint Count'], [46, 44], complaintRows, [],
-    `Counts match the four page legend statuses. The page donut center counts all ${data.complaints.length} filtered complaints; ${data.complaints.length - displayedComplaints} are outside these displayed statuses.`,
-    ['Total (displayed statuses)', displayedComplaints]);
 
   sheetTable('Homeowner Balances', ['Homeowner Name', 'Homeowner ID', 'Block', 'Lot', 'Balance (PHP)', 'Clearance Status'], [34, 24, 20, 20, 23, 23], data.balanceRows, [5],
     `Search: ${data.balanceFilters.search || '(none)'} | Status: ${data.balanceFilters.status === 'due' ? 'With Balance' : data.balanceFilters.status === 'clear' ? 'Clear' : 'All Statuses'} | All ${data.balanceRows.length} matching homeowners. Balances and clearance use the selected period.`,

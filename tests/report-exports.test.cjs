@@ -127,7 +127,7 @@ async function main() {
   const buffer = await workbook.xlsx.writeBuffer();
   const copy = new ExcelJS.Workbook();
   await copy.xlsx.load(buffer);
-  assert.deepEqual(copy.worksheets.map(s => s.name), ['Summary', 'Financial Collections', 'Monthly Collections', 'Payment Status', 'Complaint Status', 'Homeowner Balances']);
+  assert.deepEqual(copy.worksheets.map(s => s.name), ['Summary', 'Financial Collections', 'Monthly Collections', 'Payment Status', 'Homeowner Balances']);
   assert.equal(copy.getWorksheet('Financial Collections').getCell('B8').value, '0001234567890123456789');
   assert.equal(copy.getWorksheet('Financial Collections').getCell('H8').value, 'No due date');
   assert.equal(copy.getWorksheet('Homeowner Balances').getCell('A8').value, '=1+1');
@@ -137,7 +137,6 @@ async function main() {
   assert.equal(copy.getWorksheet('Summary').getCell('B11').numFmt, '#,##0');
   assert.match(copy.getWorksheet('Summary').getCell('A5').value, /08:00:00 AM \(Asia\/Manila\)/);
   assert.deepEqual(copy.getWorksheet('Payment Status').getRow(8).values.slice(1), ['Approved', 7, 285]);
-  assert.match(copy.getWorksheet('Complaint Status').getCell('A6').value, /1 are outside/);
   for (const sheet of copy.worksheets) {
     assert.equal(sheet.views[0].ySplit, 7);
     assert.equal(sheet.pageSetup.printTitlesRow, '7:7');

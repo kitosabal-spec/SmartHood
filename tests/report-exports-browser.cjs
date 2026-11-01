@@ -70,7 +70,7 @@ const server = http.createServer((req, res) => {
     const excelPath = path.join(output, 'browser-' + download.suggestedFilename());
     await download.saveAs(excelPath);
     const workbook = await new ExcelJS.Workbook().xlsx.readFile(excelPath);
-    assert.equal(workbook.worksheets.length, 6);
+    assert.equal(workbook.worksheets.length, 5);
     assert.equal(workbook.getWorksheet('Homeowner Balances').getCell('A8').value, '=1+1');
     assert.equal(workbook.getWorksheet('Homeowner Balances').getCell('E9').value, 30);
     assert.match(workbook.getWorksheet('Homeowner Balances').getCell('E9').numFmt, /₱/);

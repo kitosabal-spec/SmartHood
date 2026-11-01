@@ -113,7 +113,7 @@ fs.mkdirSync(output, { recursive: true });
       switchReportTab('collections');
       document.getElementById('hoBalanceSearch').value='Homeowner'; filterHOBalanceReport(); changeHOBalancePage(2); changeBillingCollectionPage(2);
       const balanceRows=document.getElementById('hoBalanceTableBody').innerHTML;
-      for(const id of ['disbursements','community','overview','collections']) {
+      for(const id of ['disbursements','overview','collections']) {
         switchReportTab(id);
         check(document.querySelectorAll('.report-tab-panel:not([hidden])').length===1,'Only active panel visible');
         check(currentReportsData===data,'Snapshot preserved');
@@ -124,9 +124,8 @@ fs.mkdirSync(output, { recursive: true });
       document.getElementById('report-tab-collections').focus();
       document.getElementById('report-tab-collections').dispatchEvent(new KeyboardEvent('keydown',{key:'ArrowRight',bubbles:true}));
       check(document.activeElement.id==='report-tab-disbursements' && activeReportTab==='disbursements','Keyboard tabs');
-      switchReportTab('community'); check(document.getElementById('report-panel-community').textContent.includes('Reviewed (1)'),'Complaint normalization');
       reportsDateFilterState={preset:'date',date:'2026-11-20'}; renderReports(); await reportsFinancialRequest;
-      check(activeReportTab==='community' && currentReportsData.complaints.length===0 && currentReportsData.expenses.totalDisbursements===0,'Shared period updates active tab');
+      check(activeReportTab==='disbursements' && currentReportsData.expenses.totalDisbursements===0,'Shared period updates active tab');
       reportsDateFilterState={preset:'all',date:'',startDate:'',endDate:''}; renderReports(); await reportsFinancialRequest;
       const originalPrint=window.print; let printCount=0;
       window.print=()=>{printCount++;check(document.querySelectorAll('#billingCollectionTableBody tr').length===12,'Print full filtered billing dataset');};
@@ -134,15 +133,15 @@ fs.mkdirSync(output, { recursive: true });
       check(printCount===1 && billingCollectionPaginationState.page===2,'Print restores page'); window.print=originalPrint;
       window.reportExcelBlobs=[]; downloadReportFile=(name,blob)=>reportExcelBlobs.push({name,blob});
       loadReportWorkbookLogo=async()=>null;
-      for(const id of ['overview','collections','disbursements','community']) {switchReportTab(id); await exportReportsExcel();}
-      check(reportExcelBlobs.length===4,'Excel generated from every active tab');
+      for(const id of ['overview','collections','disbursements']) {switchReportTab(id); await exportReportsExcel();}
+      check(reportExcelBlobs.length===3,'Excel generated from every active tab');
       window.reportExcelArtifacts=await Promise.all(reportExcelBlobs.map(async item=>({name:item.name,base64:btoa(String.fromCharCode(...new Uint8Array(await item.blob.arrayBuffer())))})));
       switchReportTab('overview');
     })()`);
     const ExcelJS = require('exceljs');
     for (const artifact of await evaluate('reportExcelArtifacts')) {
       const book = new ExcelJS.Workbook(); await book.xlsx.load(Buffer.from(artifact.base64, 'base64'));
-      assert.equal(book.worksheets.length, 9);
+      assert.equal(book.worksheets.length, 8);
       assert.equal(book.getWorksheet('Financial Summary').getCell('B10').value, 3399.75);
       assert.equal(book.getWorksheet('Disbursements').getCell('D8').value, 1600.25);
       assert.equal(book.getWorksheet('Financial Collections').getCell('A19').value, 'Bill 11');
@@ -150,13 +149,13 @@ fs.mkdirSync(output, { recursive: true });
     await evaluate("document.getElementById('toastContainer').innerHTML=''; document.documentElement.setAttribute('data-theme','light'); window.scrollTo({top:0,behavior:'instant'})");
     await new Promise(resolve=>setTimeout(resolve,250));
     await screenshot('reports-overview-desktop.png');
-    for (const tab of ['collections','disbursements','community']) {
+    for (const tab of ['collections','disbursements']) {
       await evaluate(`switchReportTab('${tab}'); window.scrollTo({top:0,behavior:'instant'})`);
       await new Promise(resolve=>setTimeout(resolve,200)); await screenshot('reports-'+tab+'-desktop.png');
     }
     for (const width of [820,390]) {
       await send('Emulation.setDeviceMetricsOverride',{width,height:1000,deviceScaleFactor:1,mobile:width===390},sessionId);
-      for (const tab of ['overview','collections','disbursements','community']) {
+      for (const tab of ['overview','collections','disbursements']) {
         await evaluate(`switchReportTab('${tab}'); window.scrollTo({top:0,behavior:'instant'})`);
         assert.equal(await evaluate("document.documentElement.scrollWidth <= window.innerWidth"),true,tab+' overflows at '+width);
         await new Promise(resolve=>setTimeout(resolve,200)); await screenshot('reports-'+tab+'-'+width+'.png');
@@ -189,7 +188,7 @@ fs.mkdirSync(output, { recursive: true });
       check(!document.querySelector('#expenseRows button'),'Viewer has no edit or void actions');
     })()`);
     fs.writeFileSync(path.join(output, 'csv-results.json'), JSON.stringify(result.downloads, null, 2));
-    console.log('PASS: disbursement workflow; four report tabs; keyboard navigation; preserved dates/search/pagination; no tab-switch fetches; full filtered printing; real nine-sheet Excel generation from all tabs; CSV exports; permissions; desktop/tablet/mobile and dark-mode screenshots.');
+    console.log('PASS: disbursement workflow; three report tabs; keyboard navigation; preserved dates/search/pagination; no tab-switch fetches; full filtered printing; real eight-sheet Excel generation from all tabs; CSV exports; permissions; desktop/tablet/mobile and dark-mode screenshots.');
     console.log('Screenshots: ' + output);
     await send('Browser.close');
   } finally {
