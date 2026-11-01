@@ -155,8 +155,6 @@ function getDisbursementReportHTML(data) {
   return `<div class="report-summary-grid report-expense-cards">
     ${reportSummaryCard('Total Disbursements', expenseMoney(data.totalDisbursements), 'ico-wallet')}
     ${reportSummaryCard('Recorded Disbursements', data.records.length.toLocaleString(), 'ico-file')}
-    </div>
-    <div class="report-expense-analysis">
       <div class="section-card"><div class="section-card-header"><h3>Expenses by Category</h3></div>
         <div class="table-wrapper"><table class="data-table"><thead><tr><th>Expense Category</th><th>Amount (PHP)</th></tr></thead><tbody>
         ${data.categories.map(([category, amount]) => `<tr><td>${escapeHtml(category)}</td><td class="report-money">${expenseMoney(amount)}</td></tr>`).join('') || '<tr><td colspan="2"><div class="no-results">No recorded expenses in this reporting period.</div></td></tr>'}

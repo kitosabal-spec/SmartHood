@@ -27,14 +27,14 @@
 .report-tabs [role="tab"]:focus-visible, .report-tab-panel:focus-visible { outline: 2px solid var(--teal-500); outline-offset: -2px; }
 .reports-page .report-tab-panel { display: grid; gap: 20px; min-width: 0; animation: report-panel-enter .16s ease-out; }
 .reports-page .report-tab-panel[hidden] { display: none !important; }
-.report-tab-panel > *, .report-overview-detail > *, .report-expense-analysis > * { min-width: 0; }
+.report-tab-panel > *, .report-overview-detail > *, .report-expense-cards > * { min-width: 0; }
 .reports-page .report-overview-cards { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 .reports-page .report-summary-item { min-height: 112px; padding: 18px; }
 .reports-page .report-summary-item .r-val { font-size: clamp(1.15rem, 1.6vw, 1.65rem); }
 .reports-page .report-value-collected { color: var(--green-600); }
 .reports-page .report-value-net { color: var(--teal-600); }
 [data-theme="dark"] .reports-page .report-value-net { color: var(--teal-400); }
-.report-overview-detail, .report-expense-analysis { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+.report-overview-detail { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); gap: 20px; align-items: start; }
 .report-comparison { display: grid; gap: 24px; }
 .report-comparison-row > div:first-child { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 10px; font-size: .85rem; }
 .report-comparison-track { height: 18px; border-radius: var(--radius-sm); background: var(--border); overflow: hidden; }
@@ -56,6 +56,17 @@
 .reports-page .donut-wrap:has(.report-empty) { width: auto; height: auto; }
 .reports-page .reports-status-body:has(.report-empty) { grid-template-columns: 1fr; }
 .reports-page .report-expense-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@media screen {
+  .reports-page .report-expense-cards { grid-auto-rows: 1fr; }
+  /* Let the summary cards set the row height while longer breakdowns scroll. */
+  .report-expense-cards > .section-card, .report-expense-cards > .chart-card {
+    contain: size;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr);
+  }
+  .report-expense-cards .table-wrapper { overflow: auto; }
+  .report-expense-cards .section-card-header { padding-block: 8px; }
+}
 .reports-page #disbursementReportPanel { gap: 20px; }
 .reports-page .expense-chart { max-height: 260px; overflow-y: auto; padding-right: 4px; }
 .reports-page .expense-chart-row { grid-template-columns: 76px minmax(24px, 1fr) minmax(90px, auto); gap: 12px; font-size: .8rem; }
@@ -63,15 +74,15 @@
 .reports-page .data-table td { overflow-wrap: anywhere; }
 .reports-page .report-money, .reports-page #expenseHistoryRows td:last-child { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .reports-page #report-panel-disbursements th:last-child { text-align: right; }
-.reports-page .report-expense-analysis .data-table { min-width: 0; table-layout: fixed; }
-.reports-page .report-expense-analysis th:first-child { width: 60%; }
-.reports-page .report-expense-analysis td:last-child { white-space: normal; }
+.reports-page .report-expense-cards .data-table { min-width: 0; table-layout: fixed; }
+.reports-page .report-expense-cards th:first-child { width: 60%; }
+.reports-page .report-expense-cards td:last-child { white-space: normal; }
 .report-print-context { display: none; }
 @keyframes report-panel-enter { from { opacity: .55; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .reports-page .report-tab-panel { animation: none; } .report-tabs [role="tab"] { transition: none; } }
 @media (max-width: 1150px) {
   .reports-page .report-overview-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .report-overview-detail, .report-expense-analysis { grid-template-columns: minmax(0, 1fr); }
+  .report-overview-detail { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 850px) {
   .reports-page .reports-analytics { grid-template-columns: minmax(0, 1fr); }
@@ -87,9 +98,10 @@
   .reports-page .expense-chart-row strong { font-size: .78rem; }
   .reports-page .chart-bars { height: 170px; }
   .report-overview-detail { gap: 16px; }
+  .reports-page .report-expense-cards { grid-template-columns: minmax(0, 1fr); }
 }
 @media (max-width: 360px) {
-  .reports-page .report-overview-cards, .reports-page .report-expense-cards { grid-template-columns: minmax(0, 1fr); }
+  .reports-page .report-overview-cards { grid-template-columns: minmax(0, 1fr); }
 }
 @media print {
   .reports-page .report-tabs, .reports-page .table-pagination-wrapper, .reports-page .filters-row { display: none !important; }
@@ -98,7 +110,7 @@
   .reports-page .report-tab-panel[hidden] { display: none !important; }
   .reports-page .expense-chart { max-height: none; overflow: visible; }
   .reports-page .report-overview-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-  .reports-page .report-overview-detail, .reports-page .report-expense-analysis { grid-template-columns: 1fr; }
+  .reports-page .report-overview-detail, .reports-page .report-expense-cards { grid-template-columns: 1fr; }
   .reports-page .data-table { min-width: 0; width: 100%; }
   .reports-page .section-card { break-inside: auto; }
   .reports-page .section-card-header { break-after: avoid; }
