@@ -90,8 +90,8 @@ test('reaction API uses sessions, persists state, prevents duplicates, and clean
 });
 
 test('reaction schema enforces one account heart per announcement', () => {
-  const source = fs.readFileSync(path.join(__dirname, '../src/app.js'), 'utf8');
-  assert.match(source, /CREATE TABLE IF NOT EXISTS announcement_reactions[\s\S]*?UNIQUE KEY announcement_reaction_account \(announcement_id, user_id\)/);
+  const source = fs.readFileSync(path.join(__dirname, '../migrations/001_create_schema_migrations.js'), 'utf8');
+  assert.match(source, /CREATE TABLE IF NOT EXISTS announcement_reactions[\s\S]*?PRIMARY KEY \(announcement_id, user_id\)/);
 });
 
 test('inactive and unauthorized accounts cannot heart announcements', async t => {
