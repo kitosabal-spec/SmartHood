@@ -101,7 +101,7 @@ function createAuthSecurityRepository(getPool) {
 
     // Event insertion and account/event-type claim commit together. A second
     // instance, IP, username alias, or limiter cannot claim the same alert.
-    async claimEvent({ eventKey, userId, eventType, emailEnabled, cooldownMs }) {
+    async claimEvent({ eventKey, userId, eventType, emailEnabled, cooldownMs, enqueue }) {
       return transaction(getPool, async connection => {
         const initialStatus = !userId ? 'no_account' : emailEnabled ? 'suppressed' : 'disabled';
         const [insert] = await connection.execute(
@@ -122,6 +122,10 @@ function createAuthSecurityRepository(getPool) {
         await connection.execute(
           "UPDATE auth_security_events SET email_status = 'pending' WHERE event_key = ?", [eventKey]
         );
+        if (enqueue) {
+          await enqueue(connection);
+          await connection.execute('UPDATE auth_security_events SET email_status = ? WHERE event_key = ?', ['queued', eventKey]);
+        }
         return true;
       });
     },

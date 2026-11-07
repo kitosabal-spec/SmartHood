@@ -94,7 +94,7 @@ function renderEmail({ homeownerName, title, message, details = [], actionPath =
 </body></html>`;
 }
 
-async function sendEmail({ to, homeownerName, subject, title, message, details, actionPath, actionLabel }) {
+async function sendEmail({ to, homeownerName, subject, title, message, details, actionPath, actionLabel, messageId }) {
   const recipient = cleanHeader(to);
   if (!recipient) throw new Error('A recipient email address is required.');
   const safeSubject = cleanHeader(subject || title);
@@ -102,6 +102,7 @@ async function sendEmail({ to, homeownerName, subject, title, message, details, 
   const baseUrl = String(process.env.APP_BASE_URL || '').replace(/\/$/, '');
   const actionUrl = baseUrl && actionPath ? `${baseUrl}/${String(actionPath).replace(/^\//, '')}` : baseUrl;
   const info = await getTransporter().sendMail({
+    messageId,
     from: process.env.EMAIL_FROM || `${appName} <no-reply@example.invalid>`,
     replyTo: process.env.EMAIL_REPLY_TO || undefined,
     to: recipient,

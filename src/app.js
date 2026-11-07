@@ -22,7 +22,8 @@ const {
   PRIVATE_QRCODE_UPLOAD_DIR,
 } = require('./config/paths');
 const asyncHandler = require('./middleware/asyncHandler');
-const { isEmailConfigured, sendEmail } = require('./services/emailService');
+const { isEmailConfigured, sendEmail: deliverEmail } = require('./services/emailService');
+const { createEmailQueue } = require('./services/emailQueue');
 const { ensureUploadDirectories } = require('./services/uploadService');
 const { createStorageService, isObjectKey, permanentReference, presentCommunity } = require('./services/storageService');
 const { createHealthController } = require('./controllers/healthController');
@@ -49,6 +50,9 @@ const vehicleService = createVehicleService({ get, saveRecord, createServerNotif
 const { AUDITED_TABLES, changeSummary, createAuditService } = require('./services/auditService');
 const audit = createAuditService({ getPool: () => db, resolveActor: getRequester });
 const auditedHandler = audit.handler;
+const emailQueue = createEmailQueue({ getPool: () => db,
+  currentConnection: () => audit.current()?.connection, deliver: deliverEmail, isEnabled: isEmailConfigured });
+const sendEmail = (message, options) => emailQueue.enqueue(message, options);
 const storage = createStorageService({ env: process.env, audit, metadata: entry => run(
   'INSERT INTO storage_objects (object_key, provider, original_name, mime_type, size_bytes) VALUES (?, ?, ?, ?, ?)',
   [entry.key, entry.provider, entry.originalname, entry.mimetype, entry.size]
@@ -83,7 +87,7 @@ const authSecurityRepository = createAuthSecurityRepository(() => db);
 const loginRateLimits = createLoginRateLimits({
   getPool: () => db,
   config: loginSecurityConfig,
-  onRestriction: createLoginSecurityAlerts({ repository: authSecurityRepository, findUser: findLoginUser, config: loginSecurityConfig }),
+  onRestriction: createLoginSecurityAlerts({ repository: authSecurityRepository, findUser: findLoginUser, config: loginSecurityConfig, deliver: sendEmail }),
   forgotPasswordResponse: PASSWORD_RESET_RESPONSE,
 });
 // Unknown accounts perform the same bcrypt work as an incorrect password.
@@ -2991,32 +2995,31 @@ app.post('/api/forgot-password', loginRateLimits.forgotPassword, asyncHandler(as
     const token = crypto.randomBytes(32).toString('hex');
     const tokenHash = hashPasswordResetToken(token);
     const expiresAt = new Date(Date.now() + PASSWORD_RESET_TTL_MS);
-    const resetRequest = await run(
-      `UPDATE users SET reset_token_hash = ?, reset_token_expires_at = ? WHERE id = ?
-        AND LOWER(TRIM(email)) = ? AND (role <> 'admin' OR admin_email_verified_at IS NOT NULL)`,
-      [tokenHash, expiresAt, user.id, email]
-    );
-    // An email verification may have committed after the lookup. Never create
-    // a usable reset token for a retired address in that race.
-    if (resetRequest.affectedRows !== 1) return res.json({ ok: true, message: PASSWORD_RESET_RESPONSE });
-
     try {
-      await sendEmail({
-        to: user.email,
-        homeownerName: user.homeowner_name || user.name || user.username || 'SmartHood user',
-        subject: 'Reset your SmartHood password',
-        title: 'Reset your password',
-        message: 'We received a request to reset your SmartHood password. This secure link expires in 15 minutes. If you did not request this, you can ignore this email.',
-        details: [{ label: 'Link expires', value: '15 minutes after this email was requested' }],
-        actionPath: `?reset_token=${encodeURIComponent(token)}#reset-password`,
-        actionLabel: 'Reset password',
+      await audit.transaction(req, async () => {
+        const resetRequest = await run(
+          `UPDATE users SET reset_token_hash = ?, reset_token_expires_at = ? WHERE id = ?
+            AND LOWER(TRIM(email)) = ? AND (role <> 'admin' OR admin_email_verified_at IS NOT NULL)`,
+          [tokenHash, expiresAt, user.id, email]
+        );
+        // An email verification may have committed after the lookup. Never create
+        // a usable reset token for a retired address in that race.
+        if (resetRequest.affectedRows !== 1) return;
+
+        await sendEmail({
+          to: user.email,
+          homeownerName: user.homeowner_name || user.name || user.username || 'SmartHood user',
+          subject: 'Reset your SmartHood password',
+          title: 'Reset your password',
+          message: 'We received a request to reset your SmartHood password. This secure link expires in 15 minutes. If you did not request this, you can ignore this email.',
+          details: [{ label: 'Link expires', value: '15 minutes after this email was requested' }],
+          actionPath: `?reset_token=${encodeURIComponent(token)}#reset-password`,
+          actionLabel: 'Reset password',
+        }, { guard: { kind: 'reset', userId: user.id, hash: tokenHash, email: user.email } });
       });
-    } catch (error) {
-      await run(
-        'UPDATE users SET reset_token_hash = NULL, reset_token_expires_at = NULL WHERE id = ? AND reset_token_hash = ?',
-        [user.id, tokenHash]
-      );
-      console.error(`Password reset email delivery failed for user ${user.id}:`, error.message);
+    } catch {
+      // Preserve the non-enumerating response; the token and job rolled back.
+      console.error('Password reset email could not be queued.');
     }
   }
 
@@ -3605,14 +3608,7 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
     );
     const billingStatus = await refreshBillingPaymentStatus(connection, billing);
     await recordAuditLog(req, { table: 'payments', id: paymentRecord.id, operation: 'manually recorded and approved', summary: `amount: ${amount}; billing: ${billing.id}; billing status: ${billingStatus}` }, connection);
-    await connection.commit();
-
     const billingLabel = billing.title || 'Billing';
-    await createServerNotification(
-      'Payment Recorded',
-      `A ${paymentMethod} payment of ₱${amount.toLocaleString()} for "${billingLabel}" was recorded by the HOA office and approved.`,
-      { userIds: [homeownerId] }
-    );
     await emailHomeowners([homeownerId], () => ({
       subject: 'SmartHood: Payment recorded and approved',
       title: 'Payment Recorded',
@@ -3624,7 +3620,13 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
         { label: 'Payment date', value: paymentDate },
         refNum ? { label: 'Reference', value: refNum } : null,
       ].filter(Boolean),
-    }));
+    }), connection);
+    await connection.commit();
+    await createServerNotification(
+      'Payment Recorded',
+      `A ${paymentMethod} payment of ₱${amount.toLocaleString()} for "${billingLabel}" was recorded by the HOA office and approved.`,
+      { userIds: [homeownerId] }
+    );
 
     res.status(201).json({
       ok: true,
@@ -4059,6 +4061,16 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
     );
     if (billing) billingSummary.status = await refreshBillingPaymentStatus(connection, billing);
     await recordAuditLog(req, { table: 'payments', id: payment.id, operation: 'approved', summary: `amount: ${Number(payment.amount)}; billing: ${updatedBillingId || '(advance dues)'}` }, connection);
+    await emailHomeowners([payment.homeownerId], () => ({
+      subject: 'SmartHood: Payment approved',
+      title: 'Payment Approved',
+      message: 'Your submitted payment has been verified and approved.',
+      details: [
+        { label: 'Billing', value: billing?.title || (payment.monthly_dues_month ? `Monthly Dues - ${formatMonthYearDisplay(payment.monthly_dues_month)}` : 'Billing') },
+        { label: 'Amount', value: moneyDisplay(payment.amount) },
+        payment.refNum ? { label: 'Reference', value: payment.refNum } : null,
+      ].filter(Boolean),
+    }), connection);
     await connection.commit();
   } catch (error) {
     await connection.rollback().catch(() => {});
@@ -4082,16 +4094,6 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
     `Your GCash payment of ₱${Number(payment.amount).toLocaleString()} for "${billTitle}" has been verified and approved.`,
     { userIds: [payment.homeownerId] }
   );
-  await emailHomeowners([payment.homeownerId], () => ({
-    subject: 'SmartHood: Payment approved',
-    title: 'Payment Approved',
-    message: 'Your submitted payment has been verified and approved.',
-    details: [
-      { label: 'Billing', value: billTitle },
-      { label: 'Amount', value: moneyDisplay(payment.amount) },
-      payment.refNum ? { label: 'Reference', value: payment.refNum } : null,
-    ].filter(Boolean),
-  }));
 
   res.json({
     ok: true,
@@ -5006,11 +5008,12 @@ const IMPORTANT_STATUS_FIELDS = {
   lostFound: ['status'],
 };
 
-async function getHomeownerEmailRecipients(homeownerIds) {
+async function getHomeownerEmailRecipients(homeownerIds, connection) {
   const ids = [...new Set((homeownerIds || []).map(id => String(id || '').trim()).filter(Boolean))];
   if (!ids.length) return [];
   const placeholders = ids.map(() => '?').join(', ');
-  return all(
+  const query = connection ? async (sql, args) => (await connection.execute(sql, args))[0] : all;
+  return query(
     `SELECT u.homeowner_id AS homeownerId, u.email, h.name
        FROM users u
        JOIN homeowners h ON h.id = u.homeowner_id
@@ -5023,39 +5026,15 @@ async function getHomeownerEmailRecipients(homeownerIds) {
   );
 }
 
-// Email is deliberately best-effort after the business write succeeds. A mail
-// provider outage must not roll back or misreport a valid HOA transaction.
-async function emailHomeowners(homeownerIds, buildEmail) {
-  if (audit.current()) {
-    audit.afterCommit(() => emailHomeowners(homeownerIds, buildEmail));
-    return { queued: true };
+// Store intent with the business write; the worker sees only committed jobs.
+async function emailHomeowners(homeownerIds, buildEmail, connection) {
+  if (!isEmailConfigured()) return { queued: 0, skipped: true };
+  const recipients = await getHomeownerEmailRecipients(homeownerIds, connection);
+  for (const recipient of recipients) {
+    await sendEmail({ ...(buildEmail(recipient) || {}), to: recipient.email,
+      homeownerName: recipient.name }, { connection });
   }
-  if (!isEmailConfigured()) return { sent: 0, skipped: true, failed: 0 };
-  try {
-    const recipients = await getHomeownerEmailRecipients(homeownerIds);
-    let sent = 0;
-    let failed = 0;
-    const batchSize = 5;
-    for (let index = 0; index < recipients.length; index += batchSize) {
-      const batch = recipients.slice(index, index + batchSize);
-      const results = await Promise.allSettled(batch.map(recipient => {
-        const email = buildEmail(recipient) || {};
-        return sendEmail({ ...email, to: recipient.email, homeownerName: recipient.name });
-      }));
-      results.forEach((result, resultIndex) => {
-        if (result.status === 'fulfilled') {
-          sent += 1;
-        } else {
-          failed += 1;
-          console.error(`Email delivery failed for homeowner ${batch[resultIndex].homeownerId}:`, result.reason?.message || result.reason);
-        }
-      });
-    }
-    return { sent, skipped: false, failed };
-  } catch (error) {
-    console.error('Could not prepare homeowner email notifications:', error.message);
-    return { sent: 0, skipped: false, failed: 1 };
-  }
+  return { queued: recipients.length, skipped: false };
 }
 
 function moneyDisplay(value) {
@@ -5747,7 +5726,8 @@ async function initializeApp() {
   });
   await pruneSecurityRecords();
   setInterval(pruneSecurityRecords, 60 * 60 * 1000).unref();
+  emailQueue.start();
   return app;
 }
 
-module.exports = { app, initializeApp, isEmailConfigured };
+module.exports = { app, initializeApp, isEmailConfigured, emailQueue };

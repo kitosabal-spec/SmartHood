@@ -35,10 +35,10 @@ function createAdminEmailService({ get, run, record, sendEmail, isEmailConfigure
       const result = await sendEmail({ to: email, homeownerName: user.name,
         subject: 'Verify your SmartHood administrator email', title: 'Verify your email address',
         message: 'Confirm this address to use it for administrator sign-in and password resets. This link expires in 30 minutes. Your current login remains unchanged until you confirm. If you did not request this, ignore this message.',
-        actionPath: `?admin_email_token=${token}#verify-admin-email`, actionLabel: 'Verify email' });
+        actionPath: `?admin_email_token=${token}#verify-admin-email`, actionLabel: 'Verify email' }, { guard: { kind: 'verification', userId: user.id, hash: digest(token), email } });
       if (result?.rejected?.length) throw new Error('Recipient rejected');
     } catch { reject(503, 'Verification email could not be sent. Your current email has not changed. Please try again.'); }
-    return { ok: true, message: 'Verification email sent. Open the link within 30 minutes. Your current email remains unchanged until verification succeeds.' };
+    return { ok: true, message: 'Verification email queued. Open the link within 30 minutes. Your current email remains unchanged until verification succeeds.' };
   }
 
   async function verify(token) {

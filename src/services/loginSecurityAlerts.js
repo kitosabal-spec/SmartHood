@@ -12,18 +12,14 @@ function createLoginSecurityAlerts({ repository, findUser, config, deliver = sen
       const user = identifierRestricted ? await findUser(identifier) : null;
       // Keep unmatched identifiers separate from matched account events.
       eventKey = crypto.createHash('sha256').update(`${eventKey}\0${user?.id || ''}`).digest('hex');
-      const claimed = await repository.claimEvent({
+      await repository.claimEvent({
         eventKey,
         userId: user?.id,
         eventType,
         emailEnabled: config.emailEnabled && identifierRestricted && Boolean(user?.email) &&
           (user.role !== 'admin' || Boolean(user.admin_email_verified_at)),
         cooldownMs: config.cooldownMs,
-      });
-      if (!claimed) return;
-      let status = 'sent';
-      try {
-        await deliver({
+        enqueue: connection => deliver({
           to: user.email,
           homeownerName: user.name || user.username || 'SmartHood user',
           subject: 'Security Alert: Multiple Failed SmartHood Login Attempts',
@@ -35,13 +31,8 @@ function createLoginSecurityAlerts({ repository, findUser, config, deliver = sen
               timeZone: 'Asia/Manila', dateStyle: 'full', timeStyle: 'long',
             }).format(new Date()),
           }],
-        });
-      } catch {
-        status = 'failed';
-        // SMTP errors can contain addresses/credentials: never log the error.
-        logger.error('Login security email delivery failed.');
-      }
-      await repository.markEmail(eventKey, status);
+        }, { connection }),
+      });
     } catch {
       logger.error('Login security event processing failed.');
     }

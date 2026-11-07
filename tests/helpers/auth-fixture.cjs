@@ -30,6 +30,10 @@ function database() {
     if (state.fail) throw new Error('Database unavailable: secret connection string');
     const q = sql.replace(/\s+/g, ' ').trim();
     const now = Date.now();
+    if (q.startsWith('INSERT INTO email_outbox')) {
+      (state.outbox ||= []).push({ id: values[0], payload: values[1] });
+      return [{ affectedRows: 1 }];
+    }
     if (q.startsWith('INSERT INTO auditLog')) {
       (state.auditLog ||= []).push({ id: values[0], action: values[1], adminId: values[2], timestamp: values[3] });
       return [{ affectedRows: 1 }];
@@ -141,11 +145,11 @@ function database() {
         const previous = tail;
         tail = new Promise(resolve => { release = resolve; });
         await previous;
-        snapshot = { users: structuredClone(users), auditLog: structuredClone(state.auditLog || []) };
+        snapshot = { users: structuredClone(users), outbox: structuredClone(state.outbox || []), auditLog: structuredClone(state.auditLog || []) };
       },
       execute,
       async commit() {}, async rollback() {
-        if (snapshot) { users.splice(0, users.length, ...snapshot.users); state.auditLog = snapshot.auditLog; }
+        if (snapshot) { users.splice(0, users.length, ...snapshot.users); state.auditLog = snapshot.auditLog; state.outbox = snapshot.outbox; }
       },
       release() { release?.(); },
     };
@@ -185,9 +189,20 @@ async function fixture(t, options = {}) {
         return { ...service, createStorageService: deps => service.createStorageService({ ...deps,
           client: options.storageClient, presign: options.presign, logger: sandbox.console }) };
       }
+      if (name === './services/emailQueue') return { createEmailQueue(deps) {
+        const queue = realRequire(name).createEmailQueue({ ...deps, env, logger: sandbox.console });
+        const enqueue = queue.enqueue;
+        queue.enqueue = async (message, settings) => {
+          if (options.queueFail) throw new Error('Queue storage unavailable');
+          const result = await enqueue(message, settings);
+          sent.push(message); // Historical fixture name: these are queued messages.
+          return result;
+        };
+        return queue;
+      } };
       if (name === './services/emailService') return emailService;
       if (name === './services/loginSecurityAlerts') return { createLoginSecurityAlerts(deps) {
-        const handler = createLoginSecurityAlerts({ ...deps, deliver: emailService.sendEmail, logger: sandbox.console });
+        const handler = createLoginSecurityAlerts({ ...deps, deliver: deps.deliver, logger: sandbox.console });
         return event => {
           const task = handler(event);
           pending.add(task);

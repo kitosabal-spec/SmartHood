@@ -124,8 +124,8 @@ test('duplicate claimed after request cannot replace the active email', async t 
   assert.equal(f.pool.users[0].email, oldEmail);
 });
 
-test('SMTP failure and disabled delivery roll back pending state and show actionable errors', async t => {
-  for (const options of [{ deliver() { throw new Error('smtp-secret'); } }, { emailConfigured: false }]) {
+test('Queue storage failure and disabled delivery roll back pending state and show actionable errors', async t => {
+  for (const options of [{ queueFail: true }, { emailConfigured: false }]) {
     const f = await fixture(t, options);
     const response = await requestChange(f, await signedIn(f));
     assert.equal(response.status, 503);

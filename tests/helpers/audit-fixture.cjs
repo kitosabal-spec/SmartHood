@@ -11,7 +11,7 @@ function auditDatabase() {
     auditLog: [], billings: [], payments: [], disbursements: [], complaints: [], amenityBookings: [],
     vehicleRegistrations: [], lostFound: [], announcements: [], appSettings: [],
     payment_settings: [], notifications: [], notification_recipients: [], billing_assignments: [],
-    announcement_comments: [], announcement_reactions: [], board_of_directors: [], storage_objects: [],
+    announcement_comments: [], announcement_reactions: [], board_of_directors: [], storage_objects: [], email_outbox: [],
   };
   pool.tables = tables;
   pool.failAudit = false;
@@ -19,6 +19,10 @@ function auditDatabase() {
   pool.rollbacks = 0;
   pool.execute = async (sql, values = []) => {
     const q = sql.replace(/`/g, '').replace(/\s+/g, ' ').trim();
+    if (q.startsWith('SELECT u.homeowner_id AS homeownerId')) {
+      return [tables.users.filter(u => u.role === 'homeowner' && u.status === 'active' && u.email?.trim() && values.includes(u.homeowner_id))
+        .flatMap(u => tables.homeowners.filter(h => h.id === u.homeowner_id).map(h => ({ homeownerId: h.id, email: u.email, name: h.name })))];
+    }
     if (q.includes("REGEXP_REPLACE(UPPER(plateNumber)")) {
       return [tables.vehicleRegistrations.filter(v => !v.activePlateKey && !v.archived_at && v.id !== values[1] &&
         ['Approved', 'Pending'].includes(v.registrationStatus) && v.plateNumber.toUpperCase().replace(/[^A-Z0-9]/g, '') === values[0])];

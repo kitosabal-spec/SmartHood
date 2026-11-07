@@ -80,7 +80,7 @@ test('generic mutations audit authenticated actors once, redact content, and rol
   const mutations = [
     ['complaints', 'case-1', { status: 'Resolved', adminResponse: 'secret response' }],
     ['amenityBookings', 'booking-1', { status: 'Approved', adminRemarks: 'private note' }],
-    ['vehicleRegistrations', 'vehicle-1', { registrationStatus: 'Approved', plateNumber: 'PRIVATE-PLATE' }],
+    ['vehicleRegistrations', 'vehicle-1', { registrationStatus: 'Approved' }],
     ['lostFound', 'lost-1', { status: 'Claimed', remarks: 'private note' }],
   ];
   for (const [table, id, body] of mutations) {

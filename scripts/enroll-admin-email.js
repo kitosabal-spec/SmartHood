@@ -8,7 +8,9 @@ const { DB_CONFIG } = require('../src/config/environment');
 const { runMigrations } = require('../src/db/migrationRunner');
 const { createAuditService } = require('../src/services/auditService');
 const { createAdminEmailService } = require('../src/services/adminEmailService');
-const { sendEmail, isEmailConfigured } = require('../src/services/emailService');
+const { sendEmail: deliver, isEmailConfigured } = require('../src/services/emailService');
+
+const { createEmailQueue } = require('../src/services/emailQueue');
 
 function secret(prompt) {
   return new Promise((resolve, reject) => {
@@ -41,6 +43,7 @@ async function main() {
     const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
     try { return await rl.question(prompt); } finally { rl.close(); }
   };
+  let queue;
   try {
     await runMigrations(pool);
     const account = (await ask('Existing administrator username or account ID [admin]: ')).trim() || 'admin';
@@ -50,6 +53,7 @@ async function main() {
     let password = await secret('Current administrator password (hidden): ');
     const req = { headers: {}, ip: 'local-operator' };
     const audit = createAuditService({ getPool: () => pool, resolveActor: async () => null });
+    queue = createEmailQueue({ getPool: () => pool, currentConnection: () => audit.current()?.connection, deliver, isEnabled: isEmailConfigured });
     const service = createAdminEmailService({
       get: async (sql, args) => (await audit.current().connection.execute(sql, args))[0][0],
       run: async (sql, args) => (await audit.current().connection.execute(sql, args))[0],
@@ -57,18 +61,19 @@ async function main() {
         audit.current().actor = { id: user.id, role: user.role, name: user.name };
         await audit.record(req, { table: 'users', id: user.id, operation });
       },
-      sendEmail, isEmailConfigured, baseUrl: () => String(process.env.APP_BASE_URL || '').trim(),
+      sendEmail: queue.enqueue, isEmailConfigured, baseUrl: () => String(process.env.APP_BASE_URL || '').trim(),
     });
     await audit.transaction(req, () => service.request({ userId: users[0].id, email, password, enrollment: true }));
     password = '';
-    console.log('Verification sent. Copy the link from the email; do not open it on the old application.');
+    queue.start();
+    console.log('Verification queued. Copy the link from the email; do not open it on the old application.');
     const link = await secret('Paste verification link (hidden): ');
     let token;
     try { token = new URL(link).searchParams.get('admin_email_token'); } catch { token = link; }
     const result = await audit.transaction(req, () => service.verify(token));
     console.log(result.message);
     console.log('Enrollment complete on the SAME account. Sign in with the verified email or existing administrator username.');
-  } finally { await pool.end(); }
+  } finally { await queue?.stop(); await pool.end(); }
 }
 
 main().catch(error => { console.error('Administrator enrollment failed:', error.message); process.exitCode = 1; });

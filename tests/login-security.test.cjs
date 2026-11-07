@@ -46,7 +46,7 @@ test('eight failures, warnings from fifth, ninth blocked with standard headers a
   await f.settle();
   assert.equal(f.sent.length, 1);
   assert.equal(f.pool.events.size, 1);
-  assert.equal([...f.pool.events.values()][0].email_status, 'sent');
+  assert.equal([...f.pool.events.values()][0].email_status, 'queued');
 });
 
 test('unknown identifiers have identical failures, warnings and restrictions, with no email', async t => {
@@ -139,15 +139,15 @@ test('restrictions expire automatically and a new window can produce a new alert
   assert.equal(f.pool.users[0].status, 'active');
 });
 
-test('SMTP failure is sanitized, audited and does not reset restriction or retry email', async t => {
+test('SMTP failure cannot affect durable alert enqueue or reset restrictions', async t => {
   const f = await fixture(t, { deliver: () => { throw new Error('secret-password full-cookie reset-token'); } });
   assert.equal((await exhaust(f, 'registered-admin@example.test')).status, 429);
   await f.settle();
   assert.equal((await f.login('registered-admin@example.test')).status, 429);
   await f.settle();
   assert.equal(f.sent.length, 1);
-  assert.equal([...f.pool.events.values()][0].email_status, 'failed');
-  assert.match(JSON.stringify(f.errors), /email delivery failed/);
+  assert.equal([...f.pool.events.values()][0].email_status, 'queued');
+  assert.equal(f.pool.outbox.length, 1);
   assert.doesNotMatch(JSON.stringify(f.errors), /secret-password|full-cookie|reset-token/);
 });
 
@@ -158,7 +158,7 @@ test('SMTP delays cannot delay the 429 response', async t => {
   await new Promise(setImmediate);
   assert.equal((await f.login('registered-admin@example.test')).status, 429);
   assert.equal(f.sent.length, 1);
-  release();
+  assert.equal(release, undefined, 'request never invokes SMTP');
   await f.settle();
 });
 
