@@ -820,6 +820,10 @@ function readHomeownersWithBalances(sharedReads) {
 }
 
 async function getTableData(table, sharedReads = new Map()) {
+  if (table === 'complaints') {
+    const rows = await all('SELECT * FROM complaints WHERE archived_at IS NULL');
+    return attachComplaintResponses(rows.map(row => deserializeRow('complaints', row)));
+  }
   if (table === 'payments') return getPaymentHistory();
   if (table === 'amenityBookings') {
     const rows = await all(`SELECT a.*, b.id AS billingId, b.status AS billingStatus, b.archived_at AS billingArchivedAt
@@ -867,6 +871,37 @@ async function getTableData(table, sharedReads = new Map()) {
   }
   const rows = await all(`SELECT * FROM ${tableName(table)}${ARCHIVABLE_TABLES.has(table) ? ' WHERE archived_at IS NULL' : ''}`);
   return rows.map((row) => deserializeRow(table, row));
+}
+
+async function attachComplaintResponses(complaints) {
+  if (!complaints.length) return complaints;
+  const complaintIds = new Set(complaints.map(complaint => complaint.id));
+  const rows = await all(`SELECT id, complaint_id, message, sender_id, sender_name, created_at
+    FROM complaint_responses ORDER BY created_at ASC, id ASC`);
+  const responsesByComplaint = new Map();
+  for (const row of rows) {
+    if (!complaintIds.has(row.complaint_id)) continue;
+    if (!responsesByComplaint.has(row.complaint_id)) responsesByComplaint.set(row.complaint_id, []);
+    responsesByComplaint.get(row.complaint_id).push({
+      id: row.id,
+      complaintId: row.complaint_id,
+      message: row.message,
+      senderId: row.sender_id,
+      sender: row.sender_name || 'Administrator',
+      createdAt: row.created_at,
+    });
+  }
+  return complaints.map(complaint => ({
+    ...complaint,
+    responses: responsesByComplaint.get(complaint.id) || [],
+  }));
+}
+
+async function presentComplaintWithResponses(complaintId, requester) {
+  const row = await get('SELECT * FROM complaints WHERE id = ? AND archived_at IS NULL', [complaintId]);
+  if (!row) return null;
+  const complaint = (await attachComplaintResponses([deserializeRow('complaints', row)]))[0];
+  return presentPrivateFiles('complaints', complaint, requester);
 }
 
 async function getPaymentHistory(homeownerId = null) {
@@ -1066,7 +1101,8 @@ async function getScopedTableData(table, requester, sharedReads = new Map()) {
     if (!userHasPermission(requester, 'resident') || !homeownerId) return [];
     if (table === 'payments') return getPaymentHistory(homeownerId);
     const rows = await all(`SELECT * FROM ${sqlTable} WHERE \`${column}\` = ? AND archived_at IS NULL`, [homeownerId]);
-    return rows.map(row => deserializeRow(table, row));
+    const records = rows.map(row => deserializeRow(table, row));
+    return table === 'complaints' ? attachComplaintResponses(records) : records;
   }
   if (table === 'lostFound' && !userHasPermission(requester, 'lostfound')) {
     const rows = await all(
@@ -5405,6 +5441,53 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
   res.status(201).json(presentPrivateFiles(table, sanitizeRecord(table, body), allowed));
 }));
 
+app.patch('/api/complaints/:complaintId/responses/:responseId', auditedHandler(async (req, res) => {
+  const allowed = await checkTableAccess(req, res, 'complaints', 'update');
+  if (!allowed) return;
+  const message = String(req.body.message || '').trim();
+  if (!message) return res.status(400).json({ error: 'Response message is required.' });
+
+  const response = await get(
+    'SELECT id FROM complaint_responses WHERE id = ? AND complaint_id = ? FOR UPDATE',
+    [req.params.responseId, req.params.complaintId]
+  );
+  if (!response) return res.status(404).json({ error: 'Complaint response not found.' });
+
+  await run('UPDATE complaint_responses SET message = ? WHERE id = ? AND complaint_id = ?', [
+    message, req.params.responseId, req.params.complaintId,
+  ]);
+  if (req.params.responseId.startsWith('legacy-')) {
+    await run('UPDATE complaints SET adminResponse = ? WHERE id = ?', [message, req.params.complaintId]);
+  }
+  await recordAuditLog(req, {
+    table: 'complaints', id: req.params.complaintId, operation: 'edited response',
+    summary: 'response message: [redacted]',
+  });
+  res.json(await presentComplaintWithResponses(req.params.complaintId, allowed));
+}));
+
+app.delete('/api/complaints/:complaintId/responses/:responseId', auditedHandler(async (req, res) => {
+  const allowed = await checkTableAccess(req, res, 'complaints', 'update');
+  if (!allowed) return;
+  const response = await get(
+    'SELECT id FROM complaint_responses WHERE id = ? AND complaint_id = ? FOR UPDATE',
+    [req.params.responseId, req.params.complaintId]
+  );
+  if (!response) return res.status(404).json({ error: 'Complaint response not found.' });
+
+  await run('DELETE FROM complaint_responses WHERE id = ? AND complaint_id = ?', [
+    req.params.responseId, req.params.complaintId,
+  ]);
+  if (req.params.responseId.startsWith('legacy-')) {
+    await run('UPDATE complaints SET adminResponse = ? WHERE id = ?', [null, req.params.complaintId]);
+  }
+  await recordAuditLog(req, {
+    table: 'complaints', id: req.params.complaintId, operation: 'deleted response',
+    summary: 'response message: [redacted]',
+  });
+  res.json(await presentComplaintWithResponses(req.params.complaintId, allowed));
+}));
+
 app.put('/api/:table/:id', auditedHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
@@ -5591,9 +5674,30 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
   }
 
   let complaintFiles = null;
+  let complaintResponse = null;
   if (table === 'complaints') {
     const existing = await get('SELECT * FROM complaints WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Complaint not found.' });
+    // New responses are append-only. Accept a changed adminResponse from older
+    // clients, but never update the legacy column or trust client-supplied history.
+    const submittedResponse = req.body.newResponse !== undefined
+      ? req.body.newResponse
+      : (req.body.adminResponse !== undefined && req.body.adminResponse !== existing.adminResponse
+          ? req.body.adminResponse
+          : '');
+    const message = String(submittedResponse || '').trim();
+    if (message) {
+      complaintResponse = {
+        id: 'cr' + Date.now().toString(36) + crypto.randomBytes(5).toString('hex'),
+        complaintId: req.params.id,
+        message,
+        senderId: allowed.id,
+        sender: allowed.name || allowed.username || 'Administrator',
+      };
+    }
+    delete req.body.newResponse;
+    delete req.body.responses;
+    delete req.body.adminResponse;
     try {
       complaintFiles = prepareComplaintPrivateAttachments(req.body, allowed, existing);
     } catch (error) {
@@ -5603,17 +5707,34 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
 
   const item = { ...stripProfilePhotoField(table, req.body), id: req.params.id };
   await saveRecord(table, item);
+  if (complaintResponse) {
+    await run(
+      `INSERT INTO complaint_responses (id, complaint_id, message, sender_id, sender_name, created_at)
+       VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP(3))`,
+      [complaintResponse.id, complaintResponse.complaintId, complaintResponse.message,
+        complaintResponse.senderId, complaintResponse.sender]
+    );
+  }
   if (complaintFiles) {
     for (const filename of complaintFiles.newFilenames) claimStagedPrivateUpload('complaints', filename, allowed);
     deletePrivateFiles('complaints', complaintFiles.oldFilenames.filter(filename => !complaintFiles.newFilenames.includes(filename)));
   }
   if (previousImportantRecord) {
-    const statusNotification = importantStatusEmail(table, previousImportantRecord, { ...previousImportantRecord, ...item });
+    const statusNotification = importantStatusEmail(table, previousImportantRecord, {
+      ...previousImportantRecord,
+      ...item,
+      ...(complaintResponse ? { adminResponse: complaintResponse.message } : {}),
+    });
     if (statusNotification) {
       await emailHomeowners([statusNotification.homeownerId], () => statusNotification.email);
     }
   }
-  res.json(presentPrivateFiles(table, sanitizeRecord(table, item), allowed));
+  let responseRecord = sanitizeRecord(table, item);
+  if (table === 'complaints') {
+    const persisted = await get('SELECT * FROM complaints WHERE id = ?', [req.params.id]);
+    responseRecord = (await attachComplaintResponses([deserializeRow('complaints', persisted)]))[0];
+  }
+  res.json(presentPrivateFiles(table, responseRecord, allowed));
 }));
 
 app.delete('/api/:table/:id', auditedHandler(async (req, res) => {

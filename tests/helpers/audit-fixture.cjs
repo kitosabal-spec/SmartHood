@@ -8,7 +8,7 @@ function auditDatabase() {
   const authExecute = pool.execute;
   const tables = {
     users: pool.users, homeowners: [{ id: 'home-1', name: 'Resident', lotArea: 100 }],
-    auditLog: [], billings: [], payments: [], disbursements: [], complaints: [], amenityBookings: [],
+    auditLog: [], billings: [], payments: [], disbursements: [], complaints: [], complaint_responses: [], amenityBookings: [],
     vehicleRegistrations: [], lostFound: [], announcements: [], appSettings: [],
     payment_settings: [], notifications: [], notification_recipients: [], billing_assignments: [],
     announcement_comments: [], announcement_reactions: [], board_of_directors: [], storage_objects: [], email_outbox: [],
@@ -92,6 +92,20 @@ function auditDatabase() {
       return [[...new Set([...explicit, ...(Array.isArray(legacy) ? legacy : [])])].map(homeowner_id => ({ homeowner_id }))];
     }
     if (q.startsWith('SELECT n.*, nr.read_at')) return [[]];
+    if (q.startsWith('SELECT id, complaint_id, message, sender_id, sender_name, created_at FROM complaint_responses')) {
+      return [structuredClone([...tables.complaint_responses].sort((a, b) =>
+        String(a.created_at || '').localeCompare(String(b.created_at || '')) || String(a.id).localeCompare(String(b.id))))];
+    }
+    if (q === 'UPDATE complaint_responses SET message = ? WHERE id = ? AND complaint_id = ?') {
+      const row = tables.complaint_responses.find(item => item.id === values[1] && item.complaint_id === values[2]);
+      if (row) row.message = values[0];
+      return [{ affectedRows: row ? 1 : 0 }];
+    }
+    if (q === 'DELETE FROM complaint_responses WHERE id = ? AND complaint_id = ?') {
+      const index = tables.complaint_responses.findIndex(item => item.id === values[0] && item.complaint_id === values[1]);
+      if (index >= 0) tables.complaint_responses.splice(index, 1);
+      return [{ affectedRows: index >= 0 ? 1 : 0 }];
+    }
     if (q.startsWith('SELECT h.*, COALESCE(s.remaining_balance')) return [structuredClone(tables.homeowners.map(row => ({ ...row, balance: row.balance || 0, total_billed: 0, total_approved_payments: 0 })))];
     if (q.startsWith('INSERT INTO billing_assignments')) {
       const [billing_id, homeowner_id, assigned_amount, status, monthly_dues_month] = values;

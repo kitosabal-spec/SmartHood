@@ -1,5 +1,20 @@
 # SmartHood database migrations
 
+## Complaint response history (024)
+
+Migration `024_complaint_response_history.js` creates the
+`complaint_responses` table. It copies every non-empty legacy
+`complaints.adminResponse` into the new table with a deterministic identifier,
+so retrying the migration cannot duplicate an existing response. Complaint rows
+and their legacy response column are retained unchanged.
+
+The application reads response history in chronological order, allows only
+administrators and users with complaint-management permission to edit or delete
+responses, and associates
+each new response with the authenticated administrator or complaints officer
+who submitted it. Apply this migration before deploying the matching server and
+browser code; normal application startup also runs it.
+
 ## Amenity booking billing (015)
 
 Migration `015_amenity_booking_billing.js` adds nullable

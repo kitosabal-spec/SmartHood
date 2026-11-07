@@ -180,7 +180,7 @@ function openManageComplaint(id) {
         </div>
         <p style="font-size:0.9rem;color:var(--text-2);line-height:1.6">${c.description}</p>
         ${renderComplaintMediaPreview(c.attachment || c.media_url, c.media_type, c.attachments)}
-        ${c.adminResponse ? `<p style="margin-top:12px;font-size:0.85rem;color:var(--text-2)"><strong>Response:</strong> ${c.adminResponse}</p>` : ''}
+        ${renderComplaintResponseHistory(c)}
       </div>
     `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
     return;
@@ -212,11 +212,7 @@ function openManageComplaint(id) {
         <p style="margin-top:6px;font-size:0.9rem;color:var(--text-2);line-height:1.6">${c.description}</p>
       </div>
       ${renderComplaintMediaPreview(c.attachment || c.media_url, c.media_type, c.attachments)}
-      ${c.adminResponse ? `
-        <div style="margin-top:10px;padding:10px;background:var(--teal-50);border-radius:var(--radius-sm);border-left:3px solid var(--teal-500)">
-          <span style="font-size:0.75rem;font-weight:700;color:var(--teal-600);text-transform:uppercase;letter-spacing:0.08em">Previous Response</span>
-          <p style="margin-top:4px;font-size:0.85rem;color:var(--text-2);line-height:1.5">${c.adminResponse}</p>
-        </div>` : ''}
+      ${renderComplaintResponseHistory(c, true)}
     </div>
 
     <div class="form-group">
@@ -225,7 +221,7 @@ function openManageComplaint(id) {
     </div>
     <div class="form-group">
       <label>Admin Response <span style="color:var(--text-3);font-weight:400">(required for resolved or rejected)</span></label>
-      <textarea id="mgmt_response" placeholder="Enter your response or resolution details…" style="min-height:90px">${c.adminResponse || ''}</textarea>
+      <textarea id="mgmt_response" placeholder="Enter a new response or resolution detail…" style="min-height:90px"></textarea>
     </div>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
@@ -233,7 +229,7 @@ function openManageComplaint(id) {
   ]);
 }
 
-function saveComplaintManagement(id) {
+async function saveComplaintManagement(id) {
   if (!canManageComplaints()) { showToast('error', 'Access Denied', 'You cannot update complaints.'); return; }
   const c = db.getOne('complaints', id);
   if (!c) return;
@@ -241,14 +237,13 @@ function saveComplaintManagement(id) {
   const newStatus   = document.getElementById('mgmt_status').value;
   const newResponse = document.getElementById('mgmt_response').value.trim();
 
-  if ((newStatus === 'Resolved' || newStatus === 'Rejected') && !newResponse) {
+  if ((newStatus === 'Resolved' || newStatus === 'Rejected') && !newResponse && !complaintResponses(c).length) {
     showToast('error', 'Response Required', 'Please provide a response before marking the complaint as resolved or rejected.');
     return;
   }
 
   const oldStatus = normalizeComplaintStatus(c.status);
   c.status        = newStatus;
-  c.adminResponse = newResponse || c.adminResponse;
   c.updatedAt     = getLocalDateValue();
   if (newStatus === 'Resolved' && !c.resolvedAt) {
     c.resolvedAt = getLocalDateValue();
@@ -256,15 +251,19 @@ function saveComplaintManagement(id) {
     c.resolvedAt = null;
   }
 
-  db.save('complaints', c);
+  try {
+    await db.save('complaints', { ...c, newResponse });
+    closeModal();
+    showToast('success', 'Updated', `Complaint status set to "${newStatus}".`);
+    renderAdminComplaints();
+  } catch (err) {
+    showToast('error', 'Update Failed', err.message || 'Could not update the complaint.');
+  }
 
   const ho = getHomeownerById(c.homeownerId);
   logAction(`Updated complaint from ${ho ? ho.name : 'Unknown'}: ${oldStatus} -> ${newStatus}`);
   addNotification('Complaint Updated', `Your complaint status changed from "${oldStatus}" to "${newStatus}".`, { userIds: [c.homeownerId] });
 
-  closeModal();
-  showToast('success', 'Updated', `Complaint status set to "${newStatus}".`);
-  renderAdminComplaints();
 }
 
 
@@ -348,17 +347,101 @@ function renderHOComplaintCards(complaints) {
           ${renderComplaintMediaPreview(c.attachment || c.media_url, c.media_type, c.attachments)}
         </div>
       </div>
-      ${c.adminResponse ? `
-        <div style="margin-top:14px;padding:12px 14px;background:var(--teal-50);border-radius:var(--radius);border-left:3px solid var(--teal-500)">
-          <div style="font-size:0.75rem;font-weight:700;color:var(--teal-600);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:5px">
-            <svg width="12" height="12" style="vertical-align:middle;margin-right:4px"><use href="#ico-megaphone"/></svg> Admin Response
-          </div>
-          <div style="font-size:0.86rem;color:var(--text-2);line-height:1.6">${c.adminResponse}</div>
-        </div>` : `
+      ${complaintResponses(c).length ? renderComplaintResponseHistory(c) : `
         <div style="margin-top:14px;padding:10px 14px;background:var(--surface-2);border-radius:var(--radius);border-left:3px solid var(--border)">
           <div style="font-size:0.82rem;color:var(--text-3);font-style:italic">Awaiting admin response…</div>
         </div>`}
     </div>`).join('');
+}
+
+function complaintResponses(complaint) {
+  if (Array.isArray(complaint.responses)) {
+    return [...complaint.responses].sort((a, b) => {
+      const byTime = new Date(a.createdAt || 0) - new Date(b.createdAt || 0);
+      return byTime || String(a.id || '').localeCompare(String(b.id || ''));
+    });
+  }
+  // Compatibility for a server that has not run migration 024 yet.
+  return complaint.adminResponse ? [{
+    id: `legacy-${complaint.id}`,
+    message: complaint.adminResponse,
+    sender: 'Administrator',
+    createdAt: complaint.updatedAt || complaint.dateFiled,
+  }] : [];
+}
+
+function formatComplaintResponseDateTime(value) {
+  if (!value) return 'Date unavailable';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return escapeHtml(value);
+  return date.toLocaleString('en-PH', {
+    year: 'numeric', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
+  });
+}
+
+function renderComplaintResponseHistory(complaint, editable = false) {
+  const responses = complaintResponses(complaint);
+  if (!responses.length) return '';
+  return `<div style="margin-top:14px">
+    <div style="font-size:0.75rem;font-weight:700;color:var(--teal-600);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:7px">
+      <svg width="12" height="12" style="vertical-align:middle;margin-right:4px"><use href="#ico-megaphone"/></svg> Response History
+    </div>
+    <div style="display:grid;gap:8px">${responses.map(response => `
+      <div style="padding:10px 12px;background:var(--teal-50);border-radius:var(--radius-sm);border-left:3px solid var(--teal-500)">
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:4px;font-size:0.75rem;color:var(--text-3)">
+          <strong style="color:var(--teal-700)">${escapeHtml(response.sender || 'Administrator')}</strong>
+          <span>${escapeHtml(formatComplaintResponseDateTime(response.createdAt))}</span>
+        </div>
+        <div style="font-size:0.86rem;color:var(--text-2);line-height:1.6;white-space:pre-wrap">${escapeHtml(response.message)}</div>
+        ${editable ? `<div style="display:flex;gap:6px;justify-content:flex-end;margin-top:8px">
+          <button class="btn btn-secondary btn-sm" type="button" onclick="openEditComplaintResponse('${escapeHtml(complaint.id)}','${escapeHtml(response.id)}')">Edit</button>
+          <button class="btn btn-danger btn-sm" type="button" onclick="confirmDeleteComplaintResponse('${escapeHtml(complaint.id)}','${escapeHtml(response.id)}')">Delete</button>
+        </div>` : ''}
+      </div>`).join('')}</div>
+  </div>`;
+}
+
+function openEditComplaintResponse(complaintId, responseId) {
+  if (!canManageComplaints()) { showToast('error', 'Access Denied', 'You cannot edit complaint responses.'); return; }
+  const complaint = db.getOne('complaints', complaintId);
+  const response = complaintResponses(complaint || {}).find(item => item.id === responseId);
+  if (!response) return;
+  openModal('Edit Response', `
+    <div class="form-group">
+      <label for="edit_complaint_response">Response</label>
+      <textarea id="edit_complaint_response" style="min-height:110px">${escapeHtml(response.message)}</textarea>
+    </div>
+  `, [
+    { label: 'Cancel', cls: 'btn-secondary', action: () => openManageComplaint(complaintId) },
+    { label: 'Save Response', cls: 'btn-primary', action: () => saveEditedComplaintResponse(complaintId, responseId) },
+  ]);
+}
+
+async function saveEditedComplaintResponse(complaintId, responseId) {
+  const message = document.getElementById('edit_complaint_response')?.value.trim() || '';
+  if (!message) { showToast('error', 'Response Required', 'The response cannot be empty.'); return; }
+  try {
+    const saved = await api.updateComplaintResponse(complaintId, responseId, message);
+    Object.assign(db.getOne('complaints', complaintId), saved);
+    showToast('success', 'Response Updated', 'The complaint response was updated.');
+    openManageComplaint(complaintId);
+  } catch (err) {
+    showToast('error', 'Update Failed', err.message || 'Could not update the response.');
+  }
+}
+
+function confirmDeleteComplaintResponse(complaintId, responseId) {
+  if (!canManageComplaints()) { showToast('error', 'Access Denied', 'You cannot delete complaint responses.'); return; }
+  openConfirm('Delete Response', 'Delete this response from the complaint history?', async () => {
+    try {
+      const saved = await api.deleteComplaintResponse(complaintId, responseId);
+      Object.assign(db.getOne('complaints', complaintId), saved);
+      showToast('success', 'Response Deleted', 'The complaint response was deleted.');
+      openManageComplaint(complaintId);
+    } catch (err) {
+      showToast('error', 'Delete Failed', err.message || 'Could not delete the response.');
+    }
+  }, 'btn-danger', 'Delete');
 }
 
 function normalizeComplaintAttachments(mediaUrl, mediaType, rawAttachments) {

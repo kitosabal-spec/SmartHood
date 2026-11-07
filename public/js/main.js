@@ -332,6 +332,19 @@ const api = {
     });
   },
 
+  async updateComplaintResponse(complaintId, responseId, message) {
+    return this.request(`/api/complaints/${encodeURIComponent(complaintId)}/responses/${encodeURIComponent(responseId)}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ message }),
+    });
+  },
+
+  async deleteComplaintResponse(complaintId, responseId) {
+    return this.request(`/api/complaints/${encodeURIComponent(complaintId)}/responses/${encodeURIComponent(responseId)}`, {
+      method: 'DELETE',
+    });
+  },
+
   async replace(table, rows) {
     return this.request(`/api/${table}`, {
       method: 'PUT',
