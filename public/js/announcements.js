@@ -754,10 +754,43 @@ function renderAnnouncementCards() {
 
   const canManage = typeof canManageAnnouncements === 'function' ? canManageAnnouncements() : (currentUser && (currentUser.role === 'admin' || currentUser.role === 'superadmin'));
   list.innerHTML = announcements.map(a => communityPostCardHTML(a, canManage)).join('');
+  setupAnnouncementTextPreviews(list);
 
   // Load comment counts for the feed
   loadCommentCounts();
   loadAnnouncementReactions();
+}
+
+let announcementTextResizeObserver = null;
+
+function updateAnnouncementTextPreviews(list) {
+  list.querySelectorAll('.community-post-text').forEach(text => {
+    const button = text.nextElementSibling;
+    if (!button?.classList.contains('community-post-see-more')) return;
+    if (text.classList.contains('is-expanded')) return;
+    button.hidden = text.scrollHeight <= text.clientHeight + 1;
+  });
+}
+
+function setupAnnouncementTextPreviews(list) {
+  announcementTextResizeObserver?.disconnect();
+  if (!list?.querySelectorAll) return;
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(() => updateAnnouncementTextPreviews(list));
+  else updateAnnouncementTextPreviews(list);
+  document.fonts?.ready.then(() => updateAnnouncementTextPreviews(list));
+  if (typeof ResizeObserver !== 'undefined') {
+    announcementTextResizeObserver = new ResizeObserver(() => updateAnnouncementTextPreviews(list));
+    announcementTextResizeObserver.observe(list);
+  }
+}
+
+function toggleAnnouncementText(button) {
+  const text = button.previousElementSibling;
+  if (!text?.classList.contains('community-post-text')) return;
+  const expanded = text.classList.toggle('is-expanded');
+  button.textContent = expanded ? 'See less' : 'See more';
+  button.setAttribute('aria-expanded', String(expanded));
+  if (!expanded) updateAnnouncementTextPreviews(button.closest('.community-post-card'));
 }
 
 const announcementReactionState = Object.create(null);
@@ -958,7 +991,8 @@ function communityPostCardHTML(a, canManage) {
 
     ${a.title || a.content || a.description ? `<div class="community-post-content">
       ${a.title ? `<div class="community-post-title">${escapeHtml(a.title)}</div>` : ''}
-      ${a.content || a.description ? `<div class="community-post-text">${escapeHtml(a.content || a.description)}</div>` : ''}
+      ${a.content || a.description ? `<div class="community-post-text" id="announcement-text-${escapeHtml(a.id)}">${escapeHtml(a.content || a.description)}</div>
+      <button type="button" class="community-post-see-more" onclick="toggleAnnouncementText(this)" aria-controls="announcement-text-${escapeHtml(a.id)}" aria-expanded="false" hidden>See more</button>` : ''}
     </div>` : ''}
 
     ${renderPhotoGridHTML(a.id, images, a.title)}
@@ -2078,6 +2112,8 @@ function renderHOAnnouncements() {
       ` : announcements.map(a => communityPostCardHTML(a, canManage)).join('')}
     </div>
   </div>`;
+
+  setupAnnouncementTextPreviews(document.getElementById('hoAnnouncementsList'));
 
   // Load comment counts for the feed
   loadCommentCounts();
