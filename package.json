@@ -10,6 +10,7 @@
     "test:browser": "node tests/browser-smoke.cjs && node tests/loading-browser.cjs && node tests/report-exports.test.cjs && node tests/report-exports-browser.cjs && node tests/qr-crop-browser.cjs && node tests/payment-progress-browser.cjs",
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
+    "secrets:generate": "node scripts/generate-secrets.js",
     "email:queue": "node scripts/email-queue.js",
     "email:test": "node scripts/send-test-email.js",
     "admin:enroll-email": "node scripts/enroll-admin-email.js",

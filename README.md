@@ -63,6 +63,45 @@ editing. Stop the server with Ctrl+C in its terminal. Do not run two server
 instances on the same port. Open the page through the server, not as a local
 HTML file.
 
+## Deploy on Render
+
+Use `npm ci` as the build command and `npm start` as the start command.
+Configure the service's environment variables using `.env.example` as a guide.
+The local `.env` is Git-ignored: pushing code does not copy its secrets to Render.
+
+If startup reports `Set a persistent EMAIL_QUEUE_SECRET or SESSION_SECRET for
+the email queue`, the build succeeded but the deployment is missing its email
+encryption key. Fix the existing service without changing the database:
+
+1. Generate secrets once on your computer:
+
+   ```powershell
+   npm.cmd run --silent secrets:generate
+   ```
+
+2. In Render, open the SmartHood service, select **Environment**, and add the
+   generated `SESSION_SECRET`, `FILE_ACCESS_SECRET`, and `EMAIL_QUEUE_SECRET`
+   values. You can paste the three output lines using **Add from .env**.
+   Add only missing values; preserve secrets already in use.
+3. Select **Save and deploy** to restart the existing build with the secrets.
+   Keep the current MySQL/TiDB, SMTP, and storage settings.
+
+`SESSION_SECRET` alone also satisfies the queue requirement when
+`EMAIL_QUEUE_SECRET` is unset. If a working deployment already queues email
+using that fallback, preserve its session secret and leave `EMAIL_QUEUE_SECRET`
+unset (or set it to the same existing session secret). Switching to a new key
+would make previously queued jobs unreadable. For a first deployment, the three
+independent generated values are appropriate.
+
+Store the values in Render and keep them stable across redeploys and instances.
+Do not commit them or generate them inside the build/start command. The generator
+only prints values; it does not edit `.env` or update Render automatically.
+
+The npm vulnerability notice and TiDB audit-trigger warning are separate from
+this missing-secret startup failure. After deployment, check for the
+`SmartHood is running` log message and open the service URL.
+See [Render's environment variable instructions](https://render.com/docs/configure-environment-variables).
+
 ## Permanent upload storage
 
 `STORAGE_DRIVER=local` (the default) keeps development uploads on disk.
