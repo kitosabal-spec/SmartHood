@@ -1135,7 +1135,7 @@ function renderPaymentTable(filtered = null) {
     .sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '') || (b.id || '').localeCompare(a.id || ''))
     .map(p => {
       const ho = getHomeownerById(p.homeownerId);
-      const bill = db.getOne('billings', p.billingId);
+      const bill = getPaymentBilling(p);
       let billTitleDisplay = bill ? bill.title : '';
       if (!billTitleDisplay && p.monthly_dues_month) {
         billTitleDisplay = `Monthly Dues - ${formatBillingMonth(p.monthly_dues_month)}`;
@@ -1164,7 +1164,7 @@ function renderPaymentTable(filtered = null) {
         <td>
           <div class="td-actions">
             <button class="btn btn-secondary btn-sm" onclick="viewPaymentDetail('${p.id}')">Review</button>
-            ${canManagePayments() && p.status === 'pending' ? `
+            ${canManagePayments() && p.status === 'pending' && !bill?.balance_reset_at ? `
               <button class="btn btn-success btn-sm btn-icon" onclick="confirmApprovePayment('${p.id}')" title="Approve Payment">&#10003;</button>
               <button class="btn btn-danger btn-sm btn-icon" onclick="openRejectPaymentModal('${p.id}')" title="Reject Payment">&#10007;</button>
             ` : ''}
@@ -1300,7 +1300,7 @@ function filterPayments() {
     const billings = db.get('billings') || [];
     payments = payments.filter(p => {
       const ho = users.find(u => u.id === p.homeownerId);
-      const bill = billings.find(b => b.id === p.billingId);
+      const bill = getPaymentBilling(p);
       const blockLot = [ho?.block, ho?.lot].filter(Boolean).join(' ');
       const amountStr = String(p.amount || '');
       return (
@@ -1870,6 +1870,13 @@ async function refreshResidentPaymentDetail(panel) {
 
 // ── PAYMENT REVIEW / RESIDENT DETAILS MODAL ──
 
+function getPaymentBilling(payment) {
+  return db.getOne('billings', payment.billingId) || (payment.historical_billing_title ? {
+    id: payment.billingId, title: payment.historical_billing_title,
+    amount: payment.historical_billing_amount, balance_reset_at: payment.billing_balance_reset_at,
+  } : null);
+}
+
 function viewPaymentDetail(id, resident = false, grouped = false) {
   const p = db.getOne('payments', id);
   if (!p) { showToast('error', 'Error', 'Payment record not found.'); return; }
@@ -1879,7 +1886,7 @@ function viewPaymentDetail(id, resident = false, grouped = false) {
   }
   if (resident && grouped) { renderResidentBillingDetail(p); return; }
   const ho = getHomeownerById(p.homeownerId);
-  const bill = db.getOne('billings', p.billingId);
+  const bill = getPaymentBilling(p);
   const recordedBy = db.getOne('users', p.recorded_by);
   const isManual = p.payment_source === 'manual_admin';
   const paymentSummary = bill ? getBillingPaymentSummary(bill, p.homeownerId, db.get('payments')) : null;
@@ -1903,7 +1910,7 @@ function viewPaymentDetail(id, resident = false, grouped = false) {
     });
   }
 
-  if (!resident && p.status === 'pending' && canManagePayments()) {
+  if (!resident && p.status === 'pending' && canManagePayments() && !bill?.balance_reset_at) {
     buttons.push({
       label: 'Reject Payment',
       cls: 'btn-danger',
@@ -3091,7 +3098,7 @@ function getResidentPaymentHistoryGroups() {
       /^\d{4}-(0[1-9]|1[0-2])$/.test(payment.monthly_dues_month || '');
     const key = JSON.stringify([homeownerId, payment.billingId ? 'billing' : advance ? 'monthly_dues' : 'payment',
       payment.billingId || (advance ? payment.monthly_dues_month : payment.id)]);
-    if (!groups.has(key)) groups.set(key, { key, billing: payment.billingId ? db.getOne('billings', payment.billingId) : null,
+    if (!groups.has(key)) groups.set(key, { key, billing: payment.billingId ? getPaymentBilling(payment) : null,
       billingId: payment.billingId || null, advance, payments: [] });
     groups.get(key).payments.push(payment);
   }
@@ -3127,7 +3134,8 @@ function getResidentPaymentHistoryGroups() {
 function renderResidentBillingStatus(group) {
   const { summary, payments } = group;
   const badges = [];
-  if (summary.status === 'paid') badges.push('<span class="badge badge-green">Fully Paid</span>');
+  if (summary.status === 'cleared') badges.push('<span class="badge badge-gray">Balance Cleared</span>');
+  else if (summary.status === 'paid') badges.push('<span class="badge badge-green">Fully Paid</span>');
   else if (summary.status === 'partially_paid') badges.push('<span class="badge badge-teal">Partially Paid</span>');
   else if (summary.totalPaid > 0) badges.push('<span class="badge badge-green">Approved payments</span>');
   else badges.push('<span class="badge badge-gray">Unpaid</span>');

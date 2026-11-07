@@ -45,7 +45,7 @@ function renderHomeowners() {
         <select class="filter-select" id="hoRegistrationFilter" onchange="filterHomeowners()" aria-label="Filter by registration status">
           <option value="">All Registration Statuses</option>
           <option value="registered">Registered</option>
-          <option value="not-registered">Not Registered</option>
+          <option value="not-registered">No Account</option>
         </select>
       </div>
     </div>
@@ -103,7 +103,7 @@ function renderHOTable(filtered = null, resetPage = false) {
       <td>${startIndex + i + 1}</td>
       <td><div class="homeowner-name-cell">${avatarHTML(u, 'avatar-sm')}<strong>${escapeHtml(u.name)}</strong></div></td>
       <td>${escapeHtml(u.block || '—')}, ${escapeHtml(u.lot || '—')}</td>
-      <td class="${(u.balance||0) > 0 ? 'amount-due' : 'amount-paid'}">₱${(u.balance||0).toLocaleString()}</td>
+      <td class="${(u.balance||0) > 0 ? 'amount-due' : 'amount-paid'}">₱${Number(u.balance||0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
       <td><span class="${u.accountStatus === 'Registered' ? 'badge-status-active' : 'badge-status-inactive'}">${escapeHtml(u.accountStatus || 'No Account')}</span></td>
       <td><button class="ho-info-btn" onclick="openViewHO('${u.id}')" title="View details">i</button></td>
       <td><div class="td-actions">
@@ -210,7 +210,7 @@ function openViewHO(id) {
       <div class="report-summary-item"><div class="r-val">${payments.filter(p=>p.status==='approved').length}</div><div class="r-lbl">Approved Payments</div></div>
       <div class="report-summary-item"><div class="r-val">${complaints.length}</div><div class="r-lbl">Complaints Filed</div></div>
     </div>
-    <p style="margin-top:14px;font-size:0.85rem;color:var(--text-3)">Lot Area: <strong>${u.lotArea || 0} sqm</strong> | Contact: ${u.contact||'N/A'} | Balance: <strong style="color:var(--red-600)">₱${(u.balance||0).toLocaleString()}</strong></p>
+    <p style="margin-top:14px;font-size:0.85rem;color:var(--text-3)">Lot Area: <strong>${u.lotArea || 0} sqm</strong> | Contact: ${u.contact||'N/A'} | Balance: <strong style="color:var(--red-600)">₱${Number(u.balance||0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></p>
     <p style="margin-top:14px;font-size:0.85rem;color:var(--text-3)">Account Status: <strong>${escapeHtml(u.accountStatus || 'No Account')}</strong>${u.email ? ` | Login Email: <strong>${escapeHtml(u.email)}</strong>` : ''}</p>
   `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
 }

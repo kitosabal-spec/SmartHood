@@ -35,3 +35,10 @@ test('amenity request search includes homeowner location, purpose, and date', ()
   assert.deepEqual(context.getFilteredAdminAmenityBookings(bookings, { search: 'training' }).map(item => item.id), ['b1']);
   assert.deepEqual(context.getFilteredAdminAmenityBookings(bookings, { search: '2026-05-30' }).map(item => item.id), ['b3']);
 });
+
+test('amenity booking times display in 12-hour format', () => {
+  assert.equal(context.formatAmenityTime('13:00'), '1:00 PM');
+  assert.equal(context.formatAmenityTime('16:00'), '4:00 PM');
+  assert.equal(context.formatAmenityTime('00:15'), '12:15 AM');
+  assert.equal(context.formatAmenityTime('12:30'), '12:30 PM');
+});

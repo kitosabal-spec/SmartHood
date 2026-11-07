@@ -106,6 +106,12 @@ function auditDatabase() {
       tables.auditLog.push({ id: values[0], action: values[1], adminId: values[2], timestamp: values[3] });
       return [{ affectedRows: 1 }];
     }
+    if (q.startsWith('SELECT p.*, b.title AS historical_billing_title')) {
+      return [structuredClone(tables.payments.filter(p => !p.archived_at && (!values.length || p.homeownerId === values[0])).map(p => {
+        const b = tables.billings.find(b => b.id === p.billingId);
+        return { ...p, historical_billing_title: b?.title, historical_billing_amount: b?.amount, billing_balance_reset_at: b?.balance_reset_at };
+      }))];
+    }
     const select = q.replace(/ ORDER BY id DESC$/, '').match(/^SELECT (.+?) FROM (\w+)(?: WHERE (.*))?$/);
     if (select && tables[select[2]]) {
       let rows = tables[select[2]];

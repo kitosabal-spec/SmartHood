@@ -55,6 +55,14 @@ function formatAmenityDate(value) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function formatAmenityTime(value) {
+  const match = /^(\d{2}):(\d{2})$/.exec(value || '');
+  if (!match) return value || '';
+  const hour = Number(match[1]);
+  if (hour > 23 || Number(match[2]) > 59) return value;
+  return `${hour % 12 || 12}:${match[2]} ${hour < 12 ? 'AM' : 'PM'}`;
+}
+
 function amenityBookingConflicts(amenity, bookingDate, ignoreId = null) {
   return db.get('amenityBookings').filter(booking =>
     booking.id !== ignoreId &&
@@ -236,7 +244,7 @@ function renderHOAmenityBooking() {
             <tbody>
               ${myBookings.map(booking => `
                 <tr>
-                  <td><strong>${booking.amenity}</strong><br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
+                  <td><strong>${booking.amenity}</strong><br><span style="font-size:0.78rem;color:var(--text-3)">${formatAmenityTime(booking.startTime)} - ${formatAmenityTime(booking.endTime)}</span></td>
                   <td>${formatAmenityDate(booking.bookingDate)}</td>
                   <td>${amenityStatusBadge(booking.status)}</td>
                 </tr>`).join('') || '<tr><td colspan="3"><div class="no-results">No amenity requests yet.</div></td></tr>'}
@@ -362,7 +370,7 @@ function renderAdminAmenityBookingRows(bookings, hasActiveFilters = false) {
     return `<tr>
       <td><div class="cell-user">${avatarHTML(homeowner, 'avatar-sm')}<strong>${homeowner ? homeowner.name : 'Unknown'}</strong></div></td>
       <td>${booking.amenity}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.purpose || 'No purpose provided'}</span></td>
-      <td>${formatAmenityDate(booking.bookingDate)}<br><span style="font-size:0.78rem;color:var(--text-3)">${booking.startTime || ''} - ${booking.endTime || ''}</span></td>
+      <td>${formatAmenityDate(booking.bookingDate)}<br><span style="font-size:0.78rem;color:var(--text-3)">${formatAmenityTime(booking.startTime)} - ${formatAmenityTime(booking.endTime)}</span></td>
       <td>${amenityStatusBadge(booking.status)}</td>
       <td><div class="td-actions">
         ${booking.status === 'Pending' ? `
@@ -614,7 +622,7 @@ function viewAmenityBooking(id) {
       <tr><td style="padding:6px 0;color:var(--text-3)">Homeowner</td><td style="font-weight:600">${homeowner ? homeowner.name : 'Unknown'}</td></tr>
       <tr><td style="padding:6px 0;color:var(--text-3)">Amenity</td><td>${booking.amenity}</td></tr>
       <tr><td style="padding:6px 0;color:var(--text-3)">Date</td><td>${formatAmenityDate(booking.bookingDate)}</td></tr>
-      <tr><td style="padding:6px 0;color:var(--text-3)">Time</td><td>${booking.startTime || ''} - ${booking.endTime || ''}</td></tr>
+      <tr><td style="padding:6px 0;color:var(--text-3)">Time</td><td>${formatAmenityTime(booking.startTime)} - ${formatAmenityTime(booking.endTime)}</td></tr>
       <tr><td style="padding:6px 0;color:var(--text-3)">Status</td><td>${amenityStatusBadge(booking.status)}</td></tr>
       ${currentUser?.role === 'admin' ? `<tr><td>Billing</td><td>${amenityBillingAction(booking) || 'Not available until approved'}</td></tr>` : ''}
       ${booking.adminRemarks ? `<tr><td style="padding:6px 0;color:var(--text-3)">Remarks</td><td>${booking.adminRemarks}</td></tr>` : ''}

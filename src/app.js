@@ -514,8 +514,9 @@ async function findMonthlyDuesBillingForHomeowner(homeownerId, month, excludeBil
   return get(
     `SELECT b.* FROM billings b
        JOIN billing_assignments ba ON ba.billing_id = b.id
-      WHERE ba.homeowner_id = ? AND ba.status = 'active'
-        AND b.monthly_dues_month = ? AND b.archived_at IS NULL
+      WHERE ba.homeowner_id = ?
+        AND ((ba.status = 'active' AND b.archived_at IS NULL) OR b.balance_reset_at IS NOT NULL)
+        AND b.monthly_dues_month = ?
         AND (b.billing_type = ? OR (b.billing_type IS NULL OR b.billing_type = '') OR LOWER(b.title) LIKE '%monthly%dues%')
         AND (? IS NULL OR b.id <> ?) LIMIT 1`,
     [homeownerId, month, BILLING_TYPE_MONTHLY_DUES, excludeBillingId, excludeBillingId]
@@ -562,7 +563,7 @@ function parseStoredPermissions(value) {
 
 async function getResidentModuleHomeownerIds() {
   const accounts = await all(
-    "SELECT homeowner_id, permissions FROM users WHERE role = 'homeowner' AND homeowner_id IS NOT NULL"
+    "SELECT homeowner_id, permissions FROM users WHERE role = 'homeowner' AND homeowner_id IS NOT NULL AND archived_at IS NULL AND status = 'active'"
   );
   return new Set(accounts
     .filter(account => parseStoredPermissions(account.permissions).includes('resident'))
@@ -755,6 +756,11 @@ async function saveRecord(table, item, { insertOnly = false } = {}) {
   const columns = tableConfig[table].columns;
   const sqlTable = tableName(table);
   const existing = insertOnly ? null : await get(`SELECT * FROM ${sqlTable} WHERE \`id\` = ?${audit.current() ? ' FOR UPDATE' : ''}`, [item.id]);
+  if (existing?.archived_at && ['users', 'billings', 'payments'].includes(table)) {
+    const error = new Error('Archived accounts and billings cannot be modified. Create a new record instead.');
+    error.status = 409;
+    throw error;
+  }
   const values = columns.map((column) => serializeValue(table, column, item[column]));
 
   if (existing) {
@@ -809,6 +815,7 @@ function readHomeownersWithBalances(sharedReads) {
 }
 
 async function getTableData(table, sharedReads = new Map()) {
+  if (table === 'payments') return getPaymentHistory();
   if (table === 'amenityBookings') {
     const rows = await all(`SELECT a.*, b.id AS billingId, b.status AS billingStatus, b.archived_at AS billingArchivedAt
       FROM amenityBookings a LEFT JOIN billings b ON b.amenity_booking_id = a.id
@@ -842,7 +849,7 @@ async function getTableData(table, sharedReads = new Map()) {
   if (table === 'homeowners') {
     const [homeownerRows, accountRows] = await Promise.all([
       readHomeownersWithBalances(sharedReads),
-      all("SELECT id, homeowner_id, email, mobile, status FROM users WHERE role = 'homeowner' AND homeowner_id IS NOT NULL"),
+      all("SELECT id, homeowner_id, email, mobile, status FROM users WHERE role = 'homeowner' AND homeowner_id IS NOT NULL AND archived_at IS NULL"),
     ]);
     const accountsByHomeownerId = new Map(accountRows.map(account => [account.homeowner_id, account]));
     return homeownerRows.map((row) => presentHomeownerAccountStatus(deserializeRow('homeowners', row), accountsByHomeownerId.get(row.id)));
@@ -851,9 +858,19 @@ async function getTableData(table, sharedReads = new Map()) {
   return rows.map((row) => deserializeRow(table, row));
 }
 
+async function getPaymentHistory(homeownerId = null) {
+  const rows = await all(`SELECT p.*, b.title AS historical_billing_title,
+      b.amount AS historical_billing_amount, b.balance_reset_at AS billing_balance_reset_at
+    FROM payments p LEFT JOIN billings b ON b.id = p.billingId
+    WHERE p.archived_at IS NULL${homeownerId ? ' AND p.homeownerId = ?' : ''}`,
+  homeownerId ? [homeownerId] : []);
+  return rows.map(row => deserializeRow('payments', row));
+}
+
 async function syncBillingAssignments(billingId, homeownerIds) {
-  const billing = await get('SELECT id, amount, status, monthly_dues_month FROM billings WHERE id = ? FOR UPDATE', [billingId]);
+  const billing = await get('SELECT id, amount, status, monthly_dues_month, archived_at, balance_reset_at FROM billings WHERE id = ? FOR UPDATE', [billingId]);
   if (!billing) throw new Error('Cannot synchronize assignments for a missing billing.');
+  if (billing.archived_at || billing.balance_reset_at) throw new Error('Cannot restore assignments for an archived billing.');
   const ids = [...new Set((homeownerIds || []).map(String).filter(Boolean))];
   const current = await all('SELECT homeowner_id FROM billing_assignments WHERE billing_id = ? FOR UPDATE', [billingId]);
   for (const row of current) {
@@ -922,6 +939,7 @@ function mergeUserWithHomeowner(user, homeowner) {
 }
 
 function presentHomeownerAccountStatus(homeowner, account) {
+  if (account?.archived_at) account = null;
   return {
     ...homeowner,
     accountStatus: account ? 'Registered' : 'No Account',
@@ -1035,6 +1053,7 @@ async function getScopedTableData(table, requester, sharedReads = new Map()) {
     const [sqlTable, column, managePermission] = scopes[table];
     if (userHasPermission(requester, managePermission)) return getTableData(table, sharedReads);
     if (!userHasPermission(requester, 'resident') || !homeownerId) return [];
+    if (table === 'payments') return getPaymentHistory(homeownerId);
     const rows = await all(`SELECT * FROM ${sqlTable} WHERE \`${column}\` = ? AND archived_at IS NULL`, [homeownerId]);
     return rows.map(row => deserializeRow(table, row));
   }
@@ -1457,7 +1476,7 @@ async function getRequester(req) {
   const userId = getRequestUserId(req);
   if (!userId) return null;
   const row = await get('SELECT * FROM users WHERE id = ?', [userId]);
-  if (!row) return null;
+  if (!row || row.archived_at) return null;
   const user = deserializeRow('users', row);
   const homeowner = row.homeowner_id ? await get('SELECT * FROM homeowners WHERE id = ?', [row.homeowner_id]) : null;
   return mergeUserWithHomeowner(user, homeowner);
@@ -2343,7 +2362,7 @@ app.get('/api/announcements/:id/likes', asyncHandler(async (req, res) => {
     `SELECT COALESCE(h.name, u.name, 'Community member') AS name
      FROM announcement_reactions r
      JOIN users u ON u.id = r.user_id
-     LEFT JOIN homeowners h ON h.id = u.homeowner_id
+     LEFT JOIN homeowners h ON h.id = COALESCE(u.homeowner_id, u.historical_homeowner_id)
      WHERE r.announcement_id = ? ORDER BY name, u.id`,
     [req.params.id]
   );
@@ -2394,9 +2413,9 @@ app.get('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
             COALESCE(rhu.name, ru.name) AS reply_to_name
      FROM announcement_comments c
      LEFT JOIN users u ON c.user_id = u.id
-     LEFT JOIN homeowners hu ON hu.id = u.homeowner_id
+     LEFT JOIN homeowners hu ON hu.id = COALESCE(u.homeowner_id, u.historical_homeowner_id)
      LEFT JOIN users ru ON c.reply_to_user_id = ru.id
-     LEFT JOIN homeowners rhu ON rhu.id = ru.homeowner_id
+     LEFT JOIN homeowners rhu ON rhu.id = COALESCE(ru.homeowner_id, ru.historical_homeowner_id)
      WHERE c.announcement_id = ?
      ORDER BY c.created_at ASC`,
     [req.params.id]
@@ -2457,9 +2476,9 @@ app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
             COALESCE(rhu.name, ru.name) AS reply_to_name
      FROM announcement_comments c
      LEFT JOIN users u ON c.user_id = u.id
-     LEFT JOIN homeowners hu ON hu.id = u.homeowner_id
+     LEFT JOIN homeowners hu ON hu.id = COALESCE(u.homeowner_id, u.historical_homeowner_id)
      LEFT JOIN users ru ON c.reply_to_user_id = ru.id
-     LEFT JOIN homeowners rhu ON rhu.id = ru.homeowner_id
+     LEFT JOIN homeowners rhu ON rhu.id = COALESCE(ru.homeowner_id, ru.historical_homeowner_id)
      WHERE c.id = ?`,
     [id]
   );
@@ -2483,7 +2502,7 @@ app.post('/api/announcements/:id/comments', asyncHandler(async (req, res) => {
 
     if (mentionedNames.size > 0) {
       const allUsers = await all(`SELECT u.id, COALESCE(h.name, u.name) AS name, u.username
-        FROM users u LEFT JOIN homeowners h ON h.id = u.homeowner_id`);
+        FROM users u LEFT JOIN homeowners h ON h.id = COALESCE(u.homeowner_id, u.historical_homeowner_id)`);
       for (const u of allUsers) {
         const uNameLower = (u.name || '').trim().toLowerCase();
         const uUsernameLower = (u.username || '').trim().toLowerCase();
@@ -2573,9 +2592,9 @@ app.put('/api/announcements/:announcementId/comments/:commentId', asyncHandler(a
             COALESCE(rhu.name, ru.name) AS reply_to_name
      FROM announcement_comments c
      LEFT JOIN users u ON c.user_id = u.id
-     LEFT JOIN homeowners hu ON hu.id = u.homeowner_id
+     LEFT JOIN homeowners hu ON hu.id = COALESCE(u.homeowner_id, u.historical_homeowner_id)
      LEFT JOIN users ru ON c.reply_to_user_id = ru.id
-     LEFT JOIN homeowners rhu ON rhu.id = ru.homeowner_id
+     LEFT JOIN homeowners rhu ON rhu.id = COALESCE(ru.homeowner_id, ru.historical_homeowner_id)
      WHERE c.id = ?`,
     [req.params.commentId]
   );
@@ -2901,7 +2920,7 @@ app.post('/api/login', loginRateLimits.beforeLogin, asyncHandler(async (req, res
     return;
   }
   const user = await findLoginUser(identifier);
-  if (!user) {
+  if (!user || user.archived_at) {
     await bcrypt.compare(password, dummyLoginPasswordHash);
     return loginRateLimits.failedLogin(req, res);
   }
@@ -3305,8 +3324,9 @@ app.post('/api/billings/generate-monthly-dues', auditedHandler(async (req, res) 
   // Retrieve existing Monthly Association Dues billings for this month to prevent duplicate generation.
   const existingBillings = await all(
     `SELECT b.*, ba.homeowner_id AS assigned_homeowner_id FROM billings b
-      JOIN billing_assignments ba ON ba.billing_id = b.id AND ba.status = 'active'
-      WHERE b.monthly_dues_month = ? AND b.archived_at IS NULL
+      JOIN billing_assignments ba ON ba.billing_id = b.id
+      WHERE b.monthly_dues_month = ?
+        AND ((ba.status = 'active' AND b.archived_at IS NULL) OR b.balance_reset_at IS NOT NULL)
         AND (b.billing_type = ? OR (b.billing_type IS NULL OR b.billing_type = '') OR LOWER(b.title) LIKE '%monthly%dues%')`,
     [month, BILLING_TYPE_MONTHLY_DUES]
   );
@@ -3467,6 +3487,10 @@ app.post('/api/payments/manual', asyncHandler(async (req, res) => {
     if (!billing) {
       await connection.rollback();
       return res.status(404).json({ error: 'Billing record not found.' });
+    }
+    if (billing.archived_at || billing.balance_reset_at || billing.status === 'inactive') {
+      await connection.rollback();
+      return res.status(409).json({ error: 'This billing is closed and cannot receive payments.' });
     }
     if (!getAssignedHomeownerIds(billing).includes(homeownerId)) {
       await connection.rollback();
@@ -3682,6 +3706,10 @@ app.post('/api/payments/submit', asyncHandler(async (req, res, next) => {
         if (!billing) {
           await cleanUpFile();
           return res.status(404).json({ error: 'Billing record not found.' });
+        }
+        if (billing.archived_at || billing.balance_reset_at || billing.status === 'inactive') {
+          await cleanUpFile();
+          return res.status(409).json({ error: 'This billing is closed and cannot receive payments.' });
         }
 
         // Verify billing belongs to this resident
@@ -3942,6 +3970,10 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
       await connection.rollback();
       return res.status(404).json({ error: 'Payment record not found.' });
     }
+    if (payment.archived_at) {
+      await connection.rollback();
+      return res.status(409).json({ error: 'This historical payment is archived and cannot be approved.' });
+    }
     if (payment.status !== 'pending') {
       await connection.rollback();
       return res.status(400).json({ error: `Cannot approve payment with status "${payment.status}". Only pending payments can be approved.` });
@@ -3972,6 +4004,10 @@ app.post('/api/payments/:id/approve', asyncHandler(async (req, res) => {
       if (!billing || !getAssignedHomeownerIds(billing).includes(payment.homeownerId)) {
         await connection.rollback();
         return res.status(400).json({ error: 'The linked billing is invalid for this resident.' });
+      }
+      if (billing.archived_at || billing.balance_reset_at || billing.status === 'inactive') {
+        await connection.rollback();
+        return res.status(409).json({ error: 'This billing is closed. Its historical payment cannot be applied to a cleared balance.' });
       }
       const [approvedRows] = await connection.execute(
         `SELECT homeownerId, amount, status FROM payments
@@ -4047,6 +4083,7 @@ app.post('/api/payments/:id/reject', auditedHandler(async (req, res) => {
     return res.status(404).json({ error: 'Payment record not found.' });
   }
 
+  if (payment.archived_at) return res.status(409).json({ error: 'This historical payment is archived and cannot be changed.' });
   if (payment.status !== 'pending') {
     return res.status(400).json({ error: `Cannot reject payment with status "${payment.status}". Only pending payments can be rejected.` });
   }
@@ -5060,8 +5097,8 @@ app.post('/api/homeowners/:id/account', auditedHandler(async (req, res) => {
   const admin = await requireAdmin(req, res);
   if (!admin) return;
 
-  const homeowner = await get('SELECT * FROM homeowners WHERE id = ?', [req.params.id]);
-  if (!homeowner) return res.status(404).json({ error: 'Homeowner not found.' });
+  const homeowner = await get('SELECT * FROM homeowners WHERE id = ? FOR UPDATE', [req.params.id]);
+  if (!homeowner || homeowner.archived_at) return res.status(404).json({ error: 'Homeowner not found.' });
 
   const existingAccount = await get('SELECT id FROM users WHERE homeowner_id = ?', [homeowner.id]);
   if (existingAccount) return res.status(409).json({ error: 'This homeowner already has a registered account.' });
@@ -5125,7 +5162,7 @@ app.post('/api/homeowners/:id/reset-password', auditedHandler(async (req, res) =
   if (password.length < 12) return res.status(400).json({ error: 'Password must be at least 12 characters long.' });
   const account = await get(
     `SELECT u.id, h.name FROM users u JOIN homeowners h ON h.id = u.homeowner_id
-     WHERE u.homeowner_id = ? AND u.role = 'homeowner'`,
+     WHERE u.homeowner_id = ? AND u.role = 'homeowner' AND u.archived_at IS NULL`,
     [req.params.id]
   );
   if (!account) return res.status(404).json({ error: 'This homeowner does not have a registered account.' });
@@ -5330,7 +5367,7 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
     if (!Number.isFinite(lotArea) || lotArea < 0) return res.status(400).json({ error: 'Lot Area must be a valid non-negative number.' });
     req.body.name = name;
     req.body.lotArea = lotArea;
-    req.body.balance = Number(req.body.balance) || 0;
+    req.body.balance = 0;
     req.body.created_at = req.body.created_at || new Date().toISOString();
     req.body.updated_at = new Date().toISOString();
   }
@@ -5524,6 +5561,9 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
   if (table === 'homeowners') {
     const existing = await get('SELECT * FROM homeowners WHERE id = ?', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Homeowner not found.' });
+    // Financial balances come from assignments and approved payments. A stale
+    // browser must never persist its pre-reset cached balance into the profile.
+    delete req.body.balance;
     if (req.body.name !== undefined && !String(req.body.name).trim()) {
       return res.status(400).json({ error: 'Full Name is required.' });
     }
@@ -5661,6 +5701,7 @@ registerPageRoutes(app, { indexController: createIndexController(INDEX_FILE, pub
 
 app.use((err, req, res, next) => {
   if (err instanceof VehicleError) return res.status(err.status).json({ error: err.message });
+  if (err.status === 409) return res.status(409).json({ error: err.message });
   console.error(err);
   res.status(500).json({ error: 'Server error. Check the VS Code terminal.' });
 });

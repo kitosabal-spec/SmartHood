@@ -144,7 +144,7 @@ test('bounded data reads share the financial summary only within one request and
 test('one failed table fails the whole load instead of returning incomplete balances', async t => {
   const f = await auditFixture(t);
   const execute = f.pool.execute;
-  f.pool.execute = (...args) => args[0].replace(/`/g, '').startsWith('SELECT * FROM payments')
+  f.pool.execute = (...args) => /FROM payments(?: p)?\s/.test(args[0].replace(/`/g, ''))
     ? Promise.reject(new Error('injected read failure')) : execute(...args);
   const response = await f.request('GET', '/api/data');
   assert.equal(response.status, 500);

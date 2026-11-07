@@ -1272,14 +1272,14 @@ function getBillingPaymentSummary(billing, homeownerId, payments = db.get('payme
   const totalPaid = Math.round(related
     .filter(payment => payment.status === 'approved')
     .reduce((sum, payment) => sum + toMoneyNumber(payment.amount), 0) * 100) / 100;
-  const remainingBalance = Math.max(0, Math.round((originalAmount - totalPaid) * 100) / 100);
+  const remainingBalance = billing?.balance_reset_at ? 0 : Math.max(0, Math.round((originalAmount - totalPaid) * 100) / 100);
   const pendingPayment = related.find(payment => payment.status === 'pending') || null;
   return {
     originalAmount,
     totalPaid,
     remainingBalance,
     pendingPayment,
-    status: remainingBalance <= 0 && originalAmount > 0
+    status: billing?.balance_reset_at ? 'cleared' : remainingBalance <= 0 && originalAmount > 0
       ? 'paid'
       : (totalPaid > 0 ? 'partially_paid' : 'unpaid'),
   };
@@ -1306,46 +1306,18 @@ function getBillingCollectionStatus(billing) {
 }
 
 function calculateUserOutstandingBalance(userId) {
-  const billings = db.get('billings');
-  const activeBillingIds = new Set(billings.map(b => b.id));
-  const totalDue = billings
-    .filter(billing => getAssignedHomeownerIds(billing).includes(userId))
-    .reduce((sum, billing) => sum + toMoneyNumber(billing.amount), 0);
-  const totalPaid = db.get('payments')
-    .filter(payment =>
-      payment.homeownerId === userId &&
-      payment.status === 'approved' &&
-      activeBillingIds.has(payment.billingId)
-    )
-    .reduce((sum, payment) => sum + toMoneyNumber(payment.amount), 0);
-
-  return Math.max(0, Math.round((totalDue - totalPaid) * 100) / 100);
+  const payments = db.get('payments').filter(payment => !payment.archived_at && !payment.voided_at);
+  return Math.round(db.get('billings')
+    .filter(billing => !billing.archived_at && !billing.balance_reset_at && billing.status !== 'inactive'
+      && getAssignedHomeownerIds(billing).includes(userId))
+    .reduce((sum, billing) => sum + getBillingPaymentSummary(billing, userId, payments).remainingBalance, 0) * 100) / 100;
 }
 
 async function syncHomeownerBalances() {
-  if (!canManageBilling()) {
-    if (currentUser && currentUser.role === 'homeowner') {
-      const balance = calculateUserOutstandingBalance(getCurrentHomeownerId());
-      currentUser.balance = balance;
-    }
-    return;
-  }
-  const homeowners = getHomeowners();
-  const updates = [];
-  for (const user of homeowners) {
-    const balance = calculateUserOutstandingBalance(user.id);
-    if (toMoneyNumber(user.balance) !== balance) {
-      const updatedUser = { ...user, balance };
-      updates.push(
-        db.save('homeowners', updatedUser).then(saved => {
-          if (currentUser && getCurrentHomeownerId() === user.id) currentUser = { ...currentUser, ...saved };
-        })
-      );
-    }
-  }
-  if (updates.length > 0) {
-    await Promise.all(updates);
-  }
+  // Refresh authoritative balances; never write a browser calculation back.
+  await api.loadAll();
+  const homeowner = getHomeowners().find(user => user.id === getCurrentHomeownerId());
+  if (currentUser && homeowner) currentUser.balance = toMoneyNumber(homeowner.balance);
 }
 
 function getRecordYear(...values) {
