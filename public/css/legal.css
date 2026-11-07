@@ -161,12 +161,12 @@
   margin-top: 5px;
 }
 
-.legal-contact-placeholder {
+.legal-contact-details {
   margin-top: 14px;
   padding: 15px 17px;
-  border: 1px solid color-mix(in srgb, var(--amber-500, #d4a017) 40%, var(--border));
+  border: 1px solid var(--border);
   border-radius: 10px;
-  background: color-mix(in srgb, var(--amber-100, #fff8dd) 65%, var(--surface));
+  background: var(--surface);
   color: var(--text-2);
   font-size: .88rem;
   line-height: 1.75;
