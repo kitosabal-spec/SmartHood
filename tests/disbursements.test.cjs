@@ -145,6 +145,6 @@ test('Excel exports round-trip expense worksheets, numeric totals and reporting 
   assert.equal(loaded.getWorksheet('Expense Summary').getCell('B9').value, 1500.25);
   assert.equal(loaded.getWorksheet('Financial Summary').getCell('B10').value, 3499.75);
   assert.match(loaded.getWorksheet('Financial Summary').getCell('A4').value, /2026-10-01 to 2026-10-31/);
-  assert.match(loaded.getWorksheet('Financial Summary').getCell('A6').value, /not the HOA bank balance/);
+  assert.equal(loaded.getWorksheet('Financial Summary').getCell('A6').value, null);
   assert.ok(loaded.getWorksheet('Financial Collections'));
 });

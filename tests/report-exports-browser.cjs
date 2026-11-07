@@ -74,7 +74,7 @@ const server = http.createServer((req, res) => {
     assert.equal(workbook.getWorksheet('Homeowner Balances').getCell('A8').value, '=1+1');
     assert.equal(workbook.getWorksheet('Homeowner Balances').getCell('E9').value, 30);
     assert.match(workbook.getWorksheet('Homeowner Balances').getCell('E9').numFmt, /₱/);
-    assert.match(workbook.getWorksheet('Homeowner Balances').getCell('A6').value, /Status: With Balance/);
+    assert.equal(workbook.getWorksheet('Homeowner Balances').getCell('A6').value, null);
     assert.equal(workbook.getWorksheet('Summary').getImages().length, 1);
     assert.equal(await page.locator('#reportsDownloadButton').isEnabled(), true);
     await page.locator('#reportsExportFormat').selectOption('csv');

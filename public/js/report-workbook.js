@@ -65,7 +65,7 @@ function buildReportsWorkbook(ExcelJS, data, logo = null) {
     return row;
   }
 
-  function sheetTable(name, headers, widths, rows, currency, note, totals = null) {
+  function sheetTable(name, headers, widths, rows, currency, totals = null) {
     const sheet = book.addWorksheet(name, {
       properties: { defaultRowHeight: 23, tabColor: { argb: colors.teal } },
       views: [{ state: 'frozen', ySplit: headerRow, activeCell: 'A8', showGridLines: false }],
@@ -83,8 +83,7 @@ function buildReportsWorkbook(ExcelJS, data, logo = null) {
     mergedLine(sheet, name === 'Summary' ? 'Reports & Analytics — Summary' : name === 'Monthly Collections' ? `${name} — ${data.analysisYear}` : name, { size: 15, bold: true, height: 28 });
     mergedLine(sheet, `Reporting period: ${data.period.label}`);
     mergedLine(sheet, `Generated: ${generated}`);
-    const combinedWidth = widths.reduce((a, b) => a + b, 0);
-    mergedLine(sheet, note, { fill: colors.pale, height: Math.max(30, Math.ceil(note.length / (combinedWidth - 10)) * 15 + 10) });
+    sheet.addRow([]).height = 10;
     tableRow(sheet, headers, { header: true });
     rows.forEach((row, i) => tableRow(sheet, row, { currency, stripe: i % 2 === 1 }));
     sheet.autoFilter = { from: { row: headerRow, column: 1 }, to: { row: headerRow + rows.length, column: headers.length } };
@@ -93,70 +92,50 @@ function buildReportsWorkbook(ExcelJS, data, logo = null) {
     return sheet;
   }
 
-  const summary = sheetTable('Summary', ['Measure', 'Value', 'Calculation / scope'], [39, 24, 76], [
-    ['Total Billed (PHP)', data.totalDue, 'Selected billings × assigned homeowners; excludes unlinked advances.'],
-    ['Total Collected (PHP)', data.totalPaid, 'All approved payments in the selected date period, regardless of billing linkage.'],
-    ['Outstanding Balance (PHP)', data.totalOutstanding, 'Maximum of zero and Total Billed minus Total Collected (period-wide).'],
-    ['Homeowners with Activity', data.reportUsers.length, 'Unique current homeowners assigned a selected billing or with a selected payment of any status.'],
-  ], [2], 'These four measures use the same calculations as the Reports & Analytics page. Differences from the supporting schedules are explained below.');
+  const summary = sheetTable('Summary', ['Measure', 'Amount'], [39, 24], [
+    ['Total Billed (PHP)', data.totalDue],
+    ['Total Collected (PHP)', data.totalPaid],
+    ['Outstanding Balance (PHP)', data.totalOutstanding],
+    ['Homeowners with Activity', data.reportUsers.length],
+  ], [2]);
   summary.getCell('B11').numFmt = '#,##0';
   if (logo) {
     const image = book.addImage({ base64: logo, extension: 'png' });
-    summary.addImage(image, { tl: { col: 2.85, row: 0.05 }, ext: { width: 48, height: 48 }, editAs: 'absolute' });
+    summary.addImage(image, { tl: { col: 1.6, row: 0.05 }, ext: { width: 48, height: 48 }, editAs: 'absolute' });
   }
 
-  mergedLine(summary, 'Reconciliation of existing report rules', { fill: colors.dark, bold: true, height: 26 });
-  tableRow(summary, ['Comparison', 'Difference (PHP)', 'Reason / interpretation'], { header: true });
   const financial = data.financial;
   const balanceTotal = data.balanceRows.reduce((sum, row) => sum + row[4], 0);
   const monthlyTotal = data.monthlyData.reduce((sum, row) => sum + row.v, 0);
-  [
-    ['Financial billed − Summary billed', financial.totals[2] - data.totalDue, 'Financial Collections retains the old CSV convention: approved unlinked monthly dues count as both billed and collected.'],
-    ['Summary collected − Financial collected', data.totalPaid - financial.totals[3], 'Approved payments linked to billings outside the selected period, or unlinked payments without a dues month, appear only in Summary.'],
-    ['Financial outstanding − Summary outstanding', financial.totals[4] - data.totalOutstanding, 'Financial Collections clamps each billing to zero, then sums. Summary subtracts all approved payments before clamping once.'],
-    ['Homeowner balances − Summary outstanding', balanceTotal - data.totalOutstanding, 'Balances clamp and round per homeowner and use only payments linked to selected billings; active search/status filters also apply.'],
-    ['Summary collected − Monthly collections', data.totalPaid - monthlyTotal, 'Monthly Collections uses the page’s analysis year and dues-month-first allocation; other years or unallocatable dates are not in its twelve months.'],
-  ].forEach((row, i) => tableRow(summary, row, { currency: [2], stripe: i % 2 === 1 }));
-  mergedLine(summary, 'Scope and counting notes', { fill: colors.dark, bold: true, height: 26 });
-  [
-    'Date selection matches the page’s browser-local boundaries: billings use createdAt, then dueDate; payments use reviewedAt, payment_date, submittedAt, then createdAt. Only the generation timestamp is converted to Asia/Manila.',
-    'Monthly allocation uses monthly_dues_month first, otherwise payment_date, reviewedAt, then submittedAt. The analysis year is the page’s derived year (' + data.analysisYear + '), not a different dashboard year selection. The selected date period is applied before allocation.',
-    'Partial payments contribute their approved amount but remain not fully paid until the existing payment-summary helper marks the account paid. Billing-account totals count the same homeowner again for each billing or advance month; they are not unique homeowner counts.',
-    `Homeowner Balances filters — Search: ${data.balanceFilters.search || '(none)'}; Status: ${data.balanceFilters.status === 'due' ? 'With Balance' : data.balanceFilters.status === 'clear' ? 'Clear' : 'All Statuses'}. These filters affect only that worksheet and its reconciliation difference.`,
-    'This is the complete displayed report snapshot across pagination. Values use existing calculations with two-decimal currency display; no balancing adjustments are applied. Clearance describes the selected report period, not an independently certified all-time clearance.',
-  ].forEach(note => mergedLine(summary, note, { height: Math.ceil(note.length / 125) * 15 + 10 }));
 
   sheetTable('Financial Collections', REPORT_FINANCIAL_HEADERS, [39, 22, 22, 22, 23, 20, 25, 20],
-    financial.rows, [3, 4, 5],
-    'Billing-account counts include repeat homeowners across billings. Not fully paid includes partial payments. Advance dues retain the existing CSV billed/collected treatment. See Summary for reconciliation.', financial.totals);
+    financial.rows, [3, 4, 5], financial.totals);
 
   const months = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
   sheetTable('Monthly Collections', ['Month', 'Analysis Year', 'Total Collected (PHP)'], [30, 20, 40],
     data.monthlyData.map((month, i) => [months[i], data.analysisYear, month.v]), [3],
-    'Approved payments within the selected period, allocated by dues month first, then payment/review/submission date, exactly as in the page chart.', ['Total', '', monthlyTotal]);
+    ['Total', '', monthlyTotal]);
 
   const paymentRows = ['approved', 'pending', 'rejected'].map(status => {
     const payments = data[status];
     return [status[0].toUpperCase() + status.slice(1), payments.length, payments.reduce((sum, p) => sum + toMoneyNumber(p.amount), 0)];
   });
   sheetTable('Payment Status', ['Payment Status', 'Payment Count', 'Payment Amount (PHP)'], [30, 20, 40], paymentRows, [3],
-    'Counts match the page legend. Pending and rejected amounts are shown for review only and are not collected revenue.',
     ['Total (displayed statuses)', paymentRows.reduce((sum, row) => sum + row[1], 0), paymentRows.reduce((sum, row) => sum + row[2], 0)]);
 
   sheetTable('Homeowner Balances', ['Homeowner Name', 'Homeowner ID', 'Block', 'Lot', 'Balance (PHP)', 'Clearance Status'], [34, 24, 20, 20, 23, 23], data.balanceRows, [5],
-    `Search: ${data.balanceFilters.search || '(none)'} | Status: ${data.balanceFilters.status === 'due' ? 'With Balance' : data.balanceFilters.status === 'clear' ? 'Clear' : 'All Statuses'} | All ${data.balanceRows.length} matching homeowners. Balances and clearance use the selected period.`,
     ['Total', '', '', '', balanceTotal, '']);
 
   if (data.expenses) {
     const expenses = data.expenses;
     sheetTable('Disbursements', ['Record ID', 'Transaction Date', 'Expense Category', 'Amount (PHP)'], [42, 22, 46, 24],
       expenses.records.map(r => [r.id, r.transaction_date, r.expense_category, Number(r.amount)]), [4],
-      'Active recorded expenses, filtered by transaction date. Voided records are excluded; audit history is retained.', ['', '', 'Total', expenses.totalDisbursements]);
+      ['', '', 'Total', expenses.totalDisbursements]);
     sheetTable('Expense Summary', ['Expense Category', 'Amount (PHP)'], [55, 30], expenses.categories, [2],
-      'Expenses grouped by category within the selected reporting period.', ['Total', expenses.totalDisbursements]);
+      ['Total', expenses.totalDisbursements]);
     sheetTable('Financial Summary', ['Measure', 'Amount (PHP)'], [55, 30], [
       ['Total Collections', expenses.totalCollections], ['Total Disbursements', expenses.totalDisbursements], ['Net Cash Movement', expenses.netCashMovement],
-    ], [2], 'Approved collections less active expenses. Net cash movement is not the HOA bank balance. Opening balances and other cash adjustments are not included. Collection dates follow the existing review/payment/submission date precedence; expenses use transaction dates.');
+    ], [2]);
   }
 
   book.worksheets.forEach(sheet => {
