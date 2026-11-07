@@ -1,7 +1,10 @@
 .disbursement-fields, .expense-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 20px; }
 .disbursement-fields .form-group { min-width: 0; margin-bottom: 0; }
 .disbursement-fields input, .disbursement-fields select { width: 100%; min-width: 0; }
-.disbursement-save { display: flex; justify-content: flex-end; gap: 12px; margin-top: 20px; }
+.expense-other-category { margin-top: 12px; }
+.expense-other-category label { display: block; margin-bottom: 6px; }
+.disbursement-form { position: relative; min-height: 122px; }
+.disbursement-save { display: flex; justify-content: flex-end; gap: 12px; position: absolute; top: 84px; right: 0; }
 .disbursement-modal { width: min(960px, 95vw); max-width: 960px; }
 #disbursementReportPanel { display: grid; gap: 24px; }
 [data-theme="dark"] .disbursements-page input[type="date"],
@@ -20,6 +23,8 @@
 .expense-bar-track { background: var(--border); border-radius: 5px; overflow: hidden; }
 .expense-bar { height: 20px; background: var(--teal-600); border-radius: 5px; }
 @media (max-width: 700px) {
+  .disbursement-form { min-height: 0; }
+  .disbursement-save { position: static; margin-top: 20px; }
   .expense-records-total { margin-left: 0; max-width: 100%; }
   .disbursement-fields, .expense-summary { grid-template-columns: 1fr; }
   .expense-chart-row { gap: 8px; }

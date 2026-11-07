@@ -2429,7 +2429,7 @@ function getAuditEventDetails(record) {
     if (value === '(empty)') return 'Not set';
     if (value === '[redacted]') return null;
     if (field === 'amenity') return AMENITIES.includes(value) ? value : null;
-    if (field === 'expense_category') return ['Gasoline', 'Payroll', 'Extra Labor', 'Hermicide', 'Papers', 'Utensils', 'Maintenance', 'Water Bill', 'Electric Bill', 'Security Services', 'Internet', 'Remittances (SSS, PhilHealth, Pag-IBIG)', 'Others'].includes(value) ? value : null;
+    if (field === 'expense_category') return value === 'Hermicide' ? 'Herbicide' : ['Gasoline', 'Payroll', 'Extra Labor', 'Herbicide', 'Papers', 'Utensils', 'Maintenance', 'Water Bill', 'Electric Bill', 'Security Services', 'Internet', 'Remittances (SSS, PhilHealth, Pag-IBIG)', 'Others'].includes(value) ? value : null;
     if (field === 'startTime' || field === 'endTime') {
       if (!/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return null;
       const [hour, minute] = value.split(':').map(Number);

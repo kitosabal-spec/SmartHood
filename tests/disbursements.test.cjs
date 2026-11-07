@@ -4,16 +4,37 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const vm = require('node:vm');
 const { auditFixture } = require('./helpers/audit-fixture.cjs');
-const { validateDisbursement, EXPENSE_CATEGORIES } = require('../src/services/disbursementService');
+const { validateDisbursement, presentDisbursement, EXPENSE_CATEGORIES } = require('../src/services/disbursementService');
 const valid = (changes = {}) => ({ expense_category: 'Gasoline', transaction_date: '2026-10-31', amount: '1500.00', ...changes });
 
 test('disbursement validation preserves categories, rejects malformed dates, money and metadata injection', () => {
   assert.equal(EXPENSE_CATEGORIES.length, 13);
+  assert.ok(EXPENSE_CATEGORIES.includes('Herbicide'));
+  assert.ok(!EXPENSE_CATEGORIES.includes('Hermicide'));
+  assert.equal(presentDisbursement({ expense_category: 'Hermicide', transaction_date: '2026-10-31' }).expense_category, 'Herbicide');
   for (const expense_category of EXPENSE_CATEGORIES) assert.equal(validateDisbursement(valid({ expense_category })).expense_category, expense_category);
   for (const changes of [{ expense_category: 'Other' }, { transaction_date: '2026-02-30' }, { transaction_date: '999-01-01' },
     { amount: 0 }, { amount: -1 }, { amount: 'NaN' }, { amount: '1e3' }, { amount: true }, { amount: '1.001' }, { amount: '10000000000' },
     { created_by: 'forged' }, { voided_at: null }, { status: 'approved' }]) assert.throws(() => validateDisbursement(valid(changes)));
   assert.equal(validateDisbursement(valid({ transaction_date: '2024-02-29', amount: '0.01' })).amount, '0.01');
+  assert.equal(validateDisbursement(valid({ expense_category: 'Others', other_category: '  Community supplies  ' })).expense_category, 'Others: Community supplies');
+  for (const changes of [
+    { expense_category: 'Others', other_category: '' },
+    { expense_category: 'Others', other_category: '   ' },
+    { expense_category: 'Others', other_category: 'a'.repeat(93) },
+    { expense_category: 'Others', other_category: 'Line\nbreak' },
+    { expense_category: 'Gasoline', other_category: 'Forged' },
+  ]) assert.throws(() => validateDisbursement(valid(changes)));
+});
+
+test('HTTP: custom Others details persist and can be edited', async t => {
+  const f = await auditFixture(t);
+  const created = await f.request('POST', '/api/disbursements', valid({ expense_category: 'Others', other_category: 'Community supplies' }));
+  assert.equal(created.status, 201);
+  assert.equal((await f.request('GET', '/api/disbursements')).body.records[0].expense_category, 'Others: Community supplies');
+  const updated = await f.request('PUT', '/api/disbursements/' + created.body.id, valid({ expense_category: 'Others', other_category: 'Event materials' }));
+  assert.equal(updated.status, 200);
+  assert.equal((await f.request('GET', '/api/reports/disbursements')).body.records[0].expense_category, 'Others: Event materials');
 });
 
 test('HTTP: create, refresh, edit and void preserve financial records and immutable audit trail', async t => {
@@ -102,6 +123,11 @@ test('report calculations use transaction dates, exact cents, categories and yea
   assert.equal(result.netCashMovement, 99.7);
   assert.deepEqual(JSON.parse(JSON.stringify(result.categories)), [['Gasoline', .3]]);
   assert.deepEqual(JSON.parse(JSON.stringify(result.months)), [['2026-10', .3]]);
+  const other = vm.runInContext(`buildDisbursementReport({ records: [
+    {expense_category:'Others: Community supplies',transaction_date:'2026-10-31',amount:'2.00'},
+    {expense_category:'Others: Event materials',transaction_date:'2026-10-31',amount:'3.00'}
+  ], collections:[]}, {start:null,end:null})`, context);
+  assert.deepEqual(JSON.parse(JSON.stringify(other.categories)), [['Others', 5]]);
 });
 
 test('Excel exports round-trip expense worksheets, numeric totals and reporting period', async () => {

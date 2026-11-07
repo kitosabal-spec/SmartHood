@@ -122,3 +122,20 @@ test('dates, money, rounding, and overpayment progress stay readable and bounded
   assert.match(f.context.formatResidentPaymentDate('2026-10-29T12:00:00Z'), /Oct.*29.*2026/);
   assert.equal(f.context.formatResidentPaymentDate(null), '—');
 });
+
+test('payment dates serialized from MySQL DATE keep the Philippine calendar day', () => {
+  const f = fixture([]);
+  assert.equal(f.context.paymentCalendarDate('2026-11-06T16:00:00.000Z'), '2026-11-07');
+  assert.equal(f.context.paymentCalendarDate('2026-11-07'), '2026-11-07');
+  assert.match(f.context.formatResidentPaymentDate('2026-11-06T16:00:00.000Z'), /Nov.*7.*2026/);
+  const dates = f.context.getPaymentRecordDates({
+    payment_date: '2026-11-06T16:00:00.000Z',
+    submittedAt: '2026-11-06T16:00:00.000Z'
+  });
+  assert.equal(dates.length, 2);
+  for (const date of dates) {
+    assert.equal(date.getFullYear(), 2026);
+    assert.equal(date.getMonth(), 10);
+    assert.equal(date.getDate(), 7);
+  }
+});

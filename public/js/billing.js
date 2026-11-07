@@ -99,6 +99,21 @@ function parseBillingFilterDate(value) {
   const d = new Date(str);
   return Number.isFinite(d.getTime()) ? d : null;
 }
+
+// MySQL DATE values can reach the browser as UTC timestamps for midnight in
+// the Philippines. Recover the calendar date before displaying or filtering.
+function paymentCalendarDate(value) {
+  if (!value) return '—';
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const date = new Date(text);
+  if (!Number.isFinite(date.getTime())) return text;
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Manila', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(date);
+  const part = type => parts.find(item => item.type === type)?.value;
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
 if (typeof window !== 'undefined') window.parseBillingFilterDate = parseBillingFilterDate;
 
 function getBillingRecordDates(billing) {
@@ -1158,9 +1173,9 @@ function renderPaymentTable(filtered = null) {
         <td class="amount-paid">${formattedAmount}</td>
         <td>${methodBadge}</td>
         <td><code style="font-size:0.84rem;font-weight:700;color:var(--text)">${escapeHtml(p.refNum || '—')}</code></td>
-        <td>${escapeHtml(p.payment_date || p.submittedAt || '—')}</td>
+        <td>${escapeHtml(paymentCalendarDate(p.payment_date || p.submittedAt))}</td>
         <td>${statusBadge}</td>
-        <td>${escapeHtml(p.submittedAt || '—')}</td>
+        <td>${escapeHtml(paymentCalendarDate(p.submittedAt))}</td>
         <td>
           <div class="td-actions">
             <button class="btn btn-secondary btn-sm" onclick="viewPaymentDetail('${p.id}')">Review</button>
@@ -1177,11 +1192,11 @@ function renderPaymentTable(filtered = null) {
 function getPaymentRecordDates(payment) {
   const dates = [];
   if (payment?.payment_date) {
-    const d = parseBillingFilterDate(payment.payment_date);
+    const d = parseBillingFilterDate(paymentCalendarDate(payment.payment_date));
     if (d) dates.push(d);
   }
   if (payment?.submittedAt) {
-    const d = parseBillingFilterDate(payment.submittedAt);
+    const d = parseBillingFilterDate(paymentCalendarDate(payment.submittedAt));
     if (d) dates.push(d);
   }
   if (!dates.length) {
@@ -1955,8 +1970,8 @@ function viewPaymentDetail(id, resident = false, grouped = false) {
           <tr><td style="padding:5px 0;color:var(--text-3)">Payment Method:</td><td><span class="badge ${p.payment_method === 'Cash' ? 'badge-cash' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span></td></tr>
           ${isManual ? `<tr><td style="padding:5px 0;color:var(--text-3)">Recorded By:</td><td>Admin${recordedBy ? ` — ${escapeHtml(recordedBy.name)}` : ''}</td></tr><tr><td style="padding:5px 0;color:var(--text-3)">Payment Source:</td><td><span class="badge badge-teal">Manual / Admin Recorded</span></td></tr>` : ''}
           <tr><td style="padding:5px 0;color:var(--text-3)">${isManual ? 'Reference / Receipt #:' : 'GCash Reference #:'}</td><td><code style="font-weight:800;font-size:0.95rem;color:var(--gcash-blue)">${escapeHtml(p.refNum || '—')}</code></td></tr>
-          <tr><td style="padding:5px 0;color:var(--text-3)">Payment Date:</td><td>${escapeHtml(p.payment_date || p.submittedAt || '—')}</td></tr>
-          <tr><td style="padding:5px 0;color:var(--text-3)">Date Submitted:</td><td>${escapeHtml(p.submittedAt || '—')}</td></tr>
+          <tr><td style="padding:5px 0;color:var(--text-3)">Payment Date:</td><td>${escapeHtml(paymentCalendarDate(p.payment_date || p.submittedAt))}</td></tr>
+          <tr><td style="padding:5px 0;color:var(--text-3)">Date Submitted:</td><td>${escapeHtml(paymentCalendarDate(p.submittedAt))}</td></tr>
           ${p.remarks && p.status !== 'rejected' ? `<tr><td style="padding:5px 0;color:var(--text-3)">${isManual ? 'Notes:' : 'Resident Note:'}</td><td>${escapeHtml(p.remarks)}</td></tr>` : ''}
         </table>
       </div>
@@ -2076,7 +2091,7 @@ function openRejectPaymentModal(id) {
       </div>
 
       <div class="form-group" id="reject_custom_wrap" style="margin-bottom:0">
-        <label>Additional Notes / Explanation</label>
+        <label id="reject_custom_label" for="reject_custom_notes">Additional Notes / Explanation</label>
         <textarea id="reject_custom_notes" placeholder="Explain details so the resident can correct and resubmit..."></textarea>
       </div>
     </div>
@@ -2089,10 +2104,16 @@ function openRejectPaymentModal(id) {
 function handleRejectReasonChange() {
   const sel = document.getElementById('reject_reason_select')?.value;
   const customNotes = document.getElementById('reject_custom_notes');
-  if (sel === 'Other' && customNotes) {
-    customNotes.placeholder = 'Please enter the specific rejection reason here... (Required)';
-    customNotes.focus();
-  }
+  const label = document.getElementById('reject_custom_label');
+  if (!customNotes || !label) return;
+  const needsSpecificReason = sel === 'Other';
+  label.textContent = needsSpecificReason ? 'Specific Reason for Rejection *' : 'Additional Notes / Explanation';
+  customNotes.placeholder = needsSpecificReason
+    ? 'Please enter the specific rejection reason here...'
+    : 'Explain details so the resident can correct and resubmit...';
+  customNotes.required = needsSpecificReason;
+  customNotes.setAttribute('aria-required', String(needsSpecificReason));
+  if (needsSpecificReason) customNotes.focus();
 }
 
 async function executeRejectPayment(id) {
@@ -2108,7 +2129,8 @@ async function executeRejectPayment(id) {
   let finalReason = sel;
   if (sel === 'Other') {
     if (!notes) {
-      showToast('error', 'Reason Required', 'Please explain the rejection reason in the notes field.');
+      document.getElementById('reject_custom_notes')?.focus();
+      showToast('error', 'Reason Required', 'Please enter a specific reason for rejecting the payment.');
       return;
     }
     finalReason = notes;
@@ -3077,10 +3099,11 @@ function residentPaymentTime(payment) {
 
 function formatResidentPaymentDate(value) {
   if (!value) return '—';
-  const date = new Date(/^\d{4}-\d{2}-\d{2}$/.test(value) ? value + 'T00:00:00' : value);
+  const calendarDate = paymentCalendarDate(value);
+  const date = new Date(`${calendarDate}T00:00:00`);
   return Number.isFinite(date.getTime())
     ? date.toLocaleDateString('en-PH', { year: 'numeric', month: 'short', day: 'numeric' })
-    : String(value);
+    : calendarDate;
 }
 
 function formatResidentPaymentMoney(amount) {

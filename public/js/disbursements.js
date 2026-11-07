@@ -16,14 +16,27 @@ function expenseOptions(selected = '') {
 
 function disbursementForm(record = {}, editing = false) {
   const prefix = editing ? 'expenseEdit' : 'expense';
-  return `<form id="${prefix}Form" onsubmit="event.preventDefault(); saveDisbursement(${editing})">
+  const otherCategory = record.expense_category?.startsWith('Others: ') ? record.expense_category.slice(8) : '';
+  const selectedCategory = otherCategory ? 'Others' : record.expense_category;
+  return `<form class="disbursement-form" id="${prefix}Form" onsubmit="event.preventDefault(); saveDisbursement(${editing})">
     <div class="disbursement-fields">
-      <div class="form-group"><label for="${prefix}Category">Expense Category</label><select class="form-control" id="${prefix}Category" required><option value="">Select category</option>${expenseOptions(record.expense_category)}</select></div>
+      <div class="form-group"><label for="${prefix}Category">Expense Category</label><select class="form-control" id="${prefix}Category" onchange="updateDisbursementOtherCategory('${prefix}')" required><option value="">Select category</option>${expenseOptions(selectedCategory)}</select>
+        <div id="${prefix}OtherWrap" class="expense-other-category" ${selectedCategory === 'Others' ? '' : 'hidden'}><label for="${prefix}OtherCategory">Specify Other Expense</label><input class="form-control" id="${prefix}OtherCategory" type="text" maxlength="92" value="${escapeHtml(otherCategory)}" placeholder="Enter expense details" ${selectedCategory === 'Others' ? 'required' : 'disabled'}></div></div>
       <div class="form-group"><label for="${prefix}Date">Transaction Date</label><input class="form-control" id="${prefix}Date" type="date" min="1000-01-01" max="9999-12-31" value="${escapeHtml(record.transaction_date || getLocalDateValue())}" required></div>
       <div class="form-group"><label for="${prefix}Amount">Amount (PHP)</label><input class="form-control" id="${prefix}Amount" type="number" min="0.01" max="9999999999.99" step="0.01" value="${escapeHtml(record.amount || '')}" placeholder="0.00" required></div>
     </div>
     <div class="disbursement-save">${editing ? '<button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>' : ''}<button id="${prefix}SaveButton" class="btn btn-primary" type="submit">${editing ? 'Save Changes' : 'Save Disbursement'}</button></div>
   </form>`;
+}
+
+function updateDisbursementOtherCategory(prefix) {
+  const isOther = document.getElementById(prefix + 'Category').value === 'Others';
+  const wrap = document.getElementById(prefix + 'OtherWrap');
+  const input = document.getElementById(prefix + 'OtherCategory');
+  wrap.hidden = !isOther;
+  input.disabled = !isOther;
+  input.required = isOther;
+  if (isOther) input.focus();
 }
 
 async function renderDisbursements() {
@@ -47,8 +60,14 @@ async function renderDisbursements() {
       <div class="section-card-body"><div class="filters-row expense-filters">
         <div class="search-box"><input id="expenseSearch" placeholder="Search category, date or amount…" aria-label="Search disbursements" oninput="filterDisbursements()"></div>
         <select class="filter-select" id="expenseFilterCategory" aria-label="Filter category" onchange="filterDisbursements()"><option value="">All Categories</option>${expenseOptions()}</select>
-        <label>From <input class="filter-select" id="expenseFrom" type="date" onchange="filterDisbursements()"></label>
-        <label>To <input class="filter-select" id="expenseTo" type="date" onchange="filterDisbursements()"></label>
+        <select class="filter-select" id="expensePeriod" aria-label="Filter disbursements by date" onchange="updateDisbursementPeriod()">
+          <option value="all">All Time</option><option value="today">Today</option><option value="week">This Week</option>
+          <option value="month">This Month</option><option value="year">This Year</option>
+          <option value="date">Choose Date</option><option value="range">Date Range</option>
+        </select>
+        <label id="expenseDateLabel" hidden>Date <input class="filter-select" id="expenseDateFilter" type="date" onchange="filterDisbursements()"></label>
+        <label id="expenseFromLabel" hidden>From <input class="filter-select" id="expenseFrom" type="date" onchange="filterDisbursements()"></label>
+        <label id="expenseToLabel" hidden>To <input class="filter-select" id="expenseTo" type="date" onchange="filterDisbursements()"></label>
         <button class="btn btn-secondary btn-sm" onclick="clearDisbursementFilters()">Clear</button>
       </div><p id="expenseFilterError" class="expense-filter-error" role="alert" hidden></p></div>
       <div class="table-wrapper"><table class="data-table"><thead><tr><th>Transaction Date</th><th>Expense Category</th><th>Amount (PHP)</th><th>Actions</th></tr></thead><tbody id="expenseRows"></tbody></table></div><div id="expensePagination"></div></div>
@@ -60,7 +79,18 @@ async function renderDisbursements() {
 }
 
 function clearDisbursementFilters() {
-  ['expenseSearch', 'expenseFilterCategory', 'expenseFrom', 'expenseTo'].forEach(id => { document.getElementById(id).value = ''; });
+  ['expenseSearch', 'expenseFilterCategory', 'expenseDateFilter', 'expenseFrom', 'expenseTo'].forEach(id => { document.getElementById(id).value = ''; });
+  document.getElementById('expensePeriod').value = 'all';
+  updateDisbursementPeriod();
+}
+function updateDisbursementPeriod() {
+  const period = document.getElementById('expensePeriod').value;
+  document.getElementById('expenseDateLabel').hidden = period !== 'date';
+  document.getElementById('expenseFromLabel').hidden = period !== 'range';
+  document.getElementById('expenseToLabel').hidden = period !== 'range';
+  if (period === 'date' && !document.getElementById('expenseDateFilter').value) {
+    document.getElementById('expenseDateFilter').value = getLocalDateValue();
+  }
   filterDisbursements();
 }
 function filterDisbursements(reset = true) {
@@ -68,10 +98,24 @@ function filterDisbursements(reset = true) {
   if (reset) disbursementPage = 1;
   const value = id => document.getElementById(id)?.value || '';
   const query = value('expenseSearch').trim().toLowerCase();
-  const from = value('expenseFrom'), to = value('expenseTo'), category = value('expenseFilterCategory');
+  const period = value('expensePeriod');
+  const today = new Date();
+  const todayValue = getLocalDateValue(today);
+  let from = '', to = '';
+  if (period === 'today') from = to = todayValue;
+  else if (period === 'week') {
+    const monday = new Date(today);
+    monday.setDate(today.getDate() - ((today.getDay() + 6) % 7));
+    from = getLocalDateValue(monday);
+    to = todayValue;
+  } else if (period === 'month') { from = todayValue.slice(0, 7) + '-01'; to = todayValue; }
+  else if (period === 'year') { from = todayValue.slice(0, 4) + '-01-01'; to = todayValue; }
+  else if (period === 'date') from = to = value('expenseDateFilter');
+  else if (period === 'range') { from = value('expenseFrom'); to = value('expenseTo'); }
+  const category = value('expenseFilterCategory');
   const invalidRange = from && to && from > to;
   const records = invalidRange ? [] : disbursementRecords.filter(r =>
-    (!category || r.expense_category === category) && (!from || r.transaction_date >= from) && (!to || r.transaction_date <= to) &&
+    (!category || r.expense_category === category || (category === 'Others' && r.expense_category.startsWith('Others: '))) && (!from || r.transaction_date >= from) && (!to || r.transaction_date <= to) &&
     `${r.expense_category} ${r.transaction_date} ${r.amount}`.toLowerCase().includes(query));
   disbursementPage = Math.min(disbursementPage, Math.max(1, Math.ceil(records.length / disbursementPageSize)));
   document.getElementById('expenseTotal').textContent = invalidRange ? '—' : expenseMoney(expenseTotal(records));
@@ -102,6 +146,7 @@ async function saveDisbursement(editing = false) {
   if (!form.reportValidity()) return;
   const id = editing ? editingDisbursementId : null;
   const body = { expense_category: document.getElementById(prefix + 'Category').value, transaction_date: document.getElementById(prefix + 'Date').value, amount: document.getElementById(prefix + 'Amount').value };
+  if (body.expense_category === 'Others') body.other_category = document.getElementById(prefix + 'OtherCategory').value.trim();
   disbursementBusy = true;
   document.getElementById(prefix + 'SaveButton').disabled = true;
   try {
@@ -137,7 +182,7 @@ function buildDisbursementReport(payload, range) {
   const totalCollections = expenseTotal(collections), totalDisbursements = expenseTotal(records);
   const group = key => [...new Set(records.map(key))].sort().map(label => [label, expenseTotal(records.filter(r => key(r) === label))]);
   return { records, totalCollections, totalDisbursements, netCashMovement: Math.round((totalCollections - totalDisbursements) * 100) / 100,
-    categories: group(r => r.expense_category), months: group(r => r.transaction_date.slice(0, 7)) };
+    categories: group(r => r.expense_category.startsWith('Others: ') ? 'Others' : r.expense_category), months: group(r => r.transaction_date.slice(0, 7)) };
 }
 async function fetchDisbursementReport(range) {
   const actorId = currentUser?.id;

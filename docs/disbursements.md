@@ -1,6 +1,6 @@
 # Disbursement Management
 
-Disbursements appears under Management immediately after Payments. The form has exactly three fields: Expense Category, Transaction Date and Amount (PHP). Desktop uses three equal-width columns; smaller screens stack them. All thirteen requested categories are supplied by the server, including `Hermicide` and `Remittances (SSS, PhilHealth, Pag-IBIG)`.
+Disbursements appears under Management immediately after Payments. The form has three primary fields: Expense Category, Transaction Date and Amount (PHP). Desktop uses three equal-width columns; smaller screens stack them. The desktop save button stays at its compact position when the conditional `Others` field opens; on small screens it follows the stacked fields. All thirteen categories are supplied by the server, including `Herbicide` and `Remittances (SSS, PhilHealth, Pag-IBIG)`. Older `Hermicide` records are displayed as `Herbicide` without changing historical database rows. Selecting `Others` reveals a required text field. Its details are stored as `Others: <details>` in the existing category column, remain editable, and appear in transaction histories and exports. Category filters and summaries group these records under `Others`.
 
 ## Architecture and access
 

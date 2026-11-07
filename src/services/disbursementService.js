@@ -2,24 +2,29 @@
 const crypto = require('node:crypto');
 
 const EXPENSE_CATEGORIES = Object.freeze([
-  'Gasoline', 'Payroll', 'Extra Labor', 'Hermicide', 'Papers', 'Utensils',
+  'Gasoline', 'Payroll', 'Extra Labor', 'Herbicide', 'Papers', 'Utensils',
   'Maintenance', 'Water Bill', 'Electric Bill', 'Security Services', 'Internet',
   'Remittances (SSS, PhilHealth, Pag-IBIG)', 'Others',
 ]);
 
 function validateDisbursement(body) {
   if (!body || typeof body !== 'object' || Array.isArray(body) ||
-      Object.keys(body).some(key => !['expense_category', 'transaction_date', 'amount'].includes(key))) {
-    throw new Error('Only expense category, transaction date and amount can be submitted.');
+      Object.keys(body).some(key => !['expense_category', 'other_category', 'transaction_date', 'amount'].includes(key))) {
+    throw new Error('Only expense category, other category details, transaction date and amount can be submitted.');
   }
-  const { expense_category, transaction_date, amount } = body;
+  const { expense_category, other_category, transaction_date, amount } = body;
   if (!EXPENSE_CATEGORIES.includes(expense_category)) throw new Error('Select a valid expense category.');
+  if (expense_category !== 'Others' && other_category !== undefined) throw new Error('Other category details require Others.');
+  if (expense_category === 'Others' && other_category !== undefined &&
+      (typeof other_category !== 'string' || !other_category.trim() || other_category.trim().length > 92 || /[\x00-\x1f\x7f]/.test(other_category))) {
+    throw new Error('Enter other category details (up to 92 characters).');
+  }
   if (typeof transaction_date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(transaction_date) ||
       transaction_date < '1000-01-01' || !Number.isFinite(Date.parse(transaction_date)) ||
       new Date(transaction_date).toISOString().slice(0, 10) !== transaction_date) throw new Error('Enter a valid transaction date.');
   if (!['string', 'number'].includes(typeof amount) || !/^\d{1,10}(?:\.\d{1,2})?$/.test(String(amount)) ||
       Number(amount) <= 0 || Number(amount) > 9999999999.99) throw new Error('Enter an amount greater than zero, with at most two decimal places.');
-  return { expense_category, transaction_date, amount: Number(amount).toFixed(2) };
+  return { expense_category: other_category === undefined ? expense_category : `Others: ${other_category.trim()}`, transaction_date, amount: Number(amount).toFixed(2) };
 }
 
 function presentDisbursement(row) {
@@ -27,7 +32,7 @@ function presentDisbursement(row) {
   const transaction_date = value instanceof Date
     ? [value.getFullYear(), String(value.getMonth() + 1).padStart(2, '0'), String(value.getDate()).padStart(2, '0')].join('-')
     : String(value).slice(0, 10);
-  return { ...row, transaction_date };
+  return { ...row, expense_category: row.expense_category === 'Hermicide' ? 'Herbicide' : row.expense_category, transaction_date };
 }
 
 // Dedicated routes deliberately stay outside generic CRUD and bulk replacement.
