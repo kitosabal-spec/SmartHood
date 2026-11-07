@@ -124,6 +124,41 @@ test('active plate collisions include legacy records, and Manage enforces sticke
   assert.equal(released.body.stickerNumber, 'S1');
 });
 
+test('administrator edits vehicle details and archives a registration', async t => {
+  const f = await auditFixture(t);
+  f.pool.tables.homeowners[0].block = 'Block 3';
+  f.pool.tables.homeowners[0].lot = 'Lot 7';
+  const created = await f.request('POST', endpoint, application);
+  assert.equal(created.status, 201);
+  const url = endpoint + '/' + created.body.id;
+  const edit = await f.request('PUT', url, { registrantType: 'nonHomeowner', vehicleType: 'Motorcycle',
+    homeownerId: 'home-1', ownerName: 'Guest Driver', plateNumber: 'NEW 987' });
+  assert.equal(edit.status, 200, JSON.stringify(edit));
+  assert.equal(edit.body.ownerName, 'Guest Driver');
+  assert.equal(edit.body.fee, 250);
+  assert.equal(edit.body.activePlateKey, 'NEW987');
+  assert.equal((await f.request('GET', endpoint)).body[0].plateNumber, 'NEW 987');
+  f.pool.tables.vehicleRegistrations.push({ id: 'legacy-plate', plateNumber: 'TAKEN 1', registrationStatus: 'Approved', activePlateKey: null });
+  assert.equal((await f.request('PUT', url, { plateNumber: 'taken-1' })).status, 409);
+  assert.equal((await f.request('PUT', url, { paymentStatus: 'Paid' })).status, 200);
+  assert.equal((await f.request('PUT', url, { registrantType: 'homeowner' })).status, 409);
+  assert.equal((await f.request('PUT', url, { plateNumber: 'OTHER 1' }, 'resident-1')).status, 403);
+  assert.equal((await f.request('DELETE', url, undefined, 'resident-1')).status, 403);
+  assert.equal((await f.request('DELETE', url)).status, 200);
+  assert.equal((await f.request('GET', endpoint)).body.length, 1);
+});
+
+test('billed vehicle details cannot be changed, while status and archiving remain available', async t => {
+  const f = await auditFixture(t);
+  const created = await f.request('POST', endpoint, application);
+  const url = endpoint + '/' + created.body.id;
+  f.pool.tables.billings.push({ id: 'bill-1', vehicle_registration_id: created.body.id, status: 'active' });
+  assert.equal((await f.request('PUT', url, { plateNumber: 'NEW 987' })).status, 409);
+  assert.equal((await f.request('PUT', url, { registrationStatus: 'Approved' })).status, 200);
+  assert.equal((await f.request('DELETE', url)).status, 200);
+  assert.equal(f.pool.tables.billings[0].vehicle_registration_id, created.body.id);
+});
+
 test('registration UI waits for persistence and only refreshes on success', async () => {
   const fs = require('node:fs');
   const vm = require('node:vm');
@@ -143,6 +178,27 @@ test('registration UI waits for persistence and only refreshes on success', asyn
   finish.resolve({});
   assert.equal(await success, true);
   assert.deepEqual(calls, ['error', 'success', 'refresh']);
+});
+
+test('vehicle management keeps row actions compact and offers editing and deletion in Manage', () => {
+  const fs = require('node:fs');
+  const vm = require('node:vm');
+  const context = { currentUser: { role: 'admin' }, toMoneyNumber: Number,
+    db: { getOne: () => ({ id: 'v1', plateNumber: 'ABC 123', ownerName: 'Resident',
+      vehicleType: 'Car', fee: 200, registrationStatus: 'Approved', paymentStatus: 'Unpaid' }) },
+    openModal: (title, html, buttons) => { context.modal = { title, html, buttons }; },
+    getVehicleLocation: () => 'Block 1 Lot 1', closeModal() {} };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../public/js/vehicles.js'), 'utf8'), context);
+  const vehicle = context.db.getOne();
+  const row = context.renderAdminVehicleRow(vehicle);
+  assert.match(row, />Manage<\/button>/);
+  assert.doesNotMatch(row, />Edit<\/button>|>Delete<\/button>|>Create Billing<\/button>/);
+  assert.doesNotMatch(context.renderAdminVehicleRow({ ...vehicle, billingId: 'bill-1' }), />View Billing<\/button>/);
+  context.openVehicleAdminModal('v1');
+  assert.deepEqual(Array.from(context.modal.buttons, button => button.label), ['Cancel', 'Edit Details', 'Delete', 'Save Changes']);
+  context.currentUser.role = 'homeowner';
+  context.openVehicleAdminModal('v1');
+  assert.deepEqual(Array.from(context.modal.buttons, button => button.label), ['Cancel', 'Save Changes']);
 });
 
 test('real MySQL: concurrent registrations, reactivation and archive share one active plate claim', {

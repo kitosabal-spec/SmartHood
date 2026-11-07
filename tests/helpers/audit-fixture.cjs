@@ -37,6 +37,12 @@ function auditDatabase() {
         return { ...a, billingId: b?.id || null, billingStatus: b?.status || null, billingArchivedAt: b?.archived_at || null };
       }))];
     }
+    if (q.startsWith('SELECT v.*, b.id AS billingId')) {
+      return [structuredClone(tables.vehicleRegistrations.filter(v => !v.archived_at).map(v => {
+        const b = tables.billings.find(b => b.vehicle_registration_id === v.id);
+        return { ...v, billingId: b?.id || null, billingStatus: b?.status || null, billingArchivedAt: b?.archived_at || null };
+      }))];
+    }
     if (/auth_rate_limits|auth_security_/.test(q) || q.includes('reset_token_') || (q.startsWith('SELECT * FROM users') && q.includes('LOWER(email)'))) return authExecute(sql, values);
     if (q.startsWith('SELECT id FROM users') && /BINARY username|LOWER\(email\)/.test(q)) {
       const column = q.includes('BINARY username') ? 'username' : 'email';

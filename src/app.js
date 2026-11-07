@@ -41,6 +41,7 @@ const { normalizeEmail, isValidEmail } = require('./utils/email');
 const { createAdminEmailService, AdminEmailError } = require('./services/adminEmailService');
 const { createAmenityService } = require('./services/amenityService');
 const { createAmenityBillingService } = require('./services/amenityBillingService');
+const { createVehicleBillingService } = require('./services/vehicleBillingService');
 const amenityService = createAmenityService({ get, all });
 const { createVehicleService, VehicleError } = require('./services/vehicleService');
 const vehicleService = createVehicleService({ get, saveRecord, createServerNotification });
@@ -169,7 +170,7 @@ const tableConfig = {
     booleanColumns: [],
   },
   billings: {
-    columns: ['id', 'title', 'amount', 'dueDate', 'due_date', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month', 'billing_type', 'amenity_booking_id'],
+    columns: ['id', 'title', 'amount', 'dueDate', 'due_date', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month', 'billing_type', 'amenity_booking_id', 'vehicle_registration_id'],
     jsonColumns: ['assignedTo'],
     booleanColumns: [],
   },
@@ -820,6 +821,12 @@ async function getTableData(table, sharedReads = new Map()) {
     const rows = await all(`SELECT a.*, b.id AS billingId, b.status AS billingStatus, b.archived_at AS billingArchivedAt
       FROM amenityBookings a LEFT JOIN billings b ON b.amenity_booking_id = a.id
       WHERE a.archived_at IS NULL`);
+    return rows.map(row => deserializeRow(table, row));
+  }
+  if (table === 'vehicleRegistrations') {
+    const rows = await all(`SELECT v.*, b.id AS billingId, b.status AS billingStatus, b.archived_at AS billingArchivedAt
+      FROM vehicleRegistrations v LEFT JOIN billings b ON b.vehicle_registration_id = v.id
+      WHERE v.archived_at IS NULL`);
     return rows.map(row => deserializeRow(table, row));
   }
   if (table === 'billings') {
@@ -3247,9 +3254,15 @@ const amenityBilling = createAmenityBillingService({
 });
 app.get('/api/amenityBookings/:id/billing', auditedHandler(amenityBilling.preview));
 app.post('/api/amenityBookings/:id/billing', auditedHandler(amenityBilling.create));
+const vehicleBilling = createVehicleBillingService({
+  get, requireAdmin: requireFinancialAdmin, eligibleIds: getResidentModuleHomeownerIds,
+  validate: validateAndPrepareBillingPayload, save: saveRecord, notify: notifyNewBilling,
+});
+app.get('/api/vehicleRegistrations/:id/billing', auditedHandler(vehicleBilling.preview));
+app.post('/api/vehicleRegistrations/:id/billing', auditedHandler(vehicleBilling.create));
 
 // The booking link and its original recipient are owned by the dedicated flow.
-function protectAmenityBilling(body, existing, res) {
+function protectLinkedBilling(body, existing, res) {
   if ((!existing?.amenity_booking_id && body.amenity_booking_id != null) ||
       (existing?.amenity_booking_id && (
         (body.amenity_booking_id !== undefined && body.amenity_booking_id !== existing.amenity_booking_id) ||
@@ -3260,6 +3273,19 @@ function protectAmenityBilling(body, existing, res) {
   }
   if (existing?.amenity_booking_id) {
     body.amenity_booking_id = existing.amenity_booking_id;
+    body.billing_type = 'Other Billing';
+    body.monthly_dues_month = null;
+  }
+  if ((!existing?.vehicle_registration_id && body.vehicle_registration_id != null) ||
+      (existing?.vehicle_registration_id && (
+        (body.vehicle_registration_id !== undefined && body.vehicle_registration_id !== existing.vehicle_registration_id) ||
+        (body.assignedTo !== undefined && JSON.stringify(getAssignedHomeownerIds(body)) !== JSON.stringify(getAssignedHomeownerIds(existing))) ||
+        (body.billing_type !== undefined && body.billing_type !== 'Other Billing')))) {
+    res.status(400).json({ error: 'Vehicle billing links, recipients, and billing type are managed through Create Billing on the vehicle.' });
+    return false;
+  }
+  if (existing?.vehicle_registration_id) {
+    body.vehicle_registration_id = existing.vehicle_registration_id;
     body.billing_type = 'Other Billing';
     body.monthly_dues_month = null;
   }
@@ -4625,8 +4651,8 @@ app.put('/api/:table', auditedHandler(async (req, res) => {
 
   const previousRows = await getTableData(table);
   const nextIds = new Set(req.body.map(item => item.id).filter(Boolean));
-  if (table === 'billings' && previousRows.some(row => row.amenity_booking_id && !nextIds.has(row.id))) {
-    return res.status(409).json({ error: 'Booking billings must retain their links. Archive individual billings instead.' });
+  if (table === 'billings' && previousRows.some(row => (row.amenity_booking_id || row.vehicle_registration_id) && !nextIds.has(row.id))) {
+    return res.status(409).json({ error: 'Linked billings must retain their links. Archive individual billings instead.' });
   }
   for (const previous of previousRows) {
     if (!nextIds.has(previous.id)) await deleteRecord(table, previous.id);
@@ -4635,7 +4661,7 @@ app.put('/api/:table', auditedHandler(async (req, res) => {
     if (table === 'billings') {
       // Include archived records: a bulk request must not detach their links.
       const previous = item.id ? await get('SELECT * FROM billings WHERE id = ? FOR UPDATE', [item.id]) : null;
-      if (!protectAmenityBilling(item, previous, res)) return;
+      if (!protectLinkedBilling(item, previous, res)) return;
       const unchangedMissingDeadline = previous && !previous.dueDate && !item.dueDate && item.noDueDate === undefined;
       if (!await keepResidentModuleBillingRecipients(item, res)) return;
       if (!await validateAndPrepareBillingPayload(item, res, previous?.id || null, unchangedMissingDeadline)) return;
@@ -5322,7 +5348,7 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
   if (table === 'billings') {
     const hasEligibleRecipients = await keepResidentModuleBillingRecipients(req.body, res);
     if (!hasEligibleRecipients) return;
-    if (!protectAmenityBilling(req.body, null, res)) return;
+    if (!protectLinkedBilling(req.body, null, res)) return;
     const validBilling = await validateAndPrepareBillingPayload(req.body, res);
     if (!validBilling) return;
   }
@@ -5406,7 +5432,7 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
   const allowed = await checkTableAccess(req, res, table, 'update');
   if (!allowed) return;
   if (table === 'vehicleRegistrations') {
-    const { before, after } = await vehicleService.manage(req.params.id, req.body);
+    const { before, after } = await vehicleService.manage(req.params.id, req.body, { canEditDetails: allowed.role === 'admin' });
     const notification = importantStatusEmail(table, before, after);
     if (notification) await emailHomeowners([notification.homeownerId], () => notification.email);
     return res.json(after);
@@ -5550,7 +5576,7 @@ app.put('/api/:table/:id', auditedHandler(async (req, res) => {
       return;
     }
     const merged = { ...deserializeRow('billings', existing), ...req.body };
-    if (!protectAmenityBilling(merged, existing, res)) return;
+    if (!protectLinkedBilling(merged, existing, res)) return;
     const deadlineUntouched = req.body.dueDate === undefined && req.body.noDueDate === undefined;
     if (req.body.noDueDate === true && req.body.dueDate === undefined) merged.dueDate = null;
     const validBilling = await validateAndPrepareBillingPayload(merged, res, req.params.id, deadlineUntouched && !existing.dueDate);
@@ -5616,6 +5642,9 @@ app.delete('/api/:table/:id', auditedHandler(async (req, res) => {
   if (!table) return;
   const allowed = await checkTableAccess(req, res, table, 'delete');
   if (!allowed) return;
+  if (table === 'vehicleRegistrations' && allowed.role !== 'admin') {
+    return res.status(403).json({ error: 'Only an administrator can archive vehicle registrations.' });
+  }
   if (table === 'amenityBookings' || table === 'appSettings') await amenityService.lock();
 
   if (table === 'users' && req.params.id === 'u001') {

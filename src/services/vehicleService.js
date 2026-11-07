@@ -87,9 +87,47 @@ function createVehicleService({ get, saveRecord, createServerNotification }) {
     return record;
   }
 
-  async function manage(id, input) {
+  async function manage(id, input, { canEditDetails = false } = {}) {
     const before = await get('SELECT * FROM vehicleRegistrations WHERE id = ? AND archived_at IS NULL FOR UPDATE', [id]);
     if (!before) throw new VehicleError(404, 'Vehicle registration not found.');
+    const detailFields = ['registrantType', 'vehicleType', 'homeownerId', 'ownerName', 'registrationLocation', 'plateNumber'];
+    const editingDetails = detailFields.some(field => Object.hasOwn(input, field));
+    if (editingDetails && !canEditDetails) throw new VehicleError(403, 'Only an administrator can edit vehicle registration details.');
+    let detailChanges = {};
+    if (editingDetails) {
+      if (await get('SELECT id FROM billings WHERE vehicle_registration_id = ? LIMIT 1', [id])) {
+        throw new VehicleError(409, 'This registration has a billing. Its owner, vehicle and fee details cannot be edited.');
+      }
+      const registrantType = input.registrantType ?? before.registrantType;
+      const vehicleType = input.vehicleType ?? before.vehicleType;
+      const plateNumber = text(input.plateNumber ?? before.plateNumber).toUpperCase();
+      if (!['homeowner', 'nonHomeowner'].includes(registrantType) || !VEHICLE_TYPES.includes(vehicleType)) {
+        throw new VehicleError(400, 'Select a registration type and vehicle type.');
+      }
+      if (!plateNumber || plateNumber.length > 255 || !/[A-Z0-9]/.test(plateNumber) || !/^[A-Z0-9 -]+$/.test(plateNumber)) {
+        throw new VehicleError(400, 'Enter a plate number using letters, digits, spaces or hyphens.');
+      }
+      const homeownerId = input.homeownerId === undefined ? before.homeownerId : input.homeownerId;
+      let property;
+      if (homeownerId != null && homeownerId !== '') {
+        if (typeof homeownerId !== 'string') throw new VehicleError(400, 'Select a valid property.');
+        property = await get('SELECT id, name, block, lot FROM homeowners WHERE id = ? AND archived_at IS NULL FOR UPDATE', [homeownerId]);
+        if (!property) throw new VehicleError(400, 'The selected homeowner is no longer available.');
+      }
+      if (registrantType === 'homeowner' && !property) throw new VehicleError(400, 'Select a homeowner.');
+      const ownerName = registrantType === 'homeowner' ? property.name : text(input.ownerName ?? before.ownerName);
+      if (!ownerName || ownerName.length > 255) throw new VehicleError(400, 'Enter the vehicle owner’s full name (up to 255 characters).');
+      const registrationLocation = property ? null : text(input.registrationLocation ?? before.registrationLocation);
+      if (!property && (!registrationLocation || registrationLocation.length > 255)) {
+        throw new VehicleError(400, 'Enter a reason or location (up to 255 characters).');
+      }
+      const fee = VEHICLE_REGISTRATION_FEES[registrantType];
+      if (before.paymentStatus === 'Paid' && fee !== Number(before.fee)) {
+        throw new VehicleError(409, 'The registration fee cannot change after the vehicle is marked paid.');
+      }
+      detailChanges = { registrantType, vehicleType, plateNumber, homeownerId: property?.id || null,
+        ownerName, registrationLocation, block: property?.block || '', lot: property?.lot || '', fee };
+    }
     const registrationStatus = input.registrationStatus ?? before.registrationStatus ?? 'Pending';
     const paymentStatus = input.paymentStatus ?? before.paymentStatus ?? 'Unpaid';
     if (!['Pending', 'Approved', 'Expired', 'Rejected'].includes(registrationStatus) || !['Paid', 'Unpaid'].includes(paymentStatus)) {
@@ -107,17 +145,24 @@ function createVehicleService({ get, saveRecord, createServerNotification }) {
       throw new VehicleError(409, 'That sticker number is already assigned.');
     }
     const now = new Date().toISOString();
-    const changes = { id, paymentStatus, registrationStatus, stickerNumber, updatedAt: now,
+    const changes = { id, ...detailChanges, paymentStatus, registrationStatus, stickerNumber, updatedAt: now,
       releasedAt: released ? before.releasedAt || now.slice(0, 10) : '' };
     if (input.remarks !== undefined) changes.remarks = text(input.remarks);
     if (!active(registrationStatus)) changes.activePlateKey = null;
-    else if (!active(before.registrationStatus)) changes.activePlateKey = await claimPlate(before.plateNumber || '', id);
+    else if (!active(before.registrationStatus) || (editingDetails && plateNumberChanged(before, detailChanges))) {
+      changes.activePlateKey = await claimPlate(detailChanges.plateNumber || before.plateNumber || '', id);
+    }
     await persist(changes);
     await notifyHomeowner(before.homeownerId, 'Vehicle Registration Updated', `${before.plateNumber} is now ${registrationStatus}.`);
     return { before, after: { ...before, ...changes } };
   }
 
   return { register, manage };
+}
+
+function plateNumberChanged(before, changes) {
+  return changes.plateNumber !== undefined &&
+    changes.plateNumber.toUpperCase().replace(/[^A-Z0-9]/g, '') !== text(before.plateNumber).toUpperCase().replace(/[^A-Z0-9]/g, '');
 }
 
 module.exports = { createVehicleService, VehicleError };

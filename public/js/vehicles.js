@@ -206,14 +206,14 @@ async function submitVehicleRegistration(vehicle, onBehalf = false) {
   return true;
 }
 
-function openAdminVehicleRegistration(draft = {}) {
+function openAdminVehicleRegistration(draft = {}, editingId = null) {
   if (!canManageVehicles()) return;
   const esc = safeVehicleEscape;
   const properties = new Map(getHomeowners().map(h => [
     [h.name, /^\d/.test(h.block) ? 'Block ' + h.block : h.block,
       /^\d/.test(h.lot) ? 'Lot ' + h.lot : h.lot, h.id].filter(Boolean).join(' · '), h,
   ]));
-  openModal('Add Vehicle', `
+  openModal(editingId ? 'Edit Vehicle' : 'Add Vehicle', `
     <form id="vehicleEntry">
       <div class="grid-2">
         <div class="form-group"><label for="vr_registrantType">Registration type</label>
@@ -233,10 +233,10 @@ function openAdminVehicleRegistration(draft = {}) {
           <input id="vr_plateNumber" required maxlength="255" placeholder="ABC 1234" value="${esc(draft.plateNumber || '')}"></div>
         <div class="form-group"><label for="vr_fee">Registration fee</label><input id="vr_fee" readonly></div>
       </div>
-      <div class="vehicle-entry-status">${vehicleRegistrationStatusBadge('Pending')} ${vehiclePaymentStatusBadge('Unpaid')}</div>
+      <div class="vehicle-entry-status">${vehicleRegistrationStatusBadge(draft.registrationStatus || 'Pending')} ${vehiclePaymentStatusBadge(draft.paymentStatus || 'Unpaid')}</div>
     </form>`, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    { label: 'Register Vehicle', cls: 'btn-primary', action: () => form.requestSubmit() },
+    { label: editingId ? 'Save Vehicle' : 'Register Vehicle', cls: 'btn-primary', action: () => form.requestSubmit() },
   ]);
   const form = document.getElementById('vehicleEntry');
   const { vr_registrantType: type, vr_vehicleType: vehicleType, vr_ownerName: owner,
@@ -270,13 +270,23 @@ function openAdminVehicleRegistration(draft = {}) {
       showToast('error', 'Check Registration', 'Enter the owner, a valid plate, and a property or registration reason.');
       return;
     }
-    const back = () => openAdminVehicleRegistration({ ...vehicle, propertyLabel: property.value });
-    openModal('Confirm Vehicle Registration', `Register <strong>${esc(vehicle.plateNumber)}</strong> for
+    const back = () => openAdminVehicleRegistration({ ...draft, ...vehicle, propertyLabel: property.value }, editingId);
+    openModal(editingId ? 'Confirm Vehicle Changes' : 'Confirm Vehicle Registration', `${editingId ? 'Save changes to' : 'Register'} <strong>${esc(vehicle.plateNumber)}</strong> for
       <strong>${esc(vehicle.ownerName)}</strong> with a fee of <strong>${esc(fee.value)}</strong>?`, [
       { label: 'Back', cls: 'btn-secondary', action: back },
-      { label: 'Confirm Registration', cls: 'btn-primary', action: async event => {
+      { label: editingId ? 'Confirm Changes' : 'Confirm Registration', cls: 'btn-primary', action: async event => {
         for (const button of event.currentTarget.parentElement.children) button.disabled = true;
-        if (!await submitVehicleRegistration(vehicle, true)) back();
+        if (editingId) {
+          try {
+            await db.save('vehicleRegistrations', { ...vehicle, id: editingId });
+            closeModal();
+            showToast('success', 'Vehicle Updated', 'Vehicle registration details have been saved.');
+            renderVehicleManagement();
+          } catch (error) {
+            showToast('error', 'Changes Not Saved', error.message);
+            back();
+          }
+        } else if (!await submitVehicleRegistration(vehicle, true)) back();
       } },
     ], 'modal-confirm');
   };
@@ -287,6 +297,7 @@ function renderAdminVehicleRow(vehicle) {
   const safeLoc = safeVehicleEscape(getVehicleLocation(vehicle));
   const safeType = safeVehicleEscape(vehicle.vehicleType);
   const safePlate = safeVehicleEscape(vehicle.plateNumber);
+  const safeId = safeVehicleEscape(JSON.stringify(String(vehicle.id)));
   const isNonHO = vehicle.registrantType === 'nonHomeowner';
   const registrantTypeLabel = isNonHO ? 'Non-homeowner' : 'Homeowner';
   const stickerHtml = vehicle.stickerNumber
@@ -323,7 +334,7 @@ function renderAdminVehicleRow(vehicle) {
       </td>
       <td data-label="Actions">
         <div class="td-actions">
-          <button class="btn btn-secondary btn-sm" onclick="openVehicleAdminModal('${vehicle.id}')">Manage</button>
+          <button class="btn btn-secondary btn-sm" onclick="openVehicleAdminModal(${safeId})">Manage</button>
         </div>
       </td>
     </tr>`;
@@ -424,6 +435,7 @@ function openVehicleAdminModal(id) {
       <div><span>Vehicle Type</span><strong>${safeVehicleEscape(vehicle.vehicleType)}</strong></div>
       <div><span>Fee</span><strong>${formatPeso(vehicle.fee)}</strong></div>
       <div><span>Submitted</span><strong>${safeVehicleEscape(vehicle.createdAt || 'N/A')}</strong></div>
+      ${currentUser?.role === 'admin' ? `<div><span>Billing</span><strong>${vehicleBillingAction(vehicle) || (vehicle.registrationStatus === 'Approved' ? 'Billing requires a linked homeowner' : 'Available after approval')}</strong></div>` : ''}
     </div>
     <div class="grid-2" style="margin-top:16px">
       <div class="form-group">
@@ -454,8 +466,37 @@ function openVehicleAdminModal(id) {
     </label>
   `, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    ...(currentUser?.role === 'admin' && !vehicle.billingId ? [{ label: 'Edit Details', cls: 'btn-secondary', action: () => openVehicleEdit(id) }] : []),
+    ...(currentUser?.role === 'admin' ? [{ label: 'Delete', cls: 'btn-danger', action: () => confirmArchiveVehicle(id) }] : []),
     { label: 'Save Changes', cls: 'btn-primary', action: () => saveVehicleAdminChanges(id) },
   ]);
+}
+
+function openVehicleEdit(id) {
+  if (currentUser?.role !== 'admin') return;
+  const vehicle = db.getOne('vehicleRegistrations', id);
+  if (!vehicle || vehicle.billingId) return;
+  const homeowner = vehicle.homeownerId && getHomeowners().find(h => h.id === vehicle.homeownerId);
+  const propertyLabel = homeowner ? [homeowner.name, /^\d/.test(homeowner.block) ? 'Block ' + homeowner.block : homeowner.block,
+    /^\d/.test(homeowner.lot) ? 'Lot ' + homeowner.lot : homeowner.lot, homeowner.id].filter(Boolean).join(' · ') : '';
+  openAdminVehicleRegistration({ ...vehicle, propertyLabel }, id);
+}
+
+function confirmArchiveVehicle(id) {
+  if (currentUser?.role !== 'admin') return;
+  const vehicle = db.getOne('vehicleRegistrations', id);
+  if (!vehicle) return;
+  openConfirm('Delete Vehicle Registration', `Delete the registration for <strong>${safeVehicleEscape(vehicle.plateNumber)}</strong>?
+    ${vehicle.billingId ? 'Its existing billing will remain in financial records.' : ''}`, async () => {
+    try {
+      await db.delete('vehicleRegistrations', id);
+      closeModal();
+      showToast('success', 'Vehicle Deleted', 'The registration was removed from Vehicle Management.');
+      renderVehicleManagement();
+    } catch (error) {
+      showToast('error', 'Vehicle Not Deleted', error.message);
+    }
+  }, 'btn-danger', 'Delete Vehicle');
 }
 
 async function saveVehicleAdminChanges(id) {
@@ -498,4 +539,124 @@ async function saveVehicleAdminChanges(id) {
   closeModal();
   showToast('success', 'Vehicle Updated', 'Vehicle registration details have been saved.');
   renderVehicleManagement();
+  if (currentUser?.role === 'admin' && vehicle.homeownerId && paymentStatus !== 'Paid' && registrationStatus === 'Approved' && vehicle.registrationStatus !== 'Approved') {
+    openModal('Vehicle Approved', '<p>Create its billing now or return to this approved vehicle later.</p>', [
+      { label: 'Later', cls: 'btn-secondary', action: closeModal },
+      { label: 'Create Billing', cls: 'btn-primary', action: () => openVehicleBilling(id) },
+    ]);
+  }
+}
+
+function vehicleBillingAction(vehicle) {
+  if (currentUser?.role !== 'admin') return '';
+  const id = safeVehicleEscape(JSON.stringify(String(vehicle.id)));
+  if (vehicle.billingId) {
+    const status = typeof amenityBillingStatus === 'function' ? amenityBillingStatus(vehicle.billingStatus) : vehicle.billingStatus;
+    return `<button class="btn btn-secondary btn-sm" onclick="openVehicleBilling(${id})">View Billing</button><span class="badge badge-gray">${safeVehicleEscape(status)}${vehicle.billingArchivedAt ? ' (Archived)' : ''}</span>`;
+  }
+  if (vehicle.paymentStatus === 'Paid') {
+    return `<button class="btn btn-secondary btn-sm" onclick="openVehicleManualPaymentDetails(${id})">View Payment Status</button>`;
+  }
+  return vehicle.registrationStatus === 'Approved' && vehicle.homeownerId
+    ? `<button class="btn btn-primary btn-sm" onclick="openVehicleBilling(${id})">Create Billing</button>` : '';
+}
+
+function openVehicleManualPaymentDetails(id) {
+  const vehicle = db.getOne('vehicleRegistrations', id);
+  if (!vehicle || currentUser?.role !== 'admin') return;
+  openModal('Vehicle Payment Status', `
+    <dl class="amenity-billing-details">
+      <dt>Owner</dt><dd>${safeVehicleEscape(vehicle.ownerName)}</dd>
+      <dt>Plate number</dt><dd>${safeVehicleEscape(vehicle.plateNumber)}</dd>
+      <dt>Registration fee</dt><dd>${formatPeso(vehicle.fee)}</dd>
+      <dt>Payment status</dt><dd>${safeVehicleEscape(vehicle.paymentStatus)}</dd>
+      <dt>Billing</dt><dd>No billing record was created for this vehicle.</dd>
+    </dl>
+    <p>The payment status was set in Vehicle Management. No payment transaction details are recorded here.</p>`, [
+    { label: 'Close', cls: 'btn-secondary', action: closeModal },
+  ]);
+}
+
+function vehicleBillingDetails(draft) {
+  return `<dl class="amenity-billing-details">
+    <dt>Homeowner</dt><dd>${safeVehicleEscape(draft.homeowner.name)} (${safeVehicleEscape(draft.homeowner.id)})</dd>
+    <dt>Billing type</dt><dd>${safeVehicleEscape(draft.billing_type)}</dd>
+    <dt>Title</dt><dd>${safeVehicleEscape(draft.title)}</dd>
+    <dt>Vehicle details</dt><dd>${safeVehicleEscape(draft.description)}</dd>
+  </dl>`;
+}
+
+async function openVehicleBilling(id) {
+  if (currentUser?.role !== 'admin') return;
+  try {
+    const draft = await api.request(`/api/vehicleRegistrations/${encodeURIComponent(id)}/billing`);
+    if (draft.billing) {
+      await api.loadAll();
+      renderVehicleManagement();
+      viewBillingDetail(draft.billing.id, draft.billing);
+      return;
+    }
+    showVehicleBillingForm(id, draft);
+  } catch (error) {
+    showToast('error', 'Billing Unavailable', error.message);
+  }
+}
+
+function showVehicleBillingForm(id, draft, values = {}) {
+  const noDueDate = values.noDueDate !== false;
+  openModal('Create Vehicle Billing', `${vehicleBillingDetails(draft)}
+    <form id="vehicleBillingForm" onsubmit="return false">
+      <div class="form-group"><label for="vb_amount">Amount (₱)</label><input id="vb_amount" type="number" min="0.01" max="9999999999.99" step="0.01" required value="${safeVehicleEscape(String(values.amount ?? draft.fee ?? ''))}"></div>
+      <div class="form-group"><label class="billing-no-due-date"><input id="vb_no_due" type="checkbox" ${noDueDate ? 'checked' : ''} onchange="toggleVehicleBillingDeadline()"> No due date</label>
+        <label for="vb_due">Due date</label><input id="vb_due" type="date" ${noDueDate ? 'disabled' : 'required'} value="${safeVehicleEscape(values.dueDate || '')}"></div>
+      <div class="form-group"><label for="vb_note">Optional note</label><textarea id="vb_note" maxlength="2000">${safeVehicleEscape(values.note || '')}</textarea></div>
+    </form>`, [
+    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Review Billing', cls: 'btn-primary', action: () => reviewVehicleBilling(id, draft) },
+  ]);
+}
+
+function toggleVehicleBillingDeadline() {
+  const noDueDate = document.getElementById('vb_no_due').checked;
+  const due = document.getElementById('vb_due');
+  due.disabled = noDueDate;
+  due.required = !noDueDate;
+  if (noDueDate) due.value = '';
+}
+
+function reviewVehicleBilling(id, draft) {
+  if (!document.getElementById('vehicleBillingForm').reportValidity()) return;
+  const noDueDate = document.getElementById('vb_no_due').checked;
+  const values = {
+    amount: Number(document.getElementById('vb_amount').value), noDueDate,
+    dueDate: noDueDate ? null : document.getElementById('vb_due').value,
+    note: document.getElementById('vb_note').value.trim(), vehicleVersion: draft.vehicleVersion,
+  };
+  let submitting = false;
+  openModal('Review Vehicle Billing', `${vehicleBillingDetails(draft)}
+    <dl class="amenity-billing-details"><dt>Amount</dt><dd>₱${values.amount.toFixed(2)}</dd>
+    <dt>Due date</dt><dd>${safeVehicleEscape(values.dueDate || 'No due date')}</dd>
+    <dt>Note</dt><dd style="white-space:pre-wrap">${safeVehicleEscape(values.note || 'None')}</dd></dl>
+    <p>Confirm to create this bill and notify the homeowner.</p>`, [
+    { label: 'Back', cls: 'btn-secondary', action: () => { if (!submitting) showVehicleBillingForm(id, draft, values); } },
+    { label: 'Confirm Creation', cls: 'btn-primary', action: async () => {
+      if (submitting) return;
+      submitting = true;
+      let created = false;
+      try {
+        await api.request(`/api/vehicleRegistrations/${encodeURIComponent(id)}/billing`, { method: 'POST', body: JSON.stringify(values) });
+        created = true;
+        closeModal();
+        await api.loadAll();
+        renderVehicleManagement();
+        showToast('success', 'Billing Created', 'Billing has been assigned to the homeowner.');
+      } catch (error) {
+        showToast('error', created ? 'Billing Created; Refresh Needed' : 'Billing Not Created', created ? 'The bill was saved. Reload the page to see the latest details.' : error.message);
+        if (error.status === 409) {
+          closeModal();
+          try { await api.loadAll(); renderVehicleManagement(); } catch { /* Keep the original error visible. */ }
+        }
+      } finally { submitting = false; }
+    } },
+  ]);
 }
