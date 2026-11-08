@@ -199,7 +199,7 @@ function renderPublicLostFound() {
       <div class="pub-lostfound-image">
         ${isVideo
           ? `<video src="${report.image}" controls preload="metadata" class="pub-lostfound-video"></video>`
-          : `<img loading="lazy" decoding="async" src="${report.image}" alt="${safeName}" style="cursor:pointer;" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')">`
+          : `<img src="${report.image}" alt="${safeName}" style="cursor:pointer;" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')">`
         }
       </div>
     ` : '';
@@ -593,7 +593,7 @@ function renderHOCommunityCards(posts) {
       <div class="pub-lostfound-image">
         ${isVideo
           ? `<video src="${report.image}" controls preload="metadata" class="pub-lostfound-video"></video>`
-          : `<img loading="lazy" decoding="async" src="${report.image}" alt="${safeName}" style="cursor:pointer;" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')">`
+          : `<img src="${report.image}" alt="${safeName}" style="cursor:pointer;" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')">`
         }
       </div>
     ` : '';
@@ -695,7 +695,7 @@ function renderHOMyReports(container) {
                         ${report.image ? `
                           ${isVideo
                             ? `<div class="lf-thumb-sm" style="display:flex;align-items:center;justify-content:center;background:#0f172a;color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>`
-                            : `<img loading="lazy" decoding="async" src="${report.image}" class="lf-thumb-sm" alt="${safeName}" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')" style="cursor:pointer;" />`
+                            : `<img src="${report.image}" class="lf-thumb-sm" alt="${safeName}" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')" style="cursor:pointer;" />`
                           }
                         ` : ''}
                         <div>
@@ -781,7 +781,7 @@ function openLostFoundDetailModal(id) {
     ${report.image ? `
       ${isVideo
         ? `<video src="${report.image}" controls class="lf-detail-modal-media" style="background:#000;"></video>`
-        : `<img loading="lazy" decoding="async" src="${report.image}" alt="${safeName}" class="lf-detail-modal-media" style="cursor:pointer;" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')">`
+        : `<img src="${report.image}" alt="${safeName}" class="lf-detail-modal-media" style="cursor:pointer;" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')">`
       }
     ` : ''}
 
@@ -834,108 +834,6 @@ function openLostFoundDetailModal(id) {
 
 // ── ADMIN SIDE: LOST & FOUND MANAGEMENT ──
 
-
-function renderPendingLostFoundRows(records) { return records.map(report => {
-                const safeName = typeof escapeHtml === 'function' ? escapeHtml(report.itemName || '') : (report.itemName || '');
-                const safeType = typeof escapeHtml === 'function' ? escapeHtml(report.itemType || '') : (report.itemType || '');
-                const safeLoc = typeof escapeHtml === 'function' ? escapeHtml(report.location || '') : (report.location || '');
-                const safeContact = typeof escapeHtml === 'function' ? escapeHtml(report.contactName || '') : (report.contactName || '');
-                const safePhone = typeof escapeHtml === 'function' ? escapeHtml(report.contactNumber || '') : (report.contactNumber || '');
-                const isVideo = isLostFoundMediaVideo(report.image || '') || report.media_type === 'video';
-                const submitterUser = report.homeownerId ? getHomeownerById(report.homeownerId) : null;
-                const submitterDisplay = submitterUser ? `${escapeHtml(submitterUser.name)} (Resident)` : safeContact;
-
-                return `
-                  <tr>
-                    <td>
-                      <div style="display:flex;align-items:center;gap:10px;">
-                        ${report.image ? `
-                          ${isVideo
-                            ? `<div class="lf-thumb-sm" style="display:flex;align-items:center;justify-content:center;background:#0f172a;color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>`
-                            : `<img loading="lazy" decoding="async" src="${report.image}" class="lf-thumb-sm" alt="${safeName}" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')" style="cursor:pointer;" />`
-                          }
-                        ` : ''}
-                        <div>
-                          <strong>${safeName}</strong>
-                          <br>${lostFoundTypeBadge(report.reportType)}
-                          <span style="font-size:0.78rem;color:var(--text-3);margin-left:4px;">${safeType}</span>
-                        </div>
-                      </div>
-                    </td>
-                    <td>
-                      <strong>${submitterDisplay}</strong>
-                      <br><span style="font-size:0.78rem;color:var(--text-3);">${safeContact} · ${safePhone}</span>
-                    </td>
-                    <td>
-                      ${safeLoc}
-                      <br><span style="font-size:0.78rem;color:var(--text-3);">${report.eventDate || ''}</span>
-                    </td>
-                    <td>
-                      <span style="font-size:0.8rem;color:var(--text-2);">${(report.createdAt || '').slice(0, 10)}</span>
-                    </td>
-                    <td>
-                      <div class="td-actions">
-                        <button class="btn btn-secondary btn-sm" onclick="openLostFoundAdminModal('${report.id}')" title="Review details">
-                          Review
-                        </button>
-                        <button class="btn btn-primary btn-sm" onclick="adminApproveLostFound('${report.id}')" title="Approve and post">
-                          Approve
-                        </button>
-                        <button class="btn btn-danger btn-sm" onclick="adminRejectLostFound('${report.id}')" title="Reject report">
-                          Reject
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                `;
-              }).join(''); }
-
-function renderManagedLostFoundRows(records) { return records.map(report => {
-              const safeName = typeof escapeHtml === 'function' ? escapeHtml(report.itemName || '') : (report.itemName || '');
-              const safeType = typeof escapeHtml === 'function' ? escapeHtml(report.itemType || '') : (report.itemType || '');
-              const safeLoc = typeof escapeHtml === 'function' ? escapeHtml(report.location || '') : (report.location || '');
-              const safeContact = typeof escapeHtml === 'function' ? escapeHtml(report.contactName || '') : (report.contactName || '');
-              const safePhone = typeof escapeHtml === 'function' ? escapeHtml(report.contactNumber || '') : (report.contactNumber || '');
-              const safeRemarks = typeof escapeHtml === 'function' ? escapeHtml(report.remarks || '') : (report.remarks || '');
-              const isVideo = isLostFoundMediaVideo(report.image || '') || report.media_type === 'video';
-
-              return `
-              <tr>
-                <td>
-                  <div style="display:flex;align-items:center;gap:10px;">
-                    ${report.image ? `
-                      ${isVideo
-                        ? `<div class="lf-thumb-sm" style="display:flex;align-items:center;justify-content:center;background:#0f172a;color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>`
-                        : `<img loading="lazy" decoding="async" src="${report.image}" class="lf-thumb-sm" alt="${safeName}" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')" style="cursor:pointer;" />`
-                      }
-                    ` : ''}
-                    <div>
-                      <strong>${safeName}</strong>
-                      <br>${lostFoundTypeBadge(report.reportType)}
-                      <span style="font-size:0.78rem;color:var(--text-3);margin-left:4px;">${safeType}</span>
-                    </div>
-                  </div>
-                </td>
-                <td>
-                  ${safeLoc}
-                  <br><span style="font-size:0.78rem;color:var(--text-3)">${report.eventDate || ''}</span>
-                </td>
-                <td>
-                  ${safeContact}
-                  <br><span style="font-size:0.78rem;color:var(--text-3)">${safePhone}</span>
-                </td>
-                <td>${lostFoundStatusBadge(report.status)}</td>
-                <td style="max-width:200px;">
-                  <span style="font-size:0.8rem;color:var(--text-2);">${safeRemarks || '<span style="color:var(--text-3)">—</span>'}</span>
-                </td>
-                <td>
-                  <div class="td-actions">
-                    <button class="btn btn-secondary btn-sm" onclick="openLostFoundAdminModal('${report.id}')">Manage</button>
-                    <button class="btn btn-danger btn-sm" onclick="confirmDeleteLostFound('${report.id}')">Delete</button>
-                  </div>
-                </td>
-              </tr>`;
-            }).join(''); }
 function renderLostFoundManagement(filtered = null) {
   const allReports = db.get('lostFound') || [];
   const source = filtered || allReports;
@@ -1026,8 +924,61 @@ function renderLostFoundManagement(filtered = null) {
                 <th>Actions</th>
               </tr>
             </thead>
-            <tbody id="pendingLostFoundBody">
-              ${renderPendingLostFoundRows(typeof dbCache !== 'undefined' && dbCache._serverPaging ? [] : pendingReports)}
+            <tbody>
+              ${pendingReports.map(report => {
+                const safeName = typeof escapeHtml === 'function' ? escapeHtml(report.itemName || '') : (report.itemName || '');
+                const safeType = typeof escapeHtml === 'function' ? escapeHtml(report.itemType || '') : (report.itemType || '');
+                const safeLoc = typeof escapeHtml === 'function' ? escapeHtml(report.location || '') : (report.location || '');
+                const safeContact = typeof escapeHtml === 'function' ? escapeHtml(report.contactName || '') : (report.contactName || '');
+                const safePhone = typeof escapeHtml === 'function' ? escapeHtml(report.contactNumber || '') : (report.contactNumber || '');
+                const isVideo = isLostFoundMediaVideo(report.image || '') || report.media_type === 'video';
+                const submitterUser = report.homeownerId ? getHomeownerById(report.homeownerId) : null;
+                const submitterDisplay = submitterUser ? `${escapeHtml(submitterUser.name)} (Resident)` : safeContact;
+
+                return `
+                  <tr>
+                    <td>
+                      <div style="display:flex;align-items:center;gap:10px;">
+                        ${report.image ? `
+                          ${isVideo
+                            ? `<div class="lf-thumb-sm" style="display:flex;align-items:center;justify-content:center;background:#0f172a;color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>`
+                            : `<img src="${report.image}" class="lf-thumb-sm" alt="${safeName}" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')" style="cursor:pointer;" />`
+                          }
+                        ` : ''}
+                        <div>
+                          <strong>${safeName}</strong>
+                          <br>${lostFoundTypeBadge(report.reportType)}
+                          <span style="font-size:0.78rem;color:var(--text-3);margin-left:4px;">${safeType}</span>
+                        </div>
+                      </div>
+                    </td>
+                    <td>
+                      <strong>${submitterDisplay}</strong>
+                      <br><span style="font-size:0.78rem;color:var(--text-3);">${safeContact} · ${safePhone}</span>
+                    </td>
+                    <td>
+                      ${safeLoc}
+                      <br><span style="font-size:0.78rem;color:var(--text-3);">${report.eventDate || ''}</span>
+                    </td>
+                    <td>
+                      <span style="font-size:0.8rem;color:var(--text-2);">${(report.createdAt || '').slice(0, 10)}</span>
+                    </td>
+                    <td>
+                      <div class="td-actions">
+                        <button class="btn btn-secondary btn-sm" onclick="openLostFoundAdminModal('${report.id}')" title="Review details">
+                          Review
+                        </button>
+                        <button class="btn btn-primary btn-sm" onclick="adminApproveLostFound('${report.id}')" title="Approve and post">
+                          Approve
+                        </button>
+                        <button class="btn btn-danger btn-sm" onclick="adminRejectLostFound('${report.id}')" title="Reject report">
+                          Reject
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                `;
+              }).join('')}
             </tbody>
           </table>
         </div>
@@ -1076,8 +1027,53 @@ function renderLostFoundManagement(filtered = null) {
               <th>Actions</th>
             </tr>
           </thead>
-          <tbody id="managedLostFoundBody">
-            ${renderManagedLostFoundRows(typeof dbCache !== 'undefined' && dbCache._serverPaging ? [] : reports) || '<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-search"/></svg>No lost and found reports found.</div></td></tr>'}
+          <tbody>
+            ${reports.map(report => {
+              const safeName = typeof escapeHtml === 'function' ? escapeHtml(report.itemName || '') : (report.itemName || '');
+              const safeType = typeof escapeHtml === 'function' ? escapeHtml(report.itemType || '') : (report.itemType || '');
+              const safeLoc = typeof escapeHtml === 'function' ? escapeHtml(report.location || '') : (report.location || '');
+              const safeContact = typeof escapeHtml === 'function' ? escapeHtml(report.contactName || '') : (report.contactName || '');
+              const safePhone = typeof escapeHtml === 'function' ? escapeHtml(report.contactNumber || '') : (report.contactNumber || '');
+              const safeRemarks = typeof escapeHtml === 'function' ? escapeHtml(report.remarks || '') : (report.remarks || '');
+              const isVideo = isLostFoundMediaVideo(report.image || '') || report.media_type === 'video';
+
+              return `
+              <tr>
+                <td>
+                  <div style="display:flex;align-items:center;gap:10px;">
+                    ${report.image ? `
+                      ${isVideo
+                        ? `<div class="lf-thumb-sm" style="display:flex;align-items:center;justify-content:center;background:#0f172a;color:#fff;"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>`
+                        : `<img src="${report.image}" class="lf-thumb-sm" alt="${safeName}" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')" style="cursor:pointer;" />`
+                      }
+                    ` : ''}
+                    <div>
+                      <strong>${safeName}</strong>
+                      <br>${lostFoundTypeBadge(report.reportType)}
+                      <span style="font-size:0.78rem;color:var(--text-3);margin-left:4px;">${safeType}</span>
+                    </div>
+                  </div>
+                </td>
+                <td>
+                  ${safeLoc}
+                  <br><span style="font-size:0.78rem;color:var(--text-3)">${report.eventDate || ''}</span>
+                </td>
+                <td>
+                  ${safeContact}
+                  <br><span style="font-size:0.78rem;color:var(--text-3)">${safePhone}</span>
+                </td>
+                <td>${lostFoundStatusBadge(report.status)}</td>
+                <td style="max-width:200px;">
+                  <span style="font-size:0.8rem;color:var(--text-2);">${safeRemarks || '<span style="color:var(--text-3)">—</span>'}</span>
+                </td>
+                <td>
+                  <div class="td-actions">
+                    <button class="btn btn-secondary btn-sm" onclick="openLostFoundAdminModal('${report.id}')">Manage</button>
+                    <button class="btn btn-danger btn-sm" onclick="confirmDeleteLostFound('${report.id}')">Delete</button>
+                  </div>
+                </td>
+              </tr>`;
+            }).join('') || '<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-search"/></svg>No lost and found reports found.</div></td></tr>'}
           </tbody>
         </table>
       </div>
@@ -1086,24 +1082,9 @@ function renderLostFoundManagement(filtered = null) {
 
   const search = document.getElementById('lostFoundSearch');
   if (search) search.addEventListener('input', filterLostFoundReports);
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging) {
-    refreshLostFoundPage();
-    renderModulePage('lostFound', 'pendingLostFoundBody', { status: 'Pending', sort: 'createdAt' }, rows => {
-      document.getElementById('pendingLostFoundBody').innerHTML = renderPendingLostFoundRows(rows) || '<tr><td colspan="5"><div class="no-results">No pending submissions.</div></td></tr>';
-    }, false, 'lostFoundPending');
-  }
 }
 
-function refreshLostFoundPage(reset = false) {
-  return renderModulePage('lostFound', 'managedLostFoundBody', {
-    q: tableFilterValue('lostFoundSearch'), status: tableFilterValue('lostFoundStatusFilter'), reportType: tableFilterValue('lostFoundTypeFilter'), sort: 'createdAt',
-  }, rows => { document.getElementById('managedLostFoundBody').innerHTML = renderManagedLostFoundRows(rows) || '<tr><td colspan="6"><div class="no-results">No lost and found reports found.</div></td></tr>'; }, reset);
-}
 function filterLostFoundReports() {
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging) {
-    const state = modulePaginationStates.lostFound ||= { page: 1, pageSize: 10 };
-    scheduleTableSearch(state, () => refreshLostFoundPage(true)); return;
-  }
   const query = (document.getElementById('lostFoundSearch')?.value || '').trim().toLowerCase();
   const status = document.getElementById('lostFoundStatusFilter')?.value || '';
   const type = document.getElementById('lostFoundTypeFilter')?.value || '';
@@ -1164,7 +1145,7 @@ async function adminApproveLostFound(id) {
 
     // Refresh database cache
     if (typeof api !== 'undefined' && typeof api.loadAll === 'function') {
-      await api.loadAll(["lostFound","notifications"]);
+      await api.loadAll();
     } else {
       report.status = 'Approved';
     }
@@ -1241,7 +1222,7 @@ async function confirmAdminRejectLostFound(id) {
     }
 
     if (typeof api !== 'undefined' && typeof api.loadAll === 'function') {
-      await api.loadAll(["lostFound","notifications"]);
+      await api.loadAll();
     } else {
       report.status = 'Rejected';
       report.remarks = reason;
@@ -1300,7 +1281,7 @@ function openLostFoundAdminModal(id) {
     ${report.image ? (
       isVideo
         ? `<video src="${report.image}" controls class="lostfound-admin-image" style="background:#000;max-height:260px;"></video>`
-        : `<img loading="lazy" decoding="async" src="${report.image}" alt="${safeName}" class="lostfound-admin-image" style="cursor:pointer;" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')">`
+        : `<img src="${report.image}" alt="${safeName}" class="lostfound-admin-image" style="cursor:pointer;" onclick="if(typeof openPhotoViewerModal==='function') openPhotoViewerModal('${report.image}', '${safeName.replace(/'/g, "\\'")}')">`
     ) : ''}
 
     ${submitterUser ? `

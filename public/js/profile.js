@@ -420,7 +420,7 @@ function openAdminEmailVerification(token) {
         const session = await response.json();
         if (session.authenticated) {
           currentUser = session.user;
-          if (typeof api.loadAll === 'function') await api.loadAll(["users","homeowners"]);
+          if (typeof api.loadAll === 'function') await api.loadAll();
         }
       } catch (error) { status.textContent = error.message; }
     } },

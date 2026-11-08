@@ -386,14 +386,6 @@ function renderAdminAmenityBookingRows(bookings, hasActiveFilters = false) {
 }
 
 function filterAdminAmenityBookings() {
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging) {
-    const filters = getAdminAmenityBookingFilters();
-    const state = modulePaginationStates.amenityBookings ||= { page: 1, pageSize: 10 };
-    scheduleTableSearch(state, () => renderModulePage('amenityBookings', 'amenityBookingTableBody', {
-      q: filters.search, status: filters.status, amenity: filters.amenity, sort: 'createdAt',
-    }, rows => { document.getElementById('amenityBookingTableBody').innerHTML = renderAdminAmenityBookingRows(rows, Boolean(filters.search || filters.status || filters.amenity)); }, true));
-    return;
-  }
   const tbody = document.getElementById('amenityBookingTableBody');
   if (!tbody) return;
   const filters = getAdminAmenityBookingFilters();
@@ -408,7 +400,7 @@ function filterAdminAmenityBookings() {
 function renderAmenityBookingsAdmin() {
   const filters = getAdminAmenityBookingFilters();
   const allBookings = [...db.get('amenityBookings')].sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
-  const bookings = typeof dbCache !== 'undefined' && dbCache._serverPaging ? [] : getFilteredAdminAmenityBookings(allBookings, filters);
+  const bookings = getFilteredAdminAmenityBookings(allBookings, filters);
   const today = getLocalDateValue();
   const currentMonth = document.getElementById('admin_ab_month')?.value || today.slice(0, 7);
   const selectedAmenity = document.getElementById('admin_ab_amenity')?.value || AMENITIES[0];
@@ -515,7 +507,6 @@ function renderAmenityBookingsAdmin() {
     </div>
   </div>`;
   renderAdminAmenityCalendar();
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging) filterAdminAmenityBookings();
 }
 
 async function saveAmenityUnavailableDays() {
@@ -733,14 +724,14 @@ function reviewAmenityBilling(id, draft) {
         await api.request(`/api/amenityBookings/${encodeURIComponent(id)}/billing`, { method: 'POST', body: JSON.stringify(values) });
         created = true;
         closeModal();
-        await api.loadAll(["amenityBookings","billings","homeowners","users","notifications"]);
+        await api.loadAll();
         renderAmenityBookingsAdmin();
         showToast('success', 'Billing Created', 'Billing has been assigned to the requesting homeowner.');
       } catch (error) {
         showToast('error', created ? 'Billing Created; Refresh Needed' : 'Billing Not Created', created ? 'The bill was saved. Reload the page to see the latest details.' : error.message);
         if (error.status === 409) {
           closeModal();
-          try { await api.loadAll(["amenityBookings","billings","homeowners","users","notifications"]); renderAmenityBookingsAdmin(); } catch { /* Keep the original error visible. */ }
+          try { await api.loadAll(); renderAmenityBookingsAdmin(); } catch { /* Keep the original error visible. */ }
         }
       } finally { submitting = false; }
     } },

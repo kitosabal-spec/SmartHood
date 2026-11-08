@@ -344,13 +344,12 @@ function renderVehicleManagement(filtered = null) {
   const area = document.getElementById('contentArea');
   const tbody = document.getElementById('vehicleTableBody');
   const allRegistrations = db.get('vehicleRegistrations');
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging && filtered === null) filtered = [];
   const vehicles = (filtered !== null ? filtered : allRegistrations)
     .slice()
     .sort((a, b) => (b.createdAt || '').localeCompare(a.createdAt || ''));
 
   // If already rendered and this is an in-place filter update, update only table body to preserve search input focus
-  if (filtered !== null && tbody && area && (typeof dbCache === 'undefined' || !dbCache._serverPaging || filtered.length)) {
+  if (filtered !== null && tbody && area) {
     if (!vehicles.length) {
       tbody.innerHTML = '<tr><td colspan="7"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-parking"/></svg>No vehicle registrations found.</div></td></tr>';
     } else {
@@ -398,19 +397,9 @@ function renderVehicleManagement(filtered = null) {
 
   const search = document.getElementById('vehicleSearch');
   if (search) search.addEventListener('input', filterVehicles);
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging) refreshVehiclePage();
 }
 
-function refreshVehiclePage(reset = false) {
-  return renderModulePage('vehicleRegistrations', 'vehicleTableBody', {
-    q: tableFilterValue('vehicleSearch'), registrationStatus: tableFilterValue('vehicleStatusFilter'), sort: 'createdAt',
-  }, rows => { document.getElementById('vehicleTableBody').innerHTML = rows.map(renderAdminVehicleRow).join('') || '<tr><td colspan="7"><div class="no-results">No vehicle registrations found.</div></td></tr>'; }, reset);
-}
 function filterVehicles() {
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging) {
-    const state = modulePaginationStates.vehicleRegistrations ||= { page: 1, pageSize: 10 };
-    scheduleTableSearch(state, () => refreshVehiclePage(true)); return;
-  }
   const query = (document.getElementById('vehicleSearch')?.value || '').trim().toLowerCase();
   const status = document.getElementById('vehicleStatusFilter')?.value || '';
   const filtered = db.get('vehicleRegistrations').filter(vehicle => {
@@ -602,7 +591,7 @@ async function openVehicleBilling(id) {
   try {
     const draft = await api.request(`/api/vehicleRegistrations/${encodeURIComponent(id)}/billing`);
     if (draft.billing) {
-      await api.loadAll(["vehicleRegistrations","billings","homeowners","users","notifications"]);
+      await api.loadAll();
       renderVehicleManagement();
       viewBillingDetail(draft.billing.id, draft.billing);
       return;
@@ -658,14 +647,14 @@ function reviewVehicleBilling(id, draft) {
         await api.request(`/api/vehicleRegistrations/${encodeURIComponent(id)}/billing`, { method: 'POST', body: JSON.stringify(values) });
         created = true;
         closeModal();
-        await api.loadAll(["vehicleRegistrations","billings","homeowners","users","notifications"]);
+        await api.loadAll();
         renderVehicleManagement();
         showToast('success', 'Billing Created', 'Billing has been assigned to the homeowner.');
       } catch (error) {
         showToast('error', created ? 'Billing Created; Refresh Needed' : 'Billing Not Created', created ? 'The bill was saved. Reload the page to see the latest details.' : error.message);
         if (error.status === 409) {
           closeModal();
-          try { await api.loadAll(["vehicleRegistrations","billings","homeowners","users","notifications"]); renderVehicleManagement(); } catch { /* Keep the original error visible. */ }
+          try { await api.loadAll(); renderVehicleManagement(); } catch { /* Keep the original error visible. */ }
         }
       } finally { submitting = false; }
     } },

@@ -134,11 +134,6 @@ function getBillingRecordDates(billing) {
 }
 
 function filterBillings(resetPage = true) {
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging) {
-    if (resetPage) scheduleTableSearch(billingPaginationState, () => renderBillingTable(null, true));
-    else renderBillingTable();
-    return;
-  }
   if (resetPage) {
     billingPaginationState.page = 1;
   }
@@ -373,16 +368,7 @@ function renderBilling() {
   filterBillings(false);
 }
 
-function renderBillingTable(billings = null, resetPage = false, pageData = null) {
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging && !pageData) {
-    const tbody = document.getElementById('billTableBody');
-    if (!tbody) return;
-    if (resetPage) billingPaginationState.page = 1;
-    return loadTablePage('billings', billingPaginationState, {
-      q: tableFilterValue('billSearch'), collectionStatus: tableFilterValue('billStatusFilter'),
-      ...tableDateQuery('bill'), today: getLocalDateValue(), sort: 'id', direction: 'asc',
-    }, tbody).then(result => { if (result) renderBillingTable(result.items, false, result); });
-  }
+function renderBillingTable(billings = null, resetPage = false) {
   if (billings !== null) {
     currentBillingFilteredList = billings;
   } else if (currentBillingFilteredList === null) {
@@ -394,7 +380,7 @@ function renderBillingTable(billings = null, resetPage = false, pageData = null)
 
   if (resetPage) billingPaginationState.page = 1;
 
-  const totalItems = pageData ? pageData.total : list.length;
+  const totalItems = list.length;
   const pageSize = billingPaginationState.pageSize || 10;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   if (billingPaginationState.page > totalPages) billingPaginationState.page = totalPages;
@@ -419,7 +405,7 @@ function renderBillingTable(billings = null, resetPage = false, pageData = null)
 
   const startIndex = (billingPaginationState.page - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const pageItems = pageData ? list : list.slice(startIndex, endIndex);
+  const pageItems = list.slice(startIndex, endIndex);
 
   tbody.innerHTML = pageItems.map(b => {
     const assignedIds = getAssignedHomeownerIds(b);
@@ -903,11 +889,12 @@ async function saveAddBilling() {
     await db.save('billings', bill);
 
     // 2. Reload fresh data from backend
-    await api.loadAll(["billings","payments","homeowners","users","amenityBookings","vehicleRegistrations","notifications"]);
+    await api.loadAll();
 
     // 3. Synchronize homeowner balances from actual billings and approved payments
     if (canManageBilling()) {
       await syncHomeownerBalances();
+      await api.loadAll();
     }
 
     if (typeof logAction === 'function') {
@@ -925,9 +912,6 @@ async function saveAddBilling() {
 }
 
 function viewBillingDetail(id, record = null) {
-  if (!record && db.getOne('billings', id)?._summary) {
-    return loadDetailedRecord('billings', id).then(item => viewBillingDetail(id, item)).catch(error => showToast('error', 'Could Not Load Record', error.message));
-  }
   const b = record || db.getOne('billings', id);
   if (!b) return;
   const users = getHomeowners();
@@ -960,9 +944,10 @@ function confirmDeleteBilling(id) {
       try {
         showLoading();
         await db.delete('billings', id);
-        await api.loadAll(["billings","payments","homeowners","users","amenityBookings","vehicleRegistrations","notifications"]);
+        await api.loadAll();
         if (canManageBilling()) {
           await syncHomeownerBalances();
+          await api.loadAll();
         }
         logAction(`Deleted billing: ${b.title}`);
         closeModal();
@@ -1034,9 +1019,10 @@ async function executeAutoGenerateMonthlyDues() {
       body: JSON.stringify({ month: selectedMonth, dueDate, noDueDate }),
     });
 
-    await api.loadAll(["billings","payments","homeowners","users","amenityBookings","vehicleRegistrations","notifications"]);
+    await api.loadAll();
     if (canManageBilling()) {
       await syncHomeownerBalances();
+      await api.loadAll();
     }
 
     closeModal();
@@ -1147,16 +1133,11 @@ function renderPayments() {
     </div>
   </div>`;
 
+  document.getElementById('paySearch').addEventListener('input', filterPayments);
   renderPaymentTable();
 }
 
-function refreshPaymentPage(reset = false) {
-  return renderModulePage('payments', 'payTableBody', {
-    q: tableFilterValue('paySearch'), status: tableFilterValue('payFilter'), ...tableDateQuery('pay'), sort: 'submittedAt',
-  }, rows => renderPaymentTable(rows), reset);
-}
 function renderPaymentTable(filtered = null) {
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging && filtered === null) return refreshPaymentPage();
   const payments = filtered !== null ? filtered : db.get('payments');
   const tbody = document.getElementById('payTableBody');
   if (!tbody) return;
@@ -1285,10 +1266,6 @@ function resetPaymentFilters() {
 if (typeof window !== 'undefined') window.resetPaymentFilters = resetPaymentFilters;
 
 function filterPayments() {
-  if (typeof dbCache !== 'undefined' && dbCache._serverPaging) {
-    const state = modulePaginationStates.payments ||= { page: 1, pageSize: 10 };
-    scheduleTableSearch(state, () => refreshPaymentPage(true)); return;
-  }
   const q = (document.getElementById('paySearch')?.value || '').toLowerCase().trim();
   const status = document.getElementById('payFilter')?.value || '';
   const datePreset = (document.getElementById('payDateFilter')?.value || 'all').toLowerCase();
@@ -1785,7 +1762,7 @@ async function executeCreateManualPayment() {
       refNum: document.getElementById('manual_payment_reference')?.value?.trim(),
       remarks: document.getElementById('manual_payment_notes')?.value?.trim(),
     });
-    await api.loadAll(["billings","payments","homeowners","users","amenityBookings","vehicleRegistrations","notifications"]);
+    await api.loadAll();
     await syncHomeownerBalances();
     hideLoading();
     closeModal();
@@ -1871,7 +1848,7 @@ async function refreshResidentPaymentDetail(panel) {
   if (!isCurrent()) return;
   try {
     if (!document.hidden) {
-      await api.loadAll(["billings","payments","homeowners","users","amenityBookings","vehicleRegistrations","notifications"]);
+      await api.loadAll();
       if (!isCurrent()) return;
       const payment = db.getOne('payments', panel.dataset.paymentId);
       if (!payment || payment.homeownerId !== homeownerId) { closeModal(); return; }
@@ -1916,9 +1893,6 @@ function getPaymentBilling(payment) {
 }
 
 function viewPaymentDetail(id, resident = false, grouped = false) {
-  if (db.getOne('payments', id)?._summary) {
-    return loadDetailedRecord('payments', id).then(() => viewPaymentDetail(id, resident, grouped)).catch(error => showToast('error', 'Could Not Load Record', error.message));
-  }
   const p = db.getOne('payments', id);
   if (!p) { showToast('error', 'Error', 'Payment record not found.'); return; }
   if (resident && p.homeownerId !== getCurrentHomeownerId()) {
@@ -2073,7 +2047,7 @@ async function executeApprovePayment(id) {
   showLoading();
   try {
     await api.approvePayment(id);
-    await api.loadAll(["billings","payments","homeowners","users","amenityBookings","vehicleRegistrations","notifications"]);
+    await api.loadAll();
     syncHomeownerBalances();
     hideLoading();
     closeModal();
@@ -2086,9 +2060,6 @@ async function executeApprovePayment(id) {
 }
 
 function openRejectPaymentModal(id) {
-  if (db.getOne('payments', id)?._summary) {
-    return loadDetailedRecord('payments', id).then(() => openRejectPaymentModal(id)).catch(error => showToast('error', 'Could Not Load Record', error.message));
-  }
   if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only administrators can reject payments.'); return; }
   const p = db.getOne('payments', id);
   if (!p) return;
@@ -2170,7 +2141,7 @@ async function executeRejectPayment(id) {
   showLoading();
   try {
     await api.rejectPayment(id, finalReason);
-    await api.loadAll(["billings","payments","homeowners","users","amenityBookings","vehicleRegistrations","notifications"]);
+    await api.loadAll();
     syncHomeownerBalances();
     hideLoading();
     closeModal();
@@ -2463,7 +2434,7 @@ async function removePaymentQrImage() {
     showLoading();
     try {
       await api.deletePaymentQr();
-      await api.loadAll(['payment_settings']);
+      await api.loadAll();
       hideLoading();
       showToast('warning', 'QR Code Removed', 'The GCash QR code image was removed.');
       openPaymentSettingsModal();
@@ -2499,7 +2470,7 @@ async function savePaymentSettings() {
       instructions,
       is_active,
     });
-    await api.loadAll(['payment_settings']);
+    await api.loadAll();
     hideLoading();
     closeModal();
     showToast('success', 'Settings Saved', 'GCash payment settings have been saved successfully.');
@@ -3102,7 +3073,7 @@ async function executeSubmitPaymentProof(billingIdOrOpts) {
     else payments[index] = savedPayment;
     selectedPaymentReceiptFile = null;
     try {
-      await api.loadAll(["billings","payments","homeowners","users","amenityBookings","vehicleRegistrations","notifications"]);
+      await api.loadAll();
     } catch (error) {
       showToast('warning', 'Refresh Delayed', 'Your payment was saved. Payment details will retry refreshing automatically.');
     }
