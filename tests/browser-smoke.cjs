@@ -50,6 +50,8 @@ const cleanups = [];
           timestamp: '2026-10-24T05:32:39.391Z' },
       ],
     });
+    const pagedTables = {};
+    const pageRequests = [];
     await page.route('**/api/**', async route => {
       if (route.request().method() !== 'GET') {
         errors.push(`Unexpected write: ${route.request().url()}`);
@@ -59,10 +61,25 @@ const cleanups = [];
       let body;
       if (url === '/api/session') body = { authenticated: false };
       else if (['/api/public-data', '/api/data'].includes(url)) body = tables;
+      else if (url.startsWith('/api/paged/')) {
+        const table = url.slice('/api/paged/'.length);
+        const params = new URL(route.request().url()).searchParams;
+        pageRequests.push({ table, params: Object.fromEntries(params) });
+        let rows = pagedTables[table] || tables[table] || [];
+        const q = (params.get('q') || '').toLowerCase();
+        if (q) rows = rows.filter(row => [row.name, row.email, row.block, row.lot, row.title, row.description, row.itemName, row.plateNumber, row.actor_name, row.action].join(' ').toLowerCase().includes(q));
+        for (const key of ['role', 'status', 'block', 'registrationStatus', 'category', 'amenity', 'reportType']) if (params.get(key)) rows = rows.filter(row => row[key] === params.get(key));
+        if (params.get('registration')) rows = rows.filter(row => (row.accountStatus === 'Registered') === (params.get('registration') === 'registered'));
+        const pageSize = Number(params.get('pageSize')) || 10;
+        const pageNumber = Math.min(Number(params.get('page')) || 1, Math.max(1, Math.ceil(rows.length / pageSize)));
+        body = { items: rows.slice((pageNumber - 1) * pageSize, pageNumber * pageSize), total: rows.length, page: pageNumber, pageSize, totalPages: Math.ceil(rows.length / pageSize) };
+      }
       else if (url === '/api/announcements/comment-counts') body = {};
       else if (url === '/api/announcements/reactions') body = {};
       else if (url === '/api/board') body = tables.board_of_directors;
       else if (url === '/api/amenity-availability') body = { bookings: [], unavailable: { weeklyDays: [], dateRules: [] } };
+      else if (url === '/api/disbursements') body = { records: [], categories: ['Security'] };
+      else if (url === '/api/reports/disbursements') body = { records: [], collections: [] };
       else if (url === '/api/payment-settings') body = { payment_method: 'gcash', account_name: 'Test HOA', account_number: '09170000000', is_active: true };
       else if (Object.hasOwn(tables, url.slice(5))) body = tables[url.slice(5)];
       else {
@@ -123,6 +140,63 @@ const cleanups = [];
     await page.getByRole('button', { name: 'Open Billing', exact: true }).click();
     assert.equal(await page.evaluate(() => currentView), 'billing');
     console.log('PASS: resident permission denial, escaped profile fields and Settings billing action');
+
+    pagedTables.homeowners = Array.from({ length: 25 }, (_, i) => ({ id: 'paged-home-' + i,
+      name: 'Page Resident ' + String(i).padStart(2, '0'), block: '1', lot: String(i), balance: i * 10,
+      accountStatus: i % 2 ? 'Registered' : 'No Account' }));
+    pagedTables.users = Array.from({ length: 25 }, (_, i) => ({ id: 'paged-user-' + i,
+      name: 'Page Account ' + String(i).padStart(2, '0'), role: 'homeowner', status: i % 2 ? 'active' : 'inactive', permissions: ['resident'] }));
+    await page.evaluate(() => navigate('homeowners'));
+    await page.waitForFunction(() => document.getElementById('hoTableBody')?.textContent.includes('Page Resident 00'));
+    assert.equal(await page.locator('#hoTableBody tr').count(), 10);
+    await page.evaluate(() => changeHOPage(3));
+    await page.waitForFunction(() => document.getElementById('hoTableBody')?.textContent.includes('Page Resident 20'));
+    assert.equal(await page.locator('#hoTableBody tr').count(), 5);
+    await page.locator('#hoSearch').fill('Resident 24');
+    await page.waitForFunction(() => document.querySelectorAll('#hoTableBody tr').length === 1 && document.getElementById('hoTableBody').textContent.includes('Resident 24'));
+    assert.equal(pageRequests.at(-1).params.page, '1');
+    await page.locator('#hoSearch').fill('');
+    await page.locator('#hoRegistrationFilter').selectOption('registered');
+    await page.waitForFunction(() => /of\s*12\s*homeowners/.test(document.getElementById('hoPagination')?.textContent));
+    await page.evaluate(() => navigate('users'));
+    await page.waitForFunction(() => document.getElementById('userMgmtTableBody')?.textContent.includes('Page Account 00'));
+    await page.evaluate(() => changeUserMgmtPage(3));
+    await page.waitForFunction(() => document.getElementById('userMgmtTableBody')?.textContent.includes('Page Account 20'));
+    assert.equal(await page.locator('#userMgmtTableBody tr').count(), 5);
+    await page.locator('#userStatusFilter').selectOption('active');
+    await page.waitForFunction(() => /of\s*12\s*accounts/.test(document.getElementById('userMgmtPagination')?.textContent));
+    assert.equal(pageRequests.at(-1).params.status, 'active');
+    assert.deepEqual(errors, []);
+    console.log('PASS: server page requests, last pages, search, registration/status filters and retained pagination controls');
+
+    const cases = [
+      ['billing', 'billings', 'billTableBody', i => ({ title: 'Paged Bill ' + i, amount: 100, assignedTo: ['home-1'], status: 'active', createdAt: '2026-11-01' })],
+      ['payments', 'payments', 'payTableBody', i => ({ homeownerId: 'home-1', billingId: null, amount: 25, status: 'pending', submittedAt: '2026-11-01', refNum: 'REF' + i })],
+      ['complaints', 'complaints', 'cmpTableBody', i => ({ homeownerId: 'home-1', description: 'Paged complaint ' + i, category: 'Noise', status: 'Reviewed', dateFiled: '2026-11-01' })],
+      ['amenities', 'amenityBookings', 'amenityBookingTableBody', i => ({ homeownerId: 'home-1', amenity: 'Clubhouse', purpose: 'Meeting ' + i, status: 'Pending', bookingDate: '2026-12-01', startTime: '09:00', endTime: '10:00' })],
+      ['vehicles', 'vehicleRegistrations', 'vehicleTableBody', i => ({ homeownerId: 'home-1', ownerName: 'Owner ' + i, plateNumber: 'TEST' + i, vehicleType: 'Car', registrationStatus: 'Pending', paymentStatus: 'Unpaid', fee: 100 })],
+      ['lostfound', 'lostFound', 'managedLostFoundBody', i => ({ homeownerId: 'home-1', itemName: 'Item ' + i, reportType: 'Lost', itemType: 'Other', status: 'Pending', createdAt: '2026-11-01' })],
+    ];
+    for (const [view, table, bodyId, row] of cases) {
+      pagedTables[table] = Array.from({ length: 25 }, (_, i) => ({ id: 'test-' + table + '-' + i, ...row(i) }));
+      await page.evaluate(({ view, table, rows }) => {
+        dbCache._serverPaging = true; dbCache[table] = rows; navigate(view);
+      }, { view, table, rows: pagedTables[table] });
+      await page.waitForFunction(bodyId => document.querySelectorAll('#' + bodyId + ' tr').length === 10, bodyId);
+      const latest = pageRequests.filter(request => request.table === table).at(-1);
+      assert.equal(latest.params.pageSize, '10');
+      if (table === 'billings') await page.evaluate(() => changeBillingPage(3));
+      else await page.evaluate(table => window['changeModulePage_' + table](3), table);
+      await page.waitForFunction(bodyId => document.querySelectorAll('#' + bodyId + ' tr').length === 5, bodyId);
+      assert.equal(await page.evaluate(table => db.get(table).length, table), 25, 'paging never truncates the aggregate input');
+    }
+    await page.evaluate(() => { dbCache._serverPaging = true; navigate('auditlog'); });
+    await page.waitForFunction(() => document.querySelectorAll('#logTableBody tr').length === 10);
+    await page.locator('#logSearch').fill('Former Resident');
+    await page.waitForFunction(() => document.querySelectorAll('#logTableBody tr').length === 1 && document.getElementById('logTableBody').textContent.includes('Former Resident'));
+    assert.deepEqual(errors, []);
+    console.log('PASS: all operational server-page paths, last-page sizes, audit search and complete summary inputs');
+    await page.evaluate(() => { dbCache._serverPaging = false; });
 
     await page.setViewportSize({ width: 1256, height: 871 });
     await page.evaluate(() => navigate('auditlog'));

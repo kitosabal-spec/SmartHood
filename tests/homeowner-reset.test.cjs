@@ -41,7 +41,7 @@ test('Register Account creates a fresh identity, updates status, keeps profile/h
   let response = await f.request('GET', '/api/homeowners');
   assert.equal(response.body.find(h => h.id === 'home-1').accountStatus, 'No Account');
   const body = { email: 'new-resident@example.test', mobile: '09171234567', password,
-    permissions: ['resident'], termsAccepted: true, privacyAcknowledged: true, policyVersion: '2026-10-06' };
+    permissions: ['resident'], termsAccepted: true, privacyAcknowledged: true, policyVersion: '2026-11' };
   assert.equal((await f.request('POST', '/api/homeowners/home-1/account', body, 'resident-1')).status, 401);
   response = await f.request('POST', '/api/homeowners/home-1/account', body);
   assert.equal(response.status, 201, JSON.stringify(response.body));

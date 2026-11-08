@@ -62,24 +62,19 @@ function renderHomeowners() {
   renderHOTable();
 }
 
-function renderHOTable(filtered = null, resetPage = false) {
-  if (filtered !== null) {
-    currentHOFilteredList = filtered;
-  } else if (currentHOFilteredList === null) {
-    currentHOFilteredList = getHomeowners();
-  }
-  const users = currentHOFilteredList || [];
+async function renderHOTable(filtered = null, resetPage = false) {
   const tbody = document.getElementById('hoTableBody');
   if (!tbody) return;
-
   if (resetPage) hoPaginationState.page = 1;
-
-  const totalItems = users.length;
-  const pageSize = hoPaginationState.pageSize || 10;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  if (hoPaginationState.page > totalPages) hoPaginationState.page = totalPages;
-  if (hoPaginationState.page < 1) hoPaginationState.page = 1;
-
+  const result = await loadTablePage('homeowners', hoPaginationState, {
+    q: document.getElementById('hoSearch')?.value || '',
+    block: document.getElementById('hoFilter')?.value || '',
+    registration: document.getElementById('hoRegistrationFilter')?.value || '',
+    sort: 'name', direction: 'asc',
+  }, tbody);
+  if (!result) return;
+  const totalItems = result.total;
+  const pageSize = result.pageSize;
   if (!totalItems) {
     tbody.innerHTML = `<tr><td colspan="7"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg>No homeowners found.</div></td></tr>`;
     renderPaginationComponent({
@@ -96,7 +91,7 @@ function renderHOTable(filtered = null, resetPage = false) {
 
   const startIndex = (hoPaginationState.page - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const pageItems = users.slice(startIndex, endIndex);
+  const pageItems = result.items;
 
   tbody.innerHTML = pageItems.map((u, i) => `
     <tr>
@@ -127,23 +122,7 @@ function renderHOTable(filtered = null, resetPage = false) {
 }
 
 function filterHomeowners() {
-  const q = (document.getElementById('hoSearch')?.value || '').toLowerCase();
-  const blk = document.getElementById('hoFilter')?.value || '';
-  const registrationStatus = document.getElementById('hoRegistrationFilter')?.value || '';
-  let users = getHomeowners();
-  if (q) users = users.filter(u =>
-    u.name.toLowerCase().includes(q)
-    || (u.email || '').toLowerCase().includes(q)
-    || (u.block || '').toLowerCase().includes(q)
-    || (u.lot || '').toLowerCase().includes(q)
-  );
-  if (blk) users = users.filter(u => u.block === blk);
-  if (registrationStatus === 'registered') {
-    users = users.filter(u => u.accountStatus === 'Registered');
-  } else if (registrationStatus === 'not-registered') {
-    users = users.filter(u => u.accountStatus !== 'Registered');
-  }
-  renderHOTable(users, true);
+  scheduleTableSearch(hoPaginationState, () => renderHOTable(null, true));
 }
 
 function openAddHomeownerModal() {
@@ -182,7 +161,7 @@ async function saveAddHomeowner() {
   showLoading();
   try {
     await db.save('homeowners', newUser);
-    await api.loadAll();
+    await api.loadAll(["homeowners","users","billings","payments","complaints","notifications"]);
     logAction(`Added homeowner record ${name} (${newUser.id})`);
     closeModal();
     hideLoading();
@@ -351,7 +330,7 @@ async function registerHomeownerAccount(id) {
       privacyAcknowledged: true,
       policyVersion: window.LEGAL_POLICY_VERSION,
     });
-    await api.loadAll();
+    await api.loadAll(["homeowners","users","billings","payments","complaints","notifications"]);
     closeModal();
     hideLoading();
     showToast('success', 'Account Registered', 'The homeowner can now sign in using their email address and password.');

@@ -130,11 +130,19 @@ function auditDatabase() {
       tables.auditLog.push({ id: values[0], action: values[1], adminId: values[2], timestamp: values[3] });
       return [{ affectedRows: 1 }];
     }
-    if (q.startsWith('SELECT p.*, b.title AS historical_billing_title')) {
+    if (q.startsWith('SELECT p.*, b.title AS historical_billing_title') || q.startsWith('SELECT p.id, p.homeownerId, p.billingId')) {
       return [structuredClone(tables.payments.filter(p => !p.archived_at && (!values.length || p.homeownerId === values[0])).map(p => {
         const b = tables.billings.find(b => b.id === p.billingId);
-        return { ...p, historical_billing_title: b?.title, historical_billing_amount: b?.amount, billing_balance_reset_at: b?.balance_reset_at };
+        const fields = q.startsWith('SELECT p.*') ? p : Object.fromEntries(q.slice(7, q.indexOf(', b.title')).split(', ').map(column => column.slice(2)).map(column => [column, p[column]]));
+        return { ...fields, historical_billing_title: b?.title, historical_billing_amount: b?.amount, billing_balance_reset_at: b?.balance_reset_at };
       }))];
+    }
+    const sidebarProjection = q.match(/^SELECT (t.id, t.homeownerId, .+?) FROM (amenityBookings|vehicleRegistrations|lostFound) t WHERE /);
+    if (sidebarProjection) {
+      let rows = tables[sidebarProjection[2]].filter(row => !row.archived_at);
+      if (q.includes('t.homeownerId = ?')) rows = rows.filter(row => row.homeownerId === values[0] || (sidebarProjection[2] === 'lostFound' && ['Approved', 'Posted', 'Claimed'].includes(row.status)));
+      const fields = sidebarProjection[1].split(', ').map(column => column.slice(2));
+      return [structuredClone(rows.map(row => Object.fromEntries(fields.map(field => [field, row[field]]))))];
     }
     const select = q.replace(/ ORDER BY id DESC$/, '').match(/^SELECT (.+?) FROM (\w+)(?: WHERE (.*))?$/);
     if (select && tables[select[2]]) {

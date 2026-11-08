@@ -264,7 +264,7 @@ test('homeowner account registration/reset and token resets identify the correct
   rows.homeowners.push({ id: 'new-home', name: 'Homeowner' });
   let result = await f.request('POST', '/api/homeowners/new-home/account', {
     email: 'new-home@example.test', mobile: '09123456789', password: 'Initial-password-123',
-    termsAccepted: true, privacyAcknowledged: true, policyVersion: '2026-10-06', permissions: ['resident'],
+    termsAccepted: true, privacyAcknowledged: true, policyVersion: '2026-11', permissions: ['resident'],
   });
   assert.equal(result.status, 201, JSON.stringify(result));
   const accountId = result.body.id;

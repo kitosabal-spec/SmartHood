@@ -94,7 +94,13 @@ function renderAdminComplaints() {
   renderAdminComplaintTable();
 }
 
+function refreshComplaintPage(reset = false) {
+  return renderModulePage('complaints', 'cmpTableBody', {
+    q: tableFilterValue('cmpSearch'), status: tableFilterValue('cmpStatusFilter'), category: tableFilterValue('cmpCatFilter'), sort: 'priority',
+  }, rows => renderAdminComplaintTable(rows), reset);
+}
 function renderAdminComplaintTable(filtered = null) {
+  if (typeof dbCache !== 'undefined' && dbCache._serverPaging && filtered === null) return refreshComplaintPage();
   const complaints = filtered !== null ? filtered : db.get('complaints');
   const tbody = document.getElementById('cmpTableBody');
   if (!tbody) return;
@@ -133,6 +139,10 @@ function renderAdminComplaintTable(filtered = null) {
 }
 
 function filterAdminComplaints() {
+  if (typeof dbCache !== 'undefined' && dbCache._serverPaging) {
+    const state = modulePaginationStates.complaints ||= { page: 1, pageSize: 10 };
+    scheduleTableSearch(state, () => refreshComplaintPage(true)); return;
+  }
   const q      = (document.getElementById('cmpSearch')?.value || '').toLowerCase();
   const status = document.getElementById('cmpStatusFilter')?.value || '';
   const cat    = document.getElementById('cmpCatFilter')?.value || '';
@@ -158,6 +168,9 @@ function filterAdminComplaints() {
 }
 
 function openManageComplaint(id) {
+  if (db.getOne('complaints', id)?._summary) {
+    return loadDetailedRecord('complaints', id).then(() => openManageComplaint(id)).catch(error => showToast('error', 'Could Not Load Record', error.message));
+  }
   const c = db.getOne('complaints', id);
   if (!c) return;
   const ho = getHomeownerById(c.homeownerId);
@@ -489,7 +502,7 @@ function renderComplaintMediaPreview(mediaUrl, mediaType, rawAttachments) {
     if (isVid) {
       return `
         <div class="complaint-evidence-item">
-          <video src="${url}" controls playsinline class="complaint-media-evidence-video"></video>
+          <video src="${url}" preload="none" controls playsinline class="complaint-media-evidence-video"></video>
           <div class="complaint-evidence-caption">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
             <span title="${safeName}">${safeName}</span>
@@ -500,7 +513,7 @@ function renderComplaintMediaPreview(mediaUrl, mediaType, rawAttachments) {
     return `
       <div class="complaint-evidence-item">
         <a href="${url}" target="_blank" rel="noopener noreferrer" title="Click to view full image">
-          <img src="${url}" alt="${safeName}" class="complaint-media-evidence-thumb" />
+          <img src="${url}" loading="lazy" decoding="async" alt="${safeName}" class="complaint-media-evidence-thumb" />
         </a>
         <div class="complaint-evidence-caption">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>

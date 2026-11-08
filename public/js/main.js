@@ -200,7 +200,12 @@ if (typeof window !== 'undefined') window.escapeHtml = escapeHtml;
 const announcementCommentsCache = {};
 
 const api = {
+  readRequests: new Map(),
+  writeVersion: 0,
   async request(path, options = {}) {
+    const isWrite = options.method && !['GET', 'HEAD'].includes(options.method.toUpperCase());
+    // A read started before a write may not be reused to refresh that write.
+    if (isWrite) this.writeVersion++;
     const requestSessionGeneration = dataSessionGeneration;
     const headers = { ...(options.headers || {}) };
     if (!(options.body instanceof FormData)) {
@@ -231,18 +236,53 @@ const api = {
       throw requestError;
     }
 
+    if (isWrite) this.writeVersion++;
     return response.json();
   },
 
-  async loadAll() {
+  async loadAll(tables = null) {
+    return this.refresh(tables);
+  },
+
+  async refresh(tables = null) {
     const generation = dataSessionGeneration;
     const userId = currentUser?.id;
-    const data = await this.request('/api/data');
-    if (generation !== dataSessionGeneration || currentUser?.id !== userId) {
-      throw new Error('Your session changed. Please retry.');
-    }
-    dbCache = data;
-    return dbCache;
+    const version = this.writeVersion;
+    const selected = tables ? [...new Set([...tables, 'auditLog'])].sort() : null;
+    const path = selected ? '/api/data?mode=app&tables=' + selected.map(encodeURIComponent).join(',') : '/api/data?mode=app';
+    const key = generation + ':' + version + ':' + path;
+    if (this.readRequests.has(key)) return this.readRequests.get(key);
+    const pending = this.request(path).then(data => {
+      if (generation !== dataSessionGeneration || currentUser?.id !== userId) {
+        throw new Error('Your session changed. Please retry.');
+      }
+      if (version !== this.writeVersion) return this.refresh(tables);
+      dbCache = selected ? { ...dbCache, ...data } : data;
+      if (selected && dbCache._lazyTables) dbCache._lazyTables = dbCache._lazyTables.filter(table => !selected.includes(table));
+      return dbCache;
+    }).finally(() => {
+      if (this.readRequests.get(key) === pending) this.readRequests.delete(key);
+    });
+    this.readRequests.set(key, pending);
+    return pending;
+  },
+
+  async page(table, query = {}) {
+    const generation = dataSessionGeneration;
+    const version = this.writeVersion;
+    const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined && value !== null && value !== ''));
+    const path = '/api/paged/' + encodeURIComponent(table) + '?' + params;
+    const key = generation + ':' + version + ':' + path;
+    if (this.readRequests.has(key)) return this.readRequests.get(key);
+    const pending = this.request(path).then(result => {
+      if (generation !== dataSessionGeneration) throw new Error('Your session changed. Please retry.');
+      if (version !== this.writeVersion) return this.page(table, query);
+      return result;
+    }).finally(() => {
+      if (this.readRequests.get(key) === pending) this.readRequests.delete(key);
+    });
+    this.readRequests.set(key, pending);
+    return pending;
   },
 
   async loadAmenityAvailability() {
@@ -522,6 +562,101 @@ const api = {
     });
   },
 };
+
+// Page results stay separate from the complete datasets used by totals/exports.
+// A sequence and DOM identity check prevent an older search or departed view
+// from repainting newer results. Only in-flight identical reads are coalesced.
+async function loadTablePage(table, state, query, tbody) {
+  const sequence = state.requestSequence = (state.requestSequence || 0) + 1;
+  const generation = dataSessionGeneration;
+  tbody.setAttribute('aria-busy', 'true');
+  try {
+    const requestedPage = state.page;
+    const { snapshotTotal, ...filters } = query;
+    const result = { ...await api.page(table, { ...filters, page: filters.ids ? 1 : state.page, pageSize: state.pageSize }) };
+    if (snapshotTotal !== undefined) Object.assign(result, { page: requestedPage, total: snapshotTotal, totalPages: Math.ceil(snapshotTotal / state.pageSize) });
+    if (state.requestSequence !== sequence || generation !== dataSessionGeneration || document.getElementById(tbody.id) !== tbody) return null;
+    state.page = result.page;
+    // Refresh detail lookups without replacing complete financial collections
+    // with the current page. The page itself is never a source for totals.
+    const records = new Map((dbCache[table] || []).map(record => [record.id, record]));
+    for (const record of result.items) records.set(record.id, record);
+    dbCache[table] = [...records.values()];
+    return result;
+  } catch (error) {
+    if (state.requestSequence === sequence && generation === dataSessionGeneration && document.getElementById(tbody.id) === tbody) {
+      tbody.innerHTML = '<tr><td colspan="20"><div class="no-results" role="alert">Records could not be loaded. Please retry using the filters or reopen this page.</div></td></tr>';
+      showToast('error', 'Could Not Load Records', error.message);
+    }
+    return null;
+  } finally {
+    if (state.requestSequence === sequence) tbody.removeAttribute('aria-busy');
+  }
+}
+
+async function loadDetailedRecord(table, id) {
+  const view = currentView;
+  const result = await api.page(table, { id, pageSize: 1 });
+  if (view !== currentView) throw new Error('The page changed. Please reopen the record.');
+  if (!result.items.length) throw new Error('This record is no longer available.');
+  const item = { ...result.items[0], _summary: false };
+  const rows = db.get(table);
+  const index = rows.findIndex(row => row.id === id);
+  if (index < 0) rows.push(item); else rows[index] = item;
+  dbCache[table] = rows;
+  return item;
+}
+
+const modulePaginationStates = {};
+async function renderModulePage(table, bodyId, query, renderRows, reset = false, stateKey = table) {
+  const tbody = document.getElementById(bodyId);
+  if (!tbody) return;
+  const state = modulePaginationStates[stateKey] ||= { page: 1, pageSize: 10 };
+  if (reset) state.page = 1;
+  const result = await loadTablePage(table, state, query, tbody);
+  if (!result) return;
+  renderRows(result.items);
+  const containerId = bodyId + 'Pagination';
+  let container = document.getElementById(containerId);
+  if (!container) {
+    container = document.createElement('div'); container.id = containerId;
+    tbody.closest('.section-card').appendChild(container);
+  }
+  const pageFn = 'changeModulePage_' + stateKey;
+  const sizeFn = 'changeModuleSize_' + stateKey;
+  window[pageFn] = page => { state.page = page; renderModulePage(table, bodyId, query, renderRows, false, stateKey); };
+  window[sizeFn] = size => { state.pageSize = size; state.page = 1; renderModulePage(table, bodyId, query, renderRows); };
+  renderPaginationComponent({ containerId, currentPage: result.page, pageSize: result.pageSize,
+    totalItems: result.total, onPageChangeFn: pageFn, onPageSizeChangeFn: sizeFn, itemLabel: 'records' });
+  applyResponsiveTableLabels(tbody.closest('table'));
+}
+
+function tableFilterValue(id) { return document.getElementById(id)?.value || ''; }
+function tableDateQuery(prefix) {
+  const mode = tableFilterValue(prefix + 'DateFilter');
+  const now = new Date();
+  let start, end;
+  if (mode === 'today') start = end = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (mode === 'week') {
+    start = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7);
+    end = new Date(start.getFullYear(), start.getMonth(), start.getDate() + 6);
+  }
+  if (mode === 'month') { start = new Date(now.getFullYear(), now.getMonth(), 1); end = new Date(now.getFullYear(), now.getMonth() + 1, 0); }
+  if (mode === 'year') { start = new Date(now.getFullYear(), 0, 1); end = new Date(now.getFullYear(), 11, 31); }
+  let startDate = start ? getLocalDateValue(start) : '';
+  let endDate = end ? getLocalDateValue(end) : '';
+  if (mode === 'date') startDate = endDate = tableFilterValue(prefix + 'Date');
+  if (mode === 'range') { startDate = tableFilterValue(prefix + 'StartDate'); endDate = tableFilterValue(prefix + 'EndDate'); }
+  if (startDate && endDate && startDate > endDate) [startDate, endDate] = [endDate, startDate];
+  return { startDate, endDate };
+}
+
+function scheduleTableSearch(state, callback) {
+  // Invalidate the prior response as soon as input changes, before debounce.
+  state.requestSequence = (state.requestSequence || 0) + 1;
+  clearTimeout(state.searchTimer);
+  state.searchTimer = setTimeout(callback, 200);
+}
 
 function reportSyncError(error) {
   console.error(error);
@@ -1159,6 +1294,25 @@ function renderAccessDenied(viewId) {
 
 function renderView(viewId) {
   const area = document.getElementById('contentArea');
+  const dependencies = {
+    amenities: ['amenityBookings'], 'ho-amenities': ['amenityBookings'],
+    vehicles: ['vehicleRegistrations'], 'ho-vehicles': ['vehicleRegistrations'],
+    lostfound: ['lostFound'], 'ho-lostfound': ['lostFound'],
+    'ho-billing': ['billings', 'payments'], 'ho-pay-now': ['billings', 'payments'], 'ho-payments': ['billings', 'payments'], 'ho-history': ['billings', 'payments'], 'ho-complaints': ['complaints'],
+  };
+  const missing = (dependencies[viewId] || []).filter(table => dbCache._lazyTables?.includes(table) && (!dbCache._serverPaging || viewId.startsWith('ho-')));
+  if (missing.length) {
+    const generation = dataSessionGeneration;
+    area.innerHTML = '<div class="section-card"><p class="audit-notice" role="status">Loading records…</p></div>';
+    api.loadAll(missing).then(() => {
+      if (generation === dataSessionGeneration && currentView === viewId) renderView(viewId);
+    }).catch(error => {
+      if (generation !== dataSessionGeneration || currentView !== viewId) return;
+      area.innerHTML = '<div class="section-card"><p class="audit-notice" role="alert">Records could not be loaded. Please reopen this page to retry.</p></div>';
+      showToast('error', 'Could Not Load Records', error.message);
+    });
+    return;
+  }
   area.innerHTML = '';
   const renders = {
     'help-faq':          renderFAQView,
@@ -1327,8 +1481,8 @@ function calculateUserOutstandingBalance(userId) {
 }
 
 async function syncHomeownerBalances() {
-  // Refresh authoritative balances; never write a browser calculation back.
-  await api.loadAll();
+  // Callers refresh after persistence. Rendering must not start a second full
+  // load or overwrite the complete financial snapshot while it is being used.
   const homeowner = getHomeowners().find(user => user.id === getCurrentHomeownerId());
   if (currentUser && homeowner) currentUser.balance = toMoneyNumber(homeowner.balance);
 }
@@ -2122,7 +2276,7 @@ function changeBillingCollectionPageSize(size) {
 }
 window.changeBillingCollectionPageSize = changeBillingCollectionPageSize;
 
-function renderBillingCollectionTable() {
+function renderBillingCollectionTable(pageData = null) {
   const tbody = document.getElementById('billingCollectionTableBody');
   if (!tbody) return;
 
@@ -2152,7 +2306,16 @@ function renderBillingCollectionTable() {
 
   const startIndex = (billingCollectionPaginationState.page - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const pageItems = billings.slice(startIndex, endIndex);
+  const snapshotItems = billings.slice(startIndex, endIndex);
+  if (dbCache._serverPaging && !pageData) {
+    return loadTablePage('billings', billingCollectionPaginationState, {
+      ids: JSON.stringify(snapshotItems.map(row => row.id)), snapshotTotal: totalItems,
+    }, tbody).then(result => { if (result) renderBillingCollectionTable(result); });
+  }
+  const details = new Map((pageData?.items || []).map(row => [row.id, row]));
+  // Financial columns use the frozen snapshot; current detail rows cannot
+  // change the denominator or amounts halfway through a report.
+  const pageItems = snapshotItems.map(row => ({ ...row, title: details.get(row.id)?.title || row.title }));
 
   tbody.innerHTML = pageItems.map(b => {
     const assignedIds = getAssignedHomeownerIds(b);
@@ -2203,7 +2366,7 @@ function changeHOBalancePageSize(size) {
 }
 window.changeHOBalancePageSize = changeHOBalancePageSize;
 
-function renderHOBalanceReportTable(filtered = null, resetPage = false) {
+function renderHOBalanceReportTable(filtered = null, resetPage = false, pageData = null) {
   const tbody = document.getElementById('hoBalanceTableBody');
   if (!tbody) return;
 
@@ -2238,7 +2401,14 @@ function renderHOBalanceReportTable(filtered = null, resetPage = false) {
 
   const startIndex = (hoBalancePaginationState.page - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const pageItems = users.slice(startIndex, endIndex);
+  const snapshotItems = users.slice(startIndex, endIndex);
+  if (dbCache._serverPaging && !pageData) {
+    return loadTablePage('homeowners', hoBalancePaginationState, {
+      ids: JSON.stringify(snapshotItems.map(row => row.id)), snapshotTotal: totalItems,
+    }, tbody).then(result => { if (result) renderHOBalanceReportTable(null, false, result); });
+  }
+  const detailById = new Map((pageData?.items || []).map(row => [row.id, row]));
+  const pageItems = snapshotItems.map(row => ({ ...row, ...(pageData ? { profile_photo: detailById.get(row.id)?.profile_photo || null } : {}) }));
 
   const reportBillings = currentReportsData?.billings || [];
   const reportPayments = currentReportsData?.payments || [];
@@ -2552,7 +2722,7 @@ async function renderAuditLog() {
   currentAuditLogFilteredList = null;
   area.innerHTML = '<div class="section-card"><p class="audit-notice" role="status">Loading audit logs…</p></div>';
   try {
-    const records = await api.request('/api/auditLog', { cache: 'no-store' });
+    const records = dbCache._serverPaging ? db.get('auditLog') : await api.request('/api/auditLog', { cache: 'no-store' });
     if (loadVersion !== auditLogLoadVersion || currentUser?.id !== actorId || currentView !== 'auditlog') return;
     dbCache.auditLog = records;
   } catch (error) {
@@ -2745,6 +2915,9 @@ function getFilteredAuditLogs(records, filters, now = new Date()) {
 }
 
 function filterAuditLogs() {
+  if (dbCache._serverPaging) {
+    scheduleTableSearch(auditLogPaginationState, () => renderAuditLogRows(null, true)); return;
+  }
   const allLogs = db.get('auditLog');
   const filters = getAuditLogFilters();
   const filterMode = filters.mode;
@@ -2800,7 +2973,8 @@ async function exportAuditLogExcel() {
     const workbook = buildAuditLogWorkbook(ExcelJS, { filters, generatedAt, rows });
     const buffer = await workbook.xlsx.writeBuffer();
     // Revalidate with the server after generation, including revoked permissions.
-    await api.request('/api/auditLog', { cache: 'no-store' });
+    if (dbCache._serverPaging) await api.page('auditLog', { pageSize: 1 });
+    else await api.request('/api/auditLog', { cache: 'no-store' });
     if (currentUser?.id !== actorId) throw new Error('Your session changed. Please retry.');
     url = URL.createObjectURL(new Blob([buffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }));
     link = document.createElement('a');
@@ -2825,7 +2999,33 @@ function formatAuditExportTimestamp(value) {
   return parsed ? `${auditExportTime(parsed)} Asia/Manila` : String(value ?? '');
 }
 
-function renderAuditLogRows(filtered = null, resetPage = false) {
+function getAuditPageQuery() {
+  const filters = getAuditLogFilters();
+  const now = new Date();
+  let from, to;
+  if (filters.mode === 'today') { from = new Date(now.getFullYear(), now.getMonth(), now.getDate()); to = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1); }
+  if (filters.mode === 'week') { from = new Date(now.getFullYear(), now.getMonth(), now.getDate() - (now.getDay() + 6) % 7); to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 7); }
+  if (filters.mode === 'month') { from = new Date(now.getFullYear(), now.getMonth(), 1); to = new Date(now.getFullYear(), now.getMonth() + 1, 1); }
+  if (filters.mode === 'date' && filters.date) { from = new Date(filters.date + 'T00:00:00'); to = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1); }
+  if (filters.mode === 'range') {
+    if (filters.startDate) from = new Date(filters.startDate + 'T00:00:00');
+    if (filters.endDate) { const end = new Date(filters.endDate + 'T00:00:00'); to = new Date(end.getFullYear(), end.getMonth(), end.getDate() + 1); }
+  }
+  return { q: filters.search, timezoneOffset: new Date().getTimezoneOffset(), fromInstant: from && Number.isFinite(from.getTime()) ? from.toISOString() : '',
+    toInstant: to && Number.isFinite(to.getTime()) ? to.toISOString() : '', sort: 'created_at' };
+}
+function renderAuditLogRows(filtered = null, resetPage = false, pageData = null) {
+  if (dbCache._serverPaging && !pageData) {
+    const tbody = document.getElementById('logTableBody');
+    if (!tbody) return;
+    if (resetPage) auditLogPaginationState.page = 1;
+    return loadTablePage('auditLog', auditLogPaginationState, getAuditPageQuery(), tbody).then(result => {
+      if (!result) return;
+      renderAuditLogRows(result.items, false, result);
+      const badge = document.getElementById('auditLogCountBadge');
+      if (badge) badge.innerHTML = '<svg width="14" height="14" style="color:var(--teal-600);"><use href="#ico-log"/></svg><span>' + result.total + ' matching logs</span>';
+    });
+  }
   const tbody = document.getElementById('logTableBody');
   if (!tbody) return;
 
@@ -2838,7 +3038,7 @@ function renderAuditLogRows(filtered = null, resetPage = false) {
 
   if (resetPage) auditLogPaginationState.page = 1;
 
-  const totalItems = logs.length;
+  const totalItems = pageData ? pageData.total : logs.length;
   const pageSize = auditLogPaginationState.pageSize || 10;
   const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
   if (auditLogPaginationState.page > totalPages) auditLogPaginationState.page = totalPages;
@@ -2859,7 +3059,7 @@ function renderAuditLogRows(filtered = null, resetPage = false) {
   }
 
   const startIdx = (auditLogPaginationState.page - 1) * pageSize;
-  const pageItems = logs.slice(startIdx, startIdx + pageSize);
+  const pageItems = pageData ? logs : logs.slice(startIdx, startIdx + pageSize);
 
   tbody.innerHTML = pageItems.map((l, index) => {
     const rowNum = startIdx + index + 1;
@@ -3180,25 +3380,20 @@ function getUserAccessSummaryHtml(u) {
   return `<span class="access-pill extra" title="Assigned modules: ${escapeHtml(moduleLabels.join(', '))}">${hasResident ? 'Resident + ' : ''}${extraModules.length} modules</span>`;
 }
 
-function renderUserManagementRows(filteredUsers = null, resetPage = false) {
+async function renderUserManagementRows(filteredUsers = null, resetPage = false) {
   const tbody = document.getElementById('userMgmtTableBody');
   if (!tbody) return;
 
-  if (filteredUsers !== null) {
-    currentUserMgmtFilteredList = filteredUsers;
-  } else if (currentUserMgmtFilteredList === null) {
-    currentUserMgmtFilteredList = db.get('users');
-  }
-  const users = currentUserMgmtFilteredList || [];
-
   if (resetPage) userMgmtPaginationState.page = 1;
-
-  const totalItems = users.length;
-  const pageSize = userMgmtPaginationState.pageSize || 10;
-  const totalPages = Math.max(1, Math.ceil(totalItems / pageSize));
-  if (userMgmtPaginationState.page > totalPages) userMgmtPaginationState.page = totalPages;
-  if (userMgmtPaginationState.page < 1) userMgmtPaginationState.page = 1;
-
+  const result = await loadTablePage('users', userMgmtPaginationState, {
+    q: document.getElementById('userMgmtSearch')?.value || '',
+    role: document.getElementById('userRoleFilter')?.value || '',
+    status: document.getElementById('userStatusFilter')?.value || '',
+    sort: 'name', direction: 'asc',
+  }, tbody);
+  if (!result) return;
+  const totalItems = result.total;
+  const pageSize = result.pageSize;
   if (!totalItems) {
     tbody.innerHTML = `<tr><td colspan="6"><div class="no-results" style="padding:30px;"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-users"/></svg><p style="margin-top:6px;">No accounts found matching your filters.</p></div></td></tr>`;
     renderPaginationComponent({
@@ -3220,7 +3415,7 @@ function renderUserManagementRows(filteredUsers = null, resetPage = false) {
 
   const startIndex = (userMgmtPaginationState.page - 1) * pageSize;
   const endIndex = Math.min(startIndex + pageSize, totalItems);
-  const pageItems = users.slice(startIndex, endIndex);
+  const pageItems = result.items;
 
   tbody.innerHTML = pageItems.map((u) => {
     const roleLabel = ROLE_LABELS[u.role] || u.role;
@@ -3293,30 +3488,7 @@ function renderUserManagementRows(filteredUsers = null, resetPage = false) {
 }
 
 function filterUserManagementTable() {
-  const q = (document.getElementById('userMgmtSearch')?.value || '').toLowerCase().trim();
-  const roleFilter = document.getElementById('userRoleFilter')?.value || '';
-  const statusFilter = document.getElementById('userStatusFilter')?.value || '';
-
-  let users = db.get('users');
-  if (q) {
-    users = users.filter(u =>
-      (u.name || '').toLowerCase().includes(q)
-      || (u.username || '').toLowerCase().includes(q)
-      || (u.email || '').toLowerCase().includes(q)
-      || (ROLE_LABELS[u.role] || '').toLowerCase().includes(q)
-      || (u.block || '').toLowerCase().includes(q)
-      || (u.lot || '').toLowerCase().includes(q)
-      || (Array.isArray(u.permissions) && u.permissions.some(p => p.toLowerCase().includes(q)))
-    );
-  }
-  if (roleFilter) {
-    users = users.filter(u => u.role === roleFilter);
-  }
-  if (statusFilter) {
-    users = users.filter(u => (u.status || 'active') === statusFilter);
-  }
-
-  renderUserManagementRows(users, true);
+  scheduleTableSearch(userMgmtPaginationState, () => renderUserManagementRows(null, true));
 }
 
 // ── Account Creation with Module Access Permissions ──
@@ -3629,7 +3801,7 @@ async function saveCreateAccount() {
     await db.save('users', newUser);
 
     // Refresh entire dataset directly from MySQL so account persists across reloads
-    await api.loadAll();
+    await api.loadAll(['users', 'homeowners', 'notifications']);
 
     logAction(`Created account: "${name}" (@${username}) with account type: ${role === 'admin' ? 'Administrator' : 'Resident'}`);
     closeModal();
@@ -3944,7 +4116,7 @@ async function saveEditUserAccount(userId) {
   showLoading();
   try {
     await db.save('users', u);
-    await api.loadAll();
+    await api.loadAll(['users', 'homeowners', 'notifications']);
     logAction(`Updated account & permissions: ${u.name} (@${u.username})`);
 
     // If updating current user's profile or permissions, update active state & rebuild sidebar
@@ -4035,7 +4207,7 @@ function confirmDeleteUserAccount(userId) {
         showLoading();
         try {
           await db.delete('users', userId);
-          await api.loadAll();
+          await api.loadAll(['users', 'homeowners', 'notifications']);
           logAction(`Deleted user account: ${u.name} (@${u.username})`);
           hideLoading();
           showToast('success', 'Account Deleted', `Account for ${u.name} has been removed.`);
@@ -4845,7 +5017,7 @@ async function performLogout() {
   // Retain only the same community content exposed by /api/public-data.
   dbCache = {
     announcements: db.get('announcements'),
-    lostFound: db.get('lostFound').filter(item => ['Approved', 'Posted', 'Claimed'].includes(item.status)),
+    lostFound: dbCache._lazyTables?.includes('lostFound') ? [] : db.get('lostFound').filter(item => ['Approved', 'Posted', 'Claimed'].includes(item.status)),
     board_of_directors: db.get('board_of_directors'),
     board_current_term: typeof getCurrentBoardTerm === 'function' ? getCurrentBoardTerm() : '',
   };

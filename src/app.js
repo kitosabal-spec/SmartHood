@@ -92,7 +92,8 @@ const loginRateLimits = createLoginRateLimits({
 });
 // Unknown accounts perform the same bcrypt work as an incorrect password.
 const dummyLoginPasswordHash = bcrypt.hashSync(crypto.randomBytes(32).toString('hex'), 10);
-const LEGAL_POLICY_VERSION = '2026-10-06';
+// Must match the policy displayed by public/js/legal.js (covered by registration-consent tests).
+const LEGAL_POLICY_VERSION = '2026-11';
 if (!process.env.FILE_ACCESS_SECRET) console.warn('FILE_ACCESS_SECRET is not set; private file links will expire after a server restart.');
 if (!process.env.SESSION_SECRET) console.warn('SESSION_SECRET is not set; sessions will expire after a server restart.');
 
@@ -820,11 +821,13 @@ function readHomeownersWithBalances(sharedReads) {
 }
 
 async function getTableData(table, sharedReads = new Map()) {
+  const summary = sharedReads.get('summary');
   if (table === 'complaints') {
-    const rows = await all('SELECT * FROM complaints WHERE archived_at IS NULL');
+    const rows = await all(summary ? 'SELECT id, homeownerId, category, status, dateFiled, dateOfOccurrence, LEFT(description, 200) AS description FROM complaints WHERE archived_at IS NULL' : 'SELECT * FROM complaints WHERE archived_at IS NULL');
+    if (summary) return rows.map(row => ({ ...deserializeRow('complaints', row), _summary: true }));
     return attachComplaintResponses(rows.map(row => deserializeRow('complaints', row)));
   }
-  if (table === 'payments') return getPaymentHistory();
+  if (table === 'payments') return getPaymentHistory(null, summary);
   if (table === 'amenityBookings') {
     const rows = await all(`SELECT a.*, b.id AS billingId, b.status AS billingStatus, b.archived_at AS billingArchivedAt
       FROM amenityBookings a LEFT JOIN billings b ON b.amenity_booking_id = a.id
@@ -839,7 +842,7 @@ async function getTableData(table, sharedReads = new Map()) {
   }
   if (table === 'billings') {
     const [rows, assignments] = await Promise.all([
-      all('SELECT * FROM billings WHERE archived_at IS NULL'),
+      all(summary ? 'SELECT id, title, amount, dueDate, due_date, status, createdAt, monthly_dues_month, billing_type, balance_reset_at, archived_at FROM billings WHERE archived_at IS NULL' : 'SELECT * FROM billings WHERE archived_at IS NULL'),
       all("SELECT billing_id, homeowner_id, assigned_amount, status, monthly_dues_month FROM billing_assignments WHERE status <> 'archived'"),
     ]);
     const byBilling = new Map();
@@ -847,7 +850,7 @@ async function getTableData(table, sharedReads = new Map()) {
       if (!byBilling.has(assignment.billing_id)) byBilling.set(assignment.billing_id, []);
       byBilling.get(assignment.billing_id).push(assignment.homeowner_id);
     }
-    return rows.map(row => ({ ...deserializeRow(table, row), assignedTo: byBilling.get(row.id) || [] }));
+    return rows.map(row => ({ ...deserializeRow(table, row), ...(summary ? { _summary: true } : {}), assignedTo: byBilling.get(row.id) || [] }));
   }
   if (table === 'notifications') {
     const rows = await all('SELECT * FROM notifications ORDER BY id DESC');
@@ -876,8 +879,13 @@ async function getTableData(table, sharedReads = new Map()) {
 async function attachComplaintResponses(complaints) {
   if (!complaints.length) return complaints;
   const complaintIds = new Set(complaints.map(complaint => complaint.id));
-  const rows = await all(`SELECT id, complaint_id, message, sender_id, sender_name, created_at
-    FROM complaint_responses ORDER BY created_at ASC, id ASC`);
+  const rows = [];
+  const ids = [...complaintIds];
+  for (let offset = 0; offset < ids.length; offset += 250) {
+    const batch = ids.slice(offset, offset + 250);
+    rows.push(...await all(`SELECT id, complaint_id, message, sender_id, sender_name, created_at
+      FROM complaint_responses WHERE complaint_id IN (${batch.map(() => '?').join(', ')}) ORDER BY created_at ASC, id ASC`, batch));
+  }
   const responsesByComplaint = new Map();
   for (const row of rows) {
     if (!complaintIds.has(row.complaint_id)) continue;
@@ -904,13 +912,14 @@ async function presentComplaintWithResponses(complaintId, requester) {
   return presentPrivateFiles('complaints', complaint, requester);
 }
 
-async function getPaymentHistory(homeownerId = null) {
-  const rows = await all(`SELECT p.*, b.title AS historical_billing_title,
+async function getPaymentHistory(homeownerId = null, summary = false) {
+  const columns = summary ? 'p.id, p.homeownerId, p.billingId, p.amount, p.status, p.submittedAt, p.reviewedAt, p.payment_date, p.verified_at, p.created_at, p.monthly_dues_month, p.payment_type, p.payment_source, p.archived_at, p.voided_at' : 'p.*';
+  const rows = await all(`SELECT ${columns}, b.title AS historical_billing_title,
       b.amount AS historical_billing_amount, b.balance_reset_at AS billing_balance_reset_at
     FROM payments p LEFT JOIN billings b ON b.id = p.billingId
     WHERE p.archived_at IS NULL${homeownerId ? ' AND p.homeownerId = ?' : ''}`,
   homeownerId ? [homeownerId] : []);
-  return rows.map(row => deserializeRow('payments', row));
+  return rows.map(row => ({ ...deserializeRow('payments', row), ...(summary ? { _summary: true } : {}) }));
 }
 
 async function syncBillingAssignments(billingId, homeownerIds) {
@@ -1000,13 +1009,14 @@ function requesterHomeownerId(user) {
   return user?.homeowner_id || user?.homeownerId || null;
 }
 
-async function loadAllData(requester = null) {
-  const tables = Object.keys(tableConfig);
+async function loadAllData(requester = null, requestedTables = null, summary = false) {
+  const tables = requestedTables || Object.keys(tableConfig);
   const data = Object.fromEntries(tables.map(table => [table, []]));
   // Request-local sharing only: no data is reused across users or requests.
   // Three workers leave room in the ten-connection pool for other requests.
   // Audited callers keep their original transaction's sequential ordering.
   const sharedReads = new Map();
+  sharedReads.set('summary', summary);
   let nextTable = 0;
   async function loadNext() {
     while (nextTable < tables.length) {
@@ -1071,7 +1081,7 @@ async function loadAllData(requester = null) {
     data.complaints = (data.complaints || []).map(record => presentPrivateFiles('complaints', record, requester));
     data.payment_settings = (data.payment_settings || []).map(record => presentPrivateFiles('payment_settings', record, requester));
   }
-  return data;
+  return requestedTables ? Object.fromEntries(tables.map(table => [table, data[table]])) : data;
 }
 
 async function getScopedTableData(table, requester, sharedReads = new Map()) {
@@ -1099,7 +1109,7 @@ async function getScopedTableData(table, requester, sharedReads = new Map()) {
     const [sqlTable, column, managePermission] = scopes[table];
     if (userHasPermission(requester, managePermission)) return getTableData(table, sharedReads);
     if (!userHasPermission(requester, 'resident') || !homeownerId) return [];
-    if (table === 'payments') return getPaymentHistory(homeownerId);
+    if (table === 'payments') return getPaymentHistory(homeownerId, sharedReads.get('summary'));
     const rows = await all(`SELECT * FROM ${sqlTable} WHERE \`${column}\` = ? AND archived_at IS NULL`, [homeownerId]);
     const records = rows.map(row => deserializeRow(table, row));
     return table === 'complaints' ? attachComplaintResponses(records) : records;
@@ -2884,7 +2894,40 @@ app.get('/api/data', asyncHandler(async (req, res) => {
   res.setHeader('Expires', '0');
   const requester = await requireAuth(req, res);
   if (!requester) return;
-  res.json(await loadAllData(requester));
+  const tables = typeof req.query.tables === 'string' ? [...new Set(req.query.tables.split(',').filter(Boolean))] : null;
+  if (tables && (!tables.length || tables.some(table => !Object.hasOwn(tableConfig, table)))) {
+    return res.status(400).json({ error: 'Invalid data tables.' });
+  }
+  if (req.query.mode === 'app') {
+    // Comment threads and full audit events have dedicated, authorized readers.
+    // Sidebar seen-state needs only audit IDs, not every event's JSON payload.
+    const lazyTables = tables ? [] : ['amenityBookings', 'vehicleRegistrations', 'lostFound'];
+    const selected = (tables || Object.keys(tableConfig)).filter(table => !['auditLog', 'announcement_comments', ...lazyTables].includes(table));
+    const data = await loadAllData(requester, selected, !tables);
+    if (lazyTables.length) {
+      const projections = {
+        amenityBookings: 't.id, t.homeownerId, t.status',
+        vehicleRegistrations: 't.id, t.homeownerId, t.registrationStatus, t.paymentStatus, t.releasedAt',
+        lostFound: 't.id, t.homeownerId, t.status',
+      };
+      const permissions = { amenityBookings: 'amenities', vehicleRegistrations: 'vehicles' };
+      await Promise.all(lazyTables.map(async table => {
+        const permission = permissions[table];
+        if (permission && requester.role !== 'admin' && !userHasPermission(requester, permission) && !userHasPermission(requester, 'resident')) {
+          data[table] = []; return;
+        }
+        const plan = require('./services/paginationService').buildPageQuery(table, {}, requester, userHasPermission);
+        data[table] = await all('SELECT ' + projections[table] + ' FROM ' + tableName(table) + ' t' + plan.where, plan.params);
+      }));
+      data._lazyTables = [...lazyTables, ...['billings', 'payments', 'complaints'].filter(table => data[table]?.some(record => record._summary))];
+      data._serverPaging = true;
+    }
+    if (!tables || tables.includes('announcement_comments')) data.announcement_comments = [];
+    data.auditLog = requester.role === 'admin' || userHasPermission(requester, 'auditlog')
+      ? await all('SELECT id FROM auditLog') : [];
+    return res.json(data);
+  }
+  res.json(await loadAllData(requester, tables));
 }));
 
 app.get('/api/session', asyncHandler(async (req, res) => {
@@ -4453,59 +4496,24 @@ app.get('/api/public-data', asyncHandler(async (req, res) => {
   });
 }));
 
-// Opt-in paginated endpoint. The legacy array endpoints remain compatible,
-// while new screens can avoid loading entire operational tables.
+// Shared pagination retains the legacy authorization and presentation contracts.
 app.get('/api/paged/:table', asyncHandler(async (req, res) => {
   const table = validateTable(req, res);
   if (!table) return;
-  if (table === 'auditLog') res.setHeader('Cache-Control', 'private, no-store');
   const requester = await checkTableAccess(req, res, table, 'read');
   if (!requester) return;
-  const supported = new Set(['billings', 'payments', 'complaints', 'amenityBookings', 'vehicleRegistrations', 'lostFound', 'auditLog']);
-  if (!supported.has(table)) return res.status(400).json({ error: 'Pagination is not available for this module.' });
-  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
-  const pageSize = Math.min(100, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 25));
-  const sortColumns = {
-    billings: new Set(['created_at', 'due_date', 'amount', 'status']), payments: new Set(['created_at', 'payment_date', 'amount', 'status']),
-    complaints: new Set(['dateFiled', 'status']), amenityBookings: new Set(['bookingDate', 'status']),
-    vehicleRegistrations: new Set(['createdAt', 'registrationStatus', 'plateNumber']), lostFound: new Set(['createdAt', 'eventDate', 'status']),
-    auditLog: new Set(['created_at', 'action_type']),
-  };
-  const defaultSort = sortColumns[table].values().next().value;
-  const sort = sortColumns[table].has(req.query.sort) ? req.query.sort : defaultSort;
-  const direction = String(req.query.direction || 'desc').toLowerCase() === 'asc' ? 'ASC' : 'DESC';
-  const physicalTable = tableName(table);
-  const clauses = [];
-  const params = [];
-  if (ARCHIVABLE_TABLES.has(table)) clauses.push('archived_at IS NULL');
-  const homeownerColumn = { payments: 'homeownerId', complaints: 'homeownerId', amenityBookings: 'homeownerId', vehicleRegistrations: 'homeownerId', lostFound: 'homeownerId' }[table];
-  const managePermission = { payments: 'payments', complaints: 'complaints', amenityBookings: 'amenities', vehicleRegistrations: 'vehicles', lostFound: 'lostfound' }[table];
-  if (requester.role !== 'admin' && homeownerColumn && !userHasPermission(requester, managePermission)) {
-    if (table === 'lostFound') {
-      clauses.push("(status IN ('Approved', 'Posted', 'Claimed') OR homeownerId = ?)");
-    } else {
-      clauses.push(`\`${homeownerColumn}\` = ?`);
-    }
-    params.push(requesterHomeownerId(requester));
+  let result;
+  try {
+    result = await require('./services/pagedDataService').readPage(table, req.query, requester, {
+      all, get, userHasPermission, requesterHomeownerId, deserializeRow, presentPrivateFiles,
+      attachComplaintResponses, presentHomeownerAccountStatus, mergeUserWithHomeowner,
+    });
+  } catch (error) {
+    if (error.status === 400) return res.status(400).json({ error: error.message });
+    throw error;
   }
-  if (table === 'billings' && requester.role !== 'admin' && !userHasPermission(requester, 'billing')) {
-    clauses.push('EXISTS (SELECT 1 FROM billing_assignments ba WHERE ba.billing_id = billings.id AND ba.homeowner_id = ? AND ba.status = \'active\')');
-    params.push(requesterHomeownerId(requester));
-  }
-  const where = clauses.length ? ` WHERE ${clauses.join(' AND ')}` : '';
-  const [[count]] = await db.execute(`SELECT COUNT(*) AS total FROM ${physicalTable}${where}`, params);
-  const [rows] = await db.execute(
-    `SELECT * FROM ${physicalTable}${where} ORDER BY \`${sort}\` ${direction} LIMIT ? OFFSET ?`,
-    [...params, pageSize, (page - 1) * pageSize]
-  );
-  let items = rows.map(row => deserializeRow(table, row));
-  if (table === 'billings' && items.length) {
-    const ids = items.map(item => item.id);
-    const placeholders = ids.map(() => '?').join(', ');
-    const assignments = await all(`SELECT billing_id, homeowner_id FROM billing_assignments WHERE billing_id IN (${placeholders}) AND status = 'active'`, ids);
-    items = items.map(item => ({ ...item, assignedTo: assignments.filter(row => row.billing_id === item.id).map(row => row.homeowner_id) }));
-  }
-  res.json({ items, page, pageSize, total: Number(count.total), totalPages: Math.ceil(Number(count.total) / pageSize) });
+  if (!result) return res.status(400).json({ error: 'Pagination is not available for this module.' });
+  res.json(result);
 }));
 
 
