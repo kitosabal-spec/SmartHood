@@ -1,3 +1,53 @@
+/* Compact administrator billing workspace; retain the shared theme tokens. */
+.billing-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
+.billing-summary-card { display: grid; gap: 4px; padding: 14px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+.billing-summary-card > span { color: var(--text-2); font-size: .8rem; font-weight: 600; }
+.billing-summary-card strong { color: var(--text); font-size: 1.5rem; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.billing-summary-card small { color: var(--text-3); font-size: .72rem; }
+.billing-category-tabs { display: flex; gap: 6px; padding: 14px 16px 10px; overflow-x: auto; }
+.billing-category-tab { flex-shrink: 0; display: inline-flex; align-items: center; gap: 7px; padding: 8px 11px; border: 1px solid var(--border); border-radius: 20px; background: var(--surface); color: var(--text-2); font: inherit; font-size: .78rem; font-weight: 600; cursor: pointer; }
+.billing-category-tab span { font-size: .7rem; opacity: .8; font-variant-numeric: tabular-nums; }
+.billing-category-tab[aria-pressed="true"] { background: var(--teal-700); border-color: var(--teal-700); color: #fff; }
+.billing-category-tab:focus-visible { outline: 2px solid var(--teal-500); outline-offset: 2px; }
+.billing-dues-tools { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 0 16px 8px; padding: 10px 12px; border-radius: var(--radius); background: var(--surface-2); color: var(--text-2); font-size: .78rem; }
+.billing-dues-tools[hidden] { display: none; }
+.billing-management .section-card-header { padding: 6px 16px 14px; }
+.billing-management .filters-row { width: 100%; gap: 8px; flex-wrap: wrap; }
+.billing-management .search-box { flex: 1 1 240px; min-width: 180px; max-width: none; }
+.billing-management .filter-select { min-width: 130px; }
+.billing-management .data-table { min-width: 720px; }
+.billing-management .data-table th { padding: 10px 14px; font-size: .72rem; white-space: nowrap; }
+.billing-management .data-table td { padding: 11px 14px; font-size: .82rem; vertical-align: middle; }
+.billing-management .data-table td:first-child { width: 40%; min-width: 220px; overflow-wrap: anywhere; }
+.billing-management .data-table td:first-child strong { color: var(--text); font-weight: 600; }
+.billing-management .amount-due { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.billing-row-note { display: block; margin-top: 3px; color: var(--text-3); font-size: .72rem; font-weight: 400; }
+.billing-row-status { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; max-width: 180px; }
+.billing-row-status .badge { white-space: nowrap; }
+.billing-management .td-actions { flex-wrap: nowrap; gap: 6px; }
+.billing-management .no-results { padding: 28px 16px; }
+@media (max-width: 640px) {
+  .billing-management .data-table { min-width: 0; }
+  .billing-management .data-table tbody { gap: 6px !important; }
+  .billing-management .data-table tbody tr { padding: 10px 12px !important; gap: 4px !important; }
+  .billing-management .data-table tbody td:first-child { display: block !important; text-align: left !important; }
+  .billing-management .data-table tbody td:first-child::before { display: none !important; }
+  .billing-management .data-table tbody td:first-child strong { text-align: left !important; }
+}
+@media (max-width: 600px) {
+  .billing-summary { gap: 6px; margin-bottom: 12px; }
+  .billing-summary-card { padding: 10px; }
+  .billing-summary-card > span { font-size: .72rem; }
+  .billing-summary-card strong { font-size: 1.3rem; }
+  .billing-summary-card small { font-size: .65rem; }
+  .billing-category-tabs { padding: 12px 10px 8px; }
+  .billing-management .section-card-header { padding: 4px 10px 12px; }
+  .billing-management .search-box { flex-basis: 100%; }
+  .billing-management .filter-select { flex: 1; min-width: 0; max-width: 100%; }
+  .billing-management .date-input-group { flex-wrap: wrap; min-width: 0; max-width: 100%; }
+  .billing-dues-tools { margin: 0 10px 8px; flex-wrap: wrap; }
+}
+
 .billing-form {
   display: grid;
   gap: 18px;

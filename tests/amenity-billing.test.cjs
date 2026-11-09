@@ -37,6 +37,7 @@ test('server derives recipient and booking details; shared assignments, notifica
   assert.equal(result.status, 201, JSON.stringify(result));
   const bill = result.body.billing;
   assert.equal(bill.amenity_booking_id, 'booking-1');
+  assert.equal(bill.billing_category, 'amenity_fees');
   assert.deepEqual(bill.assignedTo, ['home-1']);
   assert.equal(bill.billing_type, 'Other Billing');
   assert.equal(bill.title, 'Clubhouse reservation - 2026-11-12');

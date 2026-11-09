@@ -1,5 +1,33 @@
 # SmartHood database migrations
 
+## Billing categories (025)
+
+`025_billing_categories.js` adds nullable `billings.billing_category` and a category/archive index.
+It fills only NULL categories using vehicle/amenity foreign keys, the monthly dues billing type,
+or a legacy month with no billing type. Ambiguous records become `other_charges`; titles are
+never used to guess links. Existing amounts, payments, assignments, dates, statuses and
+`billing_type` are untouched, including archived records. Rerunning the backfill preserves
+explicit categories. Apply through `npm run db:migrate` before serving this version; normal
+server startup also runs pending migrations. Previous migrations must not be edited.
+
+New manual charges may select Other Charges, Vehicle Fees or Amenity Fees. Monthly dues
+retain their existing type, month validation and duplicate protection. Linked bills always
+take their category from the source relationship. Categorization alone never creates a link.
+
+The administrator summary counts matching records (not currency or assignments). Unpaid
+counts all active records with an outstanding balance. Approved payments determine Paid;
+pending payments do not reduce the balance. Pending Verification takes display precedence
+over Overdue, then Partially Paid, then Unpaid. Overdue/partial secondary labels and filters
+remain available when these conditions overlap. Inactive and balance-cleared records are
+not counted as unpaid or paid. Filters and pagination operate together within each category.
+
+Verification: `node --test tests/billing-categories.test.cjs`; real database migration test:
+`TEST_LOCAL_MYSQL=1 node --test tests/billing-categories-mysql.test.cjs` (PowerShell:
+`$env:TEST_LOCAL_MYSQL='1'` first). This uses a random disposable local MySQL schema.
+Browser coverage: `node tests/billing-categories-browser.cjs`, also in `npm run test:browser`.
+It uses isolated fixtures and supports the existing `PLAYWRIGHT_MODULE` and
+`REPORT_BROWSER_EXECUTABLE` overrides. Screenshots go to `output/playwright/`.
+
 ## Complaint response history (024)
 
 Migration `024_complaint_response_history.js` creates the

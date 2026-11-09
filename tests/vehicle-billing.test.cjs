@@ -25,6 +25,7 @@ test('approved vehicle creates one linked billing with server-owned details and 
   assert.equal(created.status, 201, JSON.stringify(created));
   const bill = created.body.billing;
   assert.equal(bill.vehicle_registration_id, 'vehicle-1');
+  assert.equal(bill.billing_category, 'vehicle_fees');
   assert.deepEqual(bill.assignedTo, ['home-1']);
   assert.equal(bill.title, 'Vehicle registration - ABC 123');
   assert.match(bill.description, /Sticker fee/);

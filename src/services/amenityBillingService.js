@@ -7,6 +7,7 @@ function bookingBillingDetails(booking) {
     amenity_booking_id: booking.id,
     assignedTo: [booking.homeownerId],
     billing_type: 'Other Billing',
+    billing_category: 'amenity_fees',
     title: `${booking.amenity} reservation - ${booking.bookingDate}`,
     description: `Amenity: ${booking.amenity}. Reservation: ${booking.bookingDate}, ${booking.startTime} - ${booking.endTime}.`,
   };

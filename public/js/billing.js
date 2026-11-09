@@ -75,6 +75,79 @@ if (typeof getLocalDateValue !== 'function') {
 
 let billingPaginationState = { page: 1, pageSize: 10 };
 let currentBillingFilteredList = null;
+let currentBillingCategory = 'all';
+const BILLING_CATEGORY_LABELS = {
+  all: 'All Billings', monthly_dues: 'Monthly Association Dues',
+  vehicle_fees: 'Vehicle Fees', amenity_fees: 'Amenity Fees', other_charges: 'Other Charges',
+};
+
+function getBillingCategory(billing) {
+  if (billing.vehicle_registration_id) return 'vehicle_fees';
+  if (billing.amenity_booking_id) return 'amenity_fees';
+  if (billing.billing_type === 'Monthly Association Dues' ||
+      (!billing.billing_type && /^\d{4}-(0[1-9]|1[0-2])$/.test(billing.monthly_dues_month || ''))) return 'monthly_dues';
+  return Object.hasOwn(BILLING_CATEGORY_LABELS, billing.billing_category) && billing.billing_category !== 'all'
+    ? billing.billing_category : 'other_charges';
+}
+
+function getAdminBillingState(billing, payments = db.get('payments') || []) {
+  const ids = [...new Set(getAssignedHomeownerIds(billing))];
+  const related = payments.filter(p => p.billingId === billing.id && !p.archived_at && !p.voided_at);
+  const summaries = ids.map(id => getBillingPaymentSummary(billing, id, related));
+  const remaining = Math.round(summaries.reduce((sum, s) => sum + s.remainingBalance, 0) * 100) / 100;
+  const partial = summaries.some(s => s.totalPaid > 0) && remaining > 0;
+  const pending = summaries.some(s => s.remainingBalance > 0 && s.pendingPayment);
+  const dueDate = billing.dueDate ? paymentCalendarDate(billing.dueDate) : '';
+  const overdue = Boolean(dueDate && dueDate < paymentCalendarDate(new Date()) && remaining > 0);
+  let status = 'unpaid';
+  if (billing.balance_reset_at) status = 'cleared';
+  else if (billing.archived_at || billing.status === 'inactive' || !ids.length) status = 'inactive';
+  else if (summaries.every(s => s.status === 'paid')) status = 'paid';
+  else if (pending) status = 'pending';
+  else if (overdue) status = 'overdue';
+  else if (partial) status = 'partially_paid';
+  return { status, remaining, partial, overdue, pending };
+}
+
+function adminBillingStatusHtml(state) {
+  const labels = { paid: 'Paid', unpaid: 'Unpaid', partially_paid: 'Partially Paid',
+    pending: 'Pending Verification', overdue: 'Overdue', inactive: 'Inactive', cleared: 'Cleared' };
+  const colors = { paid: 'teal', unpaid: 'gray', partially_paid: 'yellow', pending: 'yellow', overdue: 'red' };
+  return `<span class="badge badge-${colors[state.status] || 'gray'}">${labels[state.status]}</span>`
+    + (state.overdue && !['overdue', 'inactive', 'cleared'].includes(state.status) ? '<span class="badge badge-red">Overdue</span>' : '')
+    + (state.partial && ['overdue', 'pending'].includes(state.status) ? '<span class="billing-row-note">Partially Paid</span>' : '');
+}
+
+function getBillingDisplayTitle(billing) {
+  if (getBillingCategory(billing) === 'monthly_dues' && billing.monthly_dues_month) {
+    return `Monthly Association Dues — ${formatBillingMonth(billing.monthly_dues_month)}`;
+  }
+  return String(billing.title || '').trim() || `${BILLING_CATEGORY_LABELS[getBillingCategory(billing)]} — ${billing.id}`;
+}
+
+function selectBillingCategory(category) {
+  if (!Object.hasOwn(BILLING_CATEGORY_LABELS, category)) return;
+  currentBillingCategory = category;
+  filterBillings(true);
+  document.querySelector?.('.billing-category-tab[aria-pressed="true"]')?.focus();
+}
+
+function renderBillingOverview(matching, filtered, states) {
+  const tabs = document.getElementById('billingCategoryTabs');
+  if (tabs) tabs.innerHTML = Object.entries(BILLING_CATEGORY_LABELS).map(([key, label]) => {
+    const count = key === 'all' ? matching.length : matching.filter(b => getBillingCategory(b) === key).length;
+    return `<button type="button" class="billing-category-tab" aria-pressed="${currentBillingCategory === key}" onclick="selectBillingCategory('${key}')">${label} <span>${count}</span></button>`;
+  }).join('');
+  const duesTools = document.getElementById('billingDuesTools');
+  if (duesTools) duesTools.hidden = currentBillingCategory !== 'monthly_dues';
+  const summary = document.getElementById('billingSummary');
+  if (summary) {
+    const paid = filtered.filter(b => states.get(b.id).status === 'paid').length;
+    const unpaid = filtered.filter(b => ['unpaid', 'partially_paid', 'pending', 'overdue'].includes(states.get(b.id).status)).length;
+    summary.innerHTML = [['Total Billings', filtered.length, 'Matching records'], ['Unpaid', unpaid, 'With outstanding balance'], ['Paid', paid, 'Fully paid records']]
+      .map(([label, count, hint]) => `<div class="billing-summary-card"><span>${label}</span><strong>${count}</strong><small>${hint}</small></div>`).join('');
+  }
+}
 
 function changeBillingPage(page) {
   billingPaginationState.page = page;
@@ -119,7 +192,7 @@ if (typeof window !== 'undefined') window.parseBillingFilterDate = parseBillingF
 function getBillingRecordDates(billing) {
   const dates = [];
   if (billing?.dueDate) {
-    const d = parseBillingFilterDate(billing.dueDate);
+    const d = parseBillingFilterDate(paymentCalendarDate(billing.dueDate));
     if (d) dates.push(d);
   }
   if (billing?.createdAt) {
@@ -182,6 +255,8 @@ function filterBillings(resetPage = true) {
   const allBillings = db.get('billings') || [];
   const users = getHomeowners();
   const userMap = new Map(users.map(u => [u.id, u]));
+  const payments = db.get('payments') || [];
+  const states = new Map(allBillings.map(b => [b.id, getAdminBillingState(b, payments)]));
 
   const filtered = allBillings.filter(b => {
     // 1. Search filter: resident name or billing information
@@ -201,6 +276,8 @@ function filterBillings(resetPage = true) {
       const amountFormatted = amt.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
       const monthText = b.monthly_dues_month ? formatBillingMonth(b.monthly_dues_month) : '';
       const billingMatch = (b.title || '').toLowerCase().includes(q)
+        || getBillingDisplayTitle(b).toLowerCase().includes(q)
+        || BILLING_CATEGORY_LABELS[getBillingCategory(b)].toLowerCase().includes(q)
         || (b.description || '').toLowerCase().includes(q)
         || (b.dueDate || 'No due date').toLowerCase().includes(q)
         || (b.createdAt || '').toLowerCase().includes(q)
@@ -215,21 +292,13 @@ function filterBillings(resetPage = true) {
       if (!residentMatch && !billingMatch) return false;
     }
 
-    // 2. Status filter: All, Paid, Unpaid, Overdue
+    // Use the same derived state for the filter, summary and row labels.
     if (statusFilter && statusFilter !== 'all') {
-      const colStatus = getBillingCollectionStatus(b);
-      const isPaid = colStatus === 'paid' || b.status === 'paid';
-      const isOverdue = Boolean(b.dueDate && b.dueDate < getLocalDateValue() && !isPaid);
-
-      if (statusFilter === 'paid') {
-        if (!isPaid) return false;
-      } else if (statusFilter === 'partially_paid') {
-        if (colStatus !== 'partially_paid') return false;
-      } else if (statusFilter === 'overdue') {
-        if (!isOverdue) return false;
-      } else if (statusFilter === 'unpaid') {
-        if (isPaid || isOverdue) return false;
-      }
+      const state = states.get(b.id);
+      const active = !['inactive', 'cleared'].includes(state.status);
+      const matches = statusFilter === 'overdue' ? active && state.overdue
+        : statusFilter === 'partially_paid' ? active && state.partial : state.status === statusFilter;
+      if (!matches) return false;
     }
 
     // 3. Date filter
@@ -247,7 +316,9 @@ function filterBillings(resetPage = true) {
     return true;
   });
 
-  renderBillingTable(filtered, resetPage);
+  const categorized = filtered.filter(b => currentBillingCategory === 'all' || getBillingCategory(b) === currentBillingCategory);
+  renderBillingOverview(filtered, categorized, states);
+  renderBillingTable(categorized, resetPage);
 }
 if (typeof window !== 'undefined') window.filterBillings = filterBillings;
 
@@ -316,25 +387,30 @@ function renderBilling() {
   <div class="page-header">
     <div class="page-header-left"><h2>${manageBilling ? 'Billing Management' : 'Billing Status'}</h2><p>${manageBilling ? 'Create and manage billing records for homeowners.' : 'View homeowner billing status and collection progress.'}</p></div>
     ${manageBilling ? `<div class="page-header-actions">
-      <button class="btn btn-secondary" onclick="autoGenerateLotAreaMonthlyDues()">Auto-Generate Dues</button>
       <button class="btn btn-primary" onclick="openProfessionalBillingModal()">Create Billing</button>
     </div>` : ''}
   </div>
-  <div class="section-card">
+  <div id="billingSummary" class="billing-summary" aria-live="polite"></div>
+  <div class="section-card billing-management">
+    <div id="billingCategoryTabs" class="billing-category-tabs" role="group" aria-label="Billing categories"></div>
+    ${manageBilling ? `<div id="billingDuesTools" class="billing-dues-tools" hidden><span>Generate monthly dues using each homeowner’s lot area.</span><button class="btn btn-secondary btn-sm" onclick="autoGenerateLotAreaMonthlyDues()">Auto-Generate Dues</button></div>` : ''}
     <div class="section-card-header">
       <div class="filters-row" style="align-items:center;">
         <div class="search-box">
           <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
-          <input id="billSearch" type="text" placeholder="Search by resident name or billing information..." oninput="filterBillings()"/>
+          <input id="billSearch" type="text" aria-label="Search billings" placeholder="Search homeowner, title or amount..." oninput="filterBillings()"/>
         </div>
-        <select class="filter-select" id="billStatusFilter" onchange="filterBillings()">
+        <select class="filter-select" id="billStatusFilter" aria-label="Billing status" onchange="filterBillings()">
           <option value="all">All Statuses</option>
           <option value="paid">Paid</option>
           <option value="partially_paid">Partially Paid</option>
+          <option value="pending">Pending Verification</option>
           <option value="unpaid">Unpaid</option>
           <option value="overdue">Overdue</option>
+          <option value="inactive">Inactive</option>
+          <option value="cleared">Cleared</option>
         </select>
-        <select class="filter-select" id="billDateFilter" onchange="onBillingDateFilterChange()">
+        <select class="filter-select" id="billDateFilter" aria-label="Billing date" onchange="onBillingDateFilterChange()">
           <option value="all">All Dates</option>
           <option value="today">Today</option>
           <option value="week">This Week</option>
@@ -358,7 +434,7 @@ function renderBilling() {
     </div>
     <div class="section-card-body no-pad">
       <div class="table-wrapper"><table class="data-table">
-        <thead><tr><th>Title</th><th>Amount</th><th>Due Date</th><th>Assigned</th><th>Status</th><th>Actions</th></tr></thead>
+        <thead><tr><th>Billing details</th><th>Amount / homeowner</th><th>Due date</th><th>Status</th><th>Actions</th></tr></thead>
         <tbody id="billTableBody"></tbody>
       </table></div>
     </div>
@@ -387,7 +463,7 @@ function renderBillingTable(billings = null, resetPage = false) {
   if (billingPaginationState.page < 1) billingPaginationState.page = 1;
 
   if (!totalItems) {
-    tbody.innerHTML = `<tr><td colspan="6"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings found.</div></td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="5"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No billings found. Try another category or reset the filters.</div></td></tr>`;
     if (typeof renderPaginationComponent === 'function') {
       renderPaginationComponent({
         containerId: 'billingPagination',
@@ -408,23 +484,25 @@ function renderBillingTable(billings = null, resetPage = false) {
   const pageItems = list.slice(startIndex, endIndex);
 
   tbody.innerHTML = pageItems.map(b => {
-    const assignedIds = getAssignedHomeownerIds(b);
-    const collectionStatus = getBillingCollectionStatus(b);
-    const overdue = collectionStatus === 'overdue';
+    const assignedIds = [...new Set(getAssignedHomeownerIds(b))];
+    const state = getAdminBillingState(b);
+    const overdue = state.overdue && !['inactive', 'cleared'].includes(state.status);
+    const assignedLabel = assignedIds.length === 1
+      ? (getHomeowners().find(u => u.id === assignedIds[0])?.name || `Homeowner ${assignedIds[0]}`)
+      : `${assignedIds.length} homeowners`;
+    const actionId = escapeHtml(JSON.stringify(String(b.id)));
     const amountStr = Number(b.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    const monthText = b.monthly_dues_month ? formatBillingMonth(b.monthly_dues_month) : '';
     return `<tr class="${overdue ? 'overdue-row' : ''}">
       <td>
-        <strong>${escapeHtml(b.title)}</strong>${overdue ? ' <span class="badge badge-red">Overdue</span>' : ''}
-        ${monthText ? `<div style="font-size:0.75rem;color:var(--teal-700);font-weight:600;margin-top:2px">Monthly Dues: ${escapeHtml(monthText)}</div>` : ''}
+        <strong>${escapeHtml(getBillingDisplayTitle(b))}</strong>
+        <span class="billing-row-note">${escapeHtml(BILLING_CATEGORY_LABELS[getBillingCategory(b)])} · ${escapeHtml(assignedLabel)}</span>
       </td>
       <td class="amount-due">₱${amountStr}</td>
-      <td>${escapeHtml(b.dueDate || 'No due date')}</td>
-      <td>${assignedIds.length} homeowner(s)</td>
-      <td>${badgeHtml(collectionStatus)}</td>
+      <td>${escapeHtml(b.dueDate ? paymentCalendarDate(b.dueDate) : 'No due date')}</td>
+      <td><div class="billing-row-status">${adminBillingStatusHtml(state)}</div></td>
       <td><div class="td-actions">
-        <button class="btn btn-secondary btn-sm" onclick="viewBillingDetail('${b.id}')">View</button>
-        ${canManageBilling() ? `<button class="btn btn-danger btn-sm btn-icon" onclick="confirmDeleteBilling('${b.id}')" title="Delete"><svg width="14" height="14"><use href="#ico-trash"/></svg></button>` : ''}
+        <button class="btn btn-secondary btn-sm" onclick="viewBillingDetail(${actionId})" aria-label="View Billing: ${escapeHtml(getBillingDisplayTitle(b))}">View</button>
+        ${canManageBilling() ? `<button class="btn btn-secondary btn-sm btn-icon" onclick="openBillingActions(${actionId})" aria-label="More actions for ${escapeHtml(getBillingDisplayTitle(b))}" aria-haspopup="dialog">⋯</button>` : ''}
       </div></td>
     </tr>`;
   }).join('');
@@ -529,6 +607,15 @@ function openProfessionalBillingModal() {
           <label>Title *</label>
           <input id="bf_title" value="Monthly Association Dues" placeholder="Monthly Association Dues"/>
         </div>
+        <div class="form-group" id="bf_category_group">
+          <label for="bf_billing_category">Category *</label>
+          <select id="bf_billing_category">
+            <option value="other_charges">Other Charges</option>
+            <option value="vehicle_fees">Vehicle Fees (registration and stickers)</option>
+            <option value="amenity_fees">Amenity Fees (court and facility reservations)</option>
+          </select>
+          <div class="billing-helper-text">For a specific registration or reservation, create its billing from that module to preserve the link.</div>
+        </div>
         <div class="form-group" id="bf_month_group">
           <label>Billing Month *</label>
           <input id="bf_month" type="month" value="${currentMonthValue}" required/>
@@ -587,6 +674,10 @@ function openProfessionalBillingModal() {
     { label: 'Create Billing', cls: 'btn-primary', action: saveAddBilling },
   ]);
 
+  if (['vehicle_fees', 'amenity_fees', 'other_charges'].includes(currentBillingCategory)) {
+    document.getElementById('bf_billing_type').value = BILLING_TYPE_OTHER;
+    document.getElementById('bf_billing_category').value = currentBillingCategory;
+  }
   setupProfessionalBillingSearch();
   setupBillingAmountAutoFill();
   setupBillingTypeSwitcher();
@@ -718,6 +809,8 @@ function updateBillingTypeFields() {
   const descInput = document.getElementById('bf_desc');
 
   if (titleGroup) titleGroup.style.display = isMonthly ? 'none' : '';
+  const categoryGroup = document.getElementById('bf_category_group');
+  if (categoryGroup) categoryGroup.style.display = isMonthly ? 'none' : '';
   if (monthGroup) monthGroup.style.display = isMonthly ? '' : 'none';
   const monthInput = document.getElementById('bf_month');
   if (monthInput) monthInput.required = isMonthly;
@@ -882,6 +975,7 @@ async function saveAddBilling() {
       createdAt: getLocalDateValue(),
       monthly_dues_month: isMonthlyDues ? rawMonthInput : null,
       billing_type: billingType,
+      billing_category: isMonthlyDues ? 'monthly_dues' : (document.getElementById('bf_billing_category')?.value || 'other_charges'),
     };
 
     showLoading();
@@ -919,12 +1013,15 @@ function viewBillingDetail(id, record = null) {
   const assignedNames = assignedIds.map(uid => { const u = users.find(x => x.id === uid); return u ? u.name : uid; });
   const amountStr = Number(b.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const monthText = b.monthly_dues_month ? formatBillingMonth(b.monthly_dues_month) : '';
-  openModal(b.title, `
-    ${b.amenity_booking_id ? `<p><strong>Booking:</strong> ${escapeHtml(b.amenity_booking_id)} · <strong>Payment status:</strong> ${escapeHtml(amenityBillingStatus(b.status))}${b.archived_at ? ' (Archived)' : ''}</p>` : ''}
+  openModal(getBillingDisplayTitle(b), `
+    <div class="billing-row-status">${adminBillingStatusHtml(getAdminBillingState(b))}</div>
+    <p class="billing-row-note">${escapeHtml(BILLING_CATEGORY_LABELS[getBillingCategory(b)])}${b.archived_at ? ' · Archived' : ''}</p>
+    ${b.amenity_booking_id ? `<p><strong>Booking:</strong> ${escapeHtml(b.amenity_booking_id)}</p>` : ''}
+    ${b.vehicle_registration_id ? `<p><strong>Vehicle registration:</strong> ${escapeHtml(b.vehicle_registration_id)}</p>` : ''}
     <p style="color:var(--text-2);margin-bottom:16px">${escapeHtml(b.description || 'No description.')}</p>
     ${monthText ? `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;display:flex;justify-content:space-between;align-items:center"><span style="color:var(--text-3);font-size:0.84rem">Monthly Dues Month:</span><strong style="color:var(--teal-700)">${escapeHtml(monthText)}</strong></div>` : ''}
     <div class="grid-2 mb-16">
-      <div class="report-summary-item"><div class="r-val">₱${amountStr}</div><div class="r-lbl">Amount</div></div>
+      <div class="report-summary-item"><div class="r-val">₱${amountStr}</div><div class="r-lbl">Amount / homeowner</div></div>
       <div class="report-summary-item"><div class="r-val">${escapeHtml(b.dueDate || 'No due date')}</div><div class="r-lbl">Due Date (Created: ${escapeHtml(b.createdAt || '—')})</div></div>
     </div>
     <strong style="font-size:0.82rem;color:var(--text-3)">ASSIGNED TO (${assignedNames.length})</strong>
@@ -934,13 +1031,23 @@ function viewBillingDetail(id, record = null) {
   `, [{ label: 'Close', cls: 'btn-secondary', action: closeModal }]);
 }
 
+function openBillingActions(id) {
+  if (!canManageBilling()) return;
+  const bill = db.getOne('billings', id);
+  if (!bill) return;
+  openModal('Billing actions', `<p>${escapeHtml(getBillingDisplayTitle(bill))}</p>`, [
+    { label: 'Close', cls: 'btn-secondary', action: closeModal },
+    { label: 'Archive Billing', cls: 'btn-danger', action: () => confirmDeleteBilling(id) },
+  ]);
+}
+
 function confirmDeleteBilling(id) {
   if (!canManageBilling()) { showToast('error', 'Access Denied', 'Only the admin can delete billings.'); return; }
   const b = db.getOne('billings', id);
   if (!b) return;
-  openModal('Delete Billing', `<p>Delete <strong>${escapeHtml(b.title)}</strong>? This cannot be undone.</p>`, [
+  openModal('Archive Billing', `<p>Archive <strong>${escapeHtml(b.title)}</strong>?</p><p>This removes the bill from active billing and outstanding balances. Billing assignments and payment history are retained.</p>`, [
     { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
-    { label: 'Delete', cls: 'btn-danger', action: async () => {
+    { label: 'Archive', cls: 'btn-danger', action: async () => {
       try {
         showLoading();
         await db.delete('billings', id);
@@ -949,15 +1056,15 @@ function confirmDeleteBilling(id) {
           await syncHomeownerBalances();
           await api.loadAll();
         }
-        logAction(`Deleted billing: ${b.title}`);
+        logAction(`Archived billing: ${b.title}`);
         closeModal();
         hideLoading();
-        showToast('success', 'Deleted', 'Billing removed and balances updated.');
+        showToast('success', 'Archived', 'Billing archived and balances updated.');
         renderBilling();
       } catch (err) {
         hideLoading();
         console.error(err);
-        showToast('error', 'Delete Failed', err.message || 'Could not delete billing.');
+        showToast('error', 'Archive Failed', err.message || 'Could not archive billing.');
       }
     } },
   ]);

@@ -37,6 +37,7 @@ const { createAuthSecurityRepository } = require('./services/authSecurityStore')
 const { createLoginSecurityAlerts } = require('./services/loginSecurityAlerts');
 const { roundMoney, billingBalance } = require('./services/financialService');
 const { resolveBillingDeadline } = require('./utils/billingDeadline');
+const { prepareBillingCategory } = require('./utils/billingCategory');
 const { createLoginRateLimits, loginIdentifier } = require('./middleware/loginRateLimit');
 const { normalizeEmail, isValidEmail } = require('./utils/email');
 const { createAdminEmailService, AdminEmailError } = require('./services/adminEmailService');
@@ -175,7 +176,7 @@ const tableConfig = {
     booleanColumns: [],
   },
   billings: {
-    columns: ['id', 'title', 'amount', 'dueDate', 'due_date', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month', 'billing_type', 'amenity_booking_id', 'vehicle_registration_id'],
+    columns: ['id', 'title', 'amount', 'dueDate', 'due_date', 'description', 'assignedTo', 'status', 'createdAt', 'monthly_dues_month', 'billing_type', 'billing_category', 'amenity_booking_id', 'vehicle_registration_id'],
     jsonColumns: ['assignedTo'],
     booleanColumns: [],
   },
@@ -606,6 +607,12 @@ async function validateAndPrepareBillingPayload(payload, res, excludeBillingId =
   const inferredMonth = payload.monthly_dues_month || payload.billingMonth || (payload.title ? parseMonthFromTitle(payload.title) : null);
   const billingType = normalizeBillingType(payload.billing_type || payload.billingType, payload.title, inferredMonth);
   payload.billing_type = billingType;
+  try {
+    prepareBillingCategory(payload);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+    return false;
+  }
 
   if (billingType !== BILLING_TYPE_MONTHLY_DUES) {
     if (!String(payload.title || '').trim()) {
@@ -3455,6 +3462,7 @@ app.post('/api/billings/generate-monthly-dues', auditedHandler(async (req, res) 
       createdAt: today,
       monthly_dues_month: month,
       billing_type: BILLING_TYPE_MONTHLY_DUES,
+      billing_category: 'monthly_dues',
     };
 
     await saveRecord('billings', newBill);

@@ -29,6 +29,7 @@ function safeValue(field, value) {
   if (numberFields.has(field) && (typeof value === 'boolean' || Number.isFinite(Number(value)))) return String(Number(value));
   if (dateFields.has(field) && /^\d{4}-\d{2}(?:-\d{2})?$/.test(value)) return value;
   if (field === 'expense_category' && require('./disbursementService').EXPENSE_CATEGORIES.includes(value)) return value;
+  if (field === 'billing_category' && require('../utils/billingCategory').BILLING_CATEGORIES.includes(value)) return value;
   if (field === 'amenity' && amenityValues.has(value)) return value;
   if (['startTime', 'endTime'].includes(field) && /^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value)) return value;
   if (field === 'permissions') {

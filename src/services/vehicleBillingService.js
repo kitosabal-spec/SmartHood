@@ -7,6 +7,7 @@ function vehicleBillingDetails(vehicle) {
     vehicle_registration_id: vehicle.id,
     assignedTo: [vehicle.homeownerId],
     billing_type: 'Other Billing',
+    billing_category: 'vehicle_fees',
     title: `Vehicle registration - ${vehicle.plateNumber}`,
     description: `Vehicle: ${vehicle.vehicleType}, plate ${vehicle.plateNumber}. Registrant: ${vehicle.ownerName}. Registration fee: ₱${Number(vehicle.fee).toFixed(2)}.`,
   };
