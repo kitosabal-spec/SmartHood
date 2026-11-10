@@ -1,3 +1,50 @@
+/* Resident billing layout is scoped to preserve administrator screens. */
+.resident-billing .page-header { margin-bottom: 16px; }
+.resident-billing .billing-summary-card { padding: 12px 16px; }
+.resident-billing .billing-summary-card strong { font-size: clamp(.95rem, 2.4vw, 1.5rem); overflow-wrap: anywhere; }
+.resident-billing-advance { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; margin-bottom: 14px; background: var(--surface); border: 1px solid var(--border); border-left: 3px solid var(--teal-600); border-radius: var(--radius); }
+.resident-billing-advance h3 { margin: 0 0 4px; font-size: .9rem; color: var(--text); }
+.resident-billing-advance p { margin: 0; font-size: .78rem; color: var(--text-3); }
+.resident-billing-advance .btn { flex-shrink: 0; }
+.resident-billing-filters { display: flex; align-items: center; gap: 8px; padding: 2px 16px 12px; }
+.resident-billing-filters input, .resident-billing-filters select, .resident-billing-filters > .btn { min-height: 38px; }
+.resident-billing-filters .search-box { flex: 1; min-width: 0; max-width: none; }
+.resident-billing-filters .filter-select { width: 190px; min-width: 0; }
+.resident-billing .data-table { min-width: 660px; }
+.resident-billing .data-table th { padding: 10px 14px; font-size: .72rem; white-space: nowrap; }
+.resident-billing .data-table td { padding: 11px 14px; font-size: .82rem; vertical-align: middle; }
+.resident-billing .data-table td:first-child { width: 42%; min-width: 200px; overflow-wrap: anywhere; }
+.resident-billing .amount-due, .resident-bill-balance { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.resident-billing .td-actions { white-space: nowrap; }
+.resident-billing .no-results { padding: 28px 16px; }
+.resident-bill-title { display: block; padding: 0; border: 0; background: transparent; color: var(--text); font: inherit; font-weight: 600; text-align: left; cursor: pointer; overflow-wrap: anywhere; }
+.resident-bill-title:hover { color: var(--teal-600); text-decoration: underline; }
+.resident-bill-title:focus-visible { outline: 2px solid var(--teal-500); outline-offset: 3px; border-radius: 2px; }
+.resident-bill-description { display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; overflow: hidden; }
+.resident-bill-detail h3 { color: var(--text); overflow-wrap: anywhere; }
+.resident-bill-detail .billing-row-status { max-width: none; margin: 10px 0; }
+.resident-bill-full-description { white-space: pre-wrap; overflow-wrap: anywhere; color: var(--text-2); font-size: .88rem; }
+.resident-bill-detail dl { display: grid; gap: 10px; margin: 16px 0; }
+.resident-bill-detail dl > div { display: flex; justify-content: space-between; gap: 12px; }
+.resident-bill-detail dt { color: var(--text-2); }
+.resident-bill-detail dd { margin: 0; font-weight: 600; font-variant-numeric: tabular-nums; }
+.resident-bill-pending-note { padding: 12px; border-radius: var(--radius); background: var(--surface-2); font-size: .82rem; color: var(--text-2); }
+@media (max-width: 640px) {
+  .resident-billing .billing-summary { gap: 6px; }
+  .resident-billing .billing-summary-card { padding: 10px 8px; }
+  .resident-billing .billing-summary-card > span { font-size: .68rem; }
+  .resident-billing-advance { flex-wrap: wrap; padding: 12px; }
+  .resident-billing-filters { flex-wrap: wrap; padding: 2px 10px 12px; }
+  .resident-billing-filters .search-box { flex-basis: 100%; }
+  .resident-billing-filters .filter-select { flex: 1; }
+  .resident-billing .data-table { min-width: 0; }
+  .resident-billing .data-table tbody { gap: 6px !important; }
+  .resident-billing .data-table tbody tr { padding: 10px 12px !important; gap: 3px !important; }
+  .resident-billing .data-table tbody td:first-child { display: block !important; text-align: left !important; }
+  .resident-billing .data-table tbody td:first-child::before { display: none !important; }
+  .resident-billing .billing-row-status { justify-content: flex-end; }
+}
+
 /* Compact administrator billing workspace; retain the shared theme tokens. */
 .billing-summary { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-bottom: 16px; }
 .billing-summary-card { display: grid; gap: 4px; padding: 14px 18px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }

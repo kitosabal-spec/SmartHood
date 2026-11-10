@@ -1976,6 +1976,7 @@ async function refreshResidentPaymentDetail(panel) {
         if (focusedPayment) Array.from(panel.querySelectorAll('[data-receipt-payment-id]')).find(button => button.dataset.receiptPaymentId === focusedPayment)?.focus({ preventScroll: true });
         document.getElementById('modalBody').scrollTop = scrollTop;
         if (document.getElementById('residentPaymentHistory')) renderHOHistory();
+        if (document.getElementById('hoBillTableBody')) filterHOBillings(false);
       }
       const notice = panel.querySelector('.payment-refresh-notice');
       if (notice) notice.textContent = '';
@@ -2589,104 +2590,160 @@ async function savePaymentSettings() {
 
 // ── RESIDENT PORTAL: MY BILLS & PAY NOW FLOW ──
 
+// Resident filters never alter administrator state or financial records.
+let hoBillingState = { category: 'all', page: 1, pageSize: 10 };
+const HO_BILLING_STATUSES = { paid: 'Paid', unpaid: 'Unpaid', partially_paid: 'Partially Paid', pending: 'Pending Verification', overdue: 'Overdue', cleared: 'Cleared' };
+
+function residentBillMoney(amount) {
+  return '₱' + Number(amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function getResidentBillRows() {
+  const homeownerId = getCurrentHomeownerId();
+  if (!homeownerId) return [];
+  const payments = (db.get('payments') || []).filter(p => p.homeownerId === homeownerId && !p.archived_at && !p.voided_at);
+  const today = paymentCalendarDate(new Date());
+  return (db.get('billings') || [])
+    .filter(b => !b.archived_at && b.status !== 'inactive' && getAssignedHomeownerIds(b).includes(homeownerId))
+    .map(bill => {
+      const summary = getBillingPaymentSummary(bill, homeownerId, payments);
+      const related = payments.filter(p => p.billingId === bill.id);
+      const dueDate = bill.dueDate ? paymentCalendarDate(bill.dueDate) : '';
+      const overdue = Boolean(isValidBillingDate(dueDate) && dueDate < today && summary.remainingBalance > 0);
+      const partial = summary.totalPaid > 0 && summary.remainingBalance > 0;
+      const status = summary.status === 'cleared' ? 'cleared' : summary.status === 'paid' ? 'paid'
+        : summary.pendingPayment ? 'pending' : overdue ? 'overdue' : partial ? 'partially_paid' : 'unpaid';
+      return { bill, summary, related, dueDate, overdue, partial, status,
+        payable: summary.remainingBalance > 0 && !summary.pendingPayment && !bill.balance_reset_at };
+    })
+    // Keep outstanding obligations first, with stable ordering within each group.
+    .sort((a, b) => Number(b.summary.remainingBalance > 0) - Number(a.summary.remainingBalance > 0));
+}
+
+function residentBillStatusHtml(row) {
+  const colors = { paid: 'green', unpaid: 'gray', partially_paid: 'blue', pending: 'yellow', overdue: 'red', cleared: 'gray' };
+  return `<span class="badge badge-${colors[row.status]}">${HO_BILLING_STATUSES[row.status]}</span>`
+    + (row.overdue && row.status !== 'overdue' ? '<span class="badge badge-red">Overdue</span>' : '')
+    + (row.partial && row.status !== 'partially_paid' ? '<span class="billing-row-note">Partially Paid</span>' : '');
+}
+
 function renderHOBilling() {
-  if (canManageBilling()) {
-    syncHomeownerBalances();
-  }
-  const myBillings = db.get('billings').filter(b => getAssignedHomeownerIds(b).includes(getCurrentHomeownerId()));
-  const myPayments = db.get('payments').filter(p => p.homeownerId === getCurrentHomeownerId());
-  const today = getLocalDateValue();
-  const area = document.getElementById('contentArea');
-
-  area.innerHTML = `
-  <div class="page-header">
-    <div class="page-header-left">
-      <h2>My Bills</h2>
-      <p>View your billing records and submit payments via GCash.</p>
-    </div>
-    <div class="page-header-actions">
-      <button class="btn btn-primary" onclick="navigate('ho-pay-now')">
-        <svg width="15" height="15"><use href="#ico-credit"/></svg> Pay Dues in Advance
-      </button>
-    </div>
-  </div>
-
-  <div class="section-card" style="margin-bottom:16px;background:linear-gradient(135deg,var(--surface) 0%,var(--surface-2) 100%);border-left:4px solid var(--teal-600)">
-    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;padding:16px">
-      <div>
-        <h4 style="margin:0 0 4px 0;color:var(--text);font-size:0.98rem">Advance Monthly Dues Payment</h4>
-        <p style="margin:0;font-size:0.83rem;color:var(--text-3)">You can pay your monthly association dues in advance before billing is generated. Approved payments exclude you from future duplicate billings.</p>
+  hoBillingState = { category: 'all', page: 1, pageSize: 10 };
+  document.getElementById('contentArea').innerHTML = `
+  <div class="resident-billing">
+    <div class="page-header"><div class="page-header-left"><h2>My Bills</h2><p>View your charges, track balances, and submit payments via GCash.</p></div></div>
+    <div id="hoBillingSummary" class="billing-summary" aria-label="Your billing summary"></div>
+    <section class="resident-billing-advance" aria-label="Advance monthly dues">
+      <div><h3>Advance Monthly Dues</h3><p>Pay future association dues before billing is generated.</p></div>
+      <button type="button" class="btn btn-secondary btn-sm" onclick="navigate('ho-pay-now')"><svg width="15" height="15" aria-hidden="true"><use href="#ico-credit"/></svg> Pay Dues in Advance</button>
+    </section>
+    <div class="section-card">
+      <div id="hoBillingCategoryTabs" class="billing-category-tabs" role="group" aria-label="My bill categories"></div>
+      <div class="resident-billing-filters">
+        <div class="search-box"><svg class="search-icon" width="16" height="16" aria-hidden="true"><use href="#ico-search"/></svg><input id="hoBillSearch" type="search" aria-label="Search my bills" placeholder="Search my bills..." oninput="filterHOBillings()"></div>
+        <select id="hoBillStatus" class="filter-select" aria-label="My bill status" onchange="filterHOBillings()"><option value="all">All statuses</option>${Object.entries(HO_BILLING_STATUSES).map(([value, label]) => `<option value="${value}">${label}</option>`).join('')}</select>
+        <button type="button" class="btn btn-secondary btn-sm" onclick="resetHOBillingFilters()">Reset</button>
       </div>
-      <button class="btn btn-secondary btn-sm" onclick="navigate('ho-pay-now')">
-        Go to Pay Now &rarr;
-      </button>
-    </div>
-  </div>
-  <div class="section-card">
-    <div class="section-card-body no-pad">
-      <div class="table-wrapper">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Billing</th>
-              <th>Original Amount</th>
-              <th>Total Paid</th>
-              <th>Remaining Balance</th>
-              <th>Due Date</th>
-              <th>Payment Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${myBillings.map(b => {
-              const summary = getBillingPaymentSummary(b, getCurrentHomeownerId(), myPayments);
-              const approvedPayments = myPayments.filter(p => p.billingId === b.id && p.status === 'approved');
-              const paid = approvedPayments[approvedPayments.length - 1];
-              const pend = summary.pendingPayment;
-              const rej = myPayments.find(p => p.billingId === b.id && p.status === 'rejected');
-              const overdue = b.dueDate && b.dueDate < today && summary.remainingBalance > 0;
-
-              let statusBadge = '<span class="badge badge-gray">Unpaid</span>';
-              if (summary.status === 'paid') {
-                statusBadge = '<span class="badge badge-green">Paid</span>';
-              } else if (pend) {
-                statusBadge = '<span class="badge badge-yellow">Pending Verification</span>';
-              } else if (summary.status === 'partially_paid') {
-                statusBadge = '<span class="badge badge-blue">Partially Paid</span>';
-              } else if (rej) {
-                statusBadge = `<span class="badge badge-red" title="Rejection Reason: ${escapeHtml(rej.rejection_reason || rej.remarks || '')}">Rejected</span>`;
-              } else if (overdue) {
-                statusBadge = '<span class="badge badge-red">Overdue</span>';
-              }
-
-              let actionBtn = '—';
-              if (summary.remainingBalance > 0 && !pend) {
-                actionBtn = `<button class="btn btn-primary btn-sm" onclick="openPayNowModal('${b.id}')">Pay Now</button>`;
-              } else if (pend) {
-                actionBtn = `<button class="btn btn-secondary btn-sm" onclick="viewPaymentDetail('${pend.id}')">View Details</button>`;
-              } else if (summary.status === 'paid' && paid) {
-                actionBtn = `<button class="btn btn-secondary btn-sm" onclick="viewPaymentDetail('${paid.id}')">Receipt</button>`;
-              }
-
-              return `<tr class="${overdue ? 'overdue-row' : ''}">
-                <td>
-                  <strong>${escapeHtml(b.title)}</strong>
-                  ${b.description ? `<div style="font-size:0.78rem;color:var(--text-3);margin-top:3px">${escapeHtml(b.description)}</div>` : ''}
-                  ${rej && !pend && summary.remainingBalance > 0 ? `<div style="font-size:0.76rem;color:var(--red-600);margin-top:4px">⚠️ Previous submission was rejected: ${escapeHtml(rej.rejection_reason || rej.remarks || 'Check history')}</div>` : ''}
-                </td>
-                <td class="amount-due">₱${summary.originalAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td class="amount-paid">₱${summary.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td class="amount-due">₱${summary.remainingBalance.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
-                <td>${escapeHtml(b.dueDate || 'No due date')}${overdue ? ' <span style="color:var(--red-600);font-weight:700">— Overdue</span>' : ''}</td>
-                <td>${statusBadge}</td>
-                <td>${actionBtn}</td>
-              </tr>`;
-            }).join('') || '<tr><td colspan="7"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-file"/></svg>No bills assigned.</div></td></tr>'}
-          </tbody>
-        </table>
-      </div>
+      <div class="section-card-body no-pad"><div class="table-wrapper"><table class="data-table" aria-label="My bills"><thead><tr>
+        <th scope="col">Billing</th><th scope="col">Amount</th><th scope="col">Balance</th><th scope="col">Status</th><th scope="col">Action</th>
+      </tr></thead><tbody id="hoBillTableBody"></tbody></table></div></div>
+      <div id="hoBillingPagination" aria-live="polite"></div>
     </div>
   </div>`;
+  filterHOBillings();
+}
+
+function selectHOBillingCategory(category) {
+  if (!Object.hasOwn(BILLING_CATEGORY_LABELS, category)) return;
+  hoBillingState.category = category;
+  filterHOBillings();
+  document.querySelector('#hoBillingCategoryTabs [aria-pressed="true"]')?.focus();
+}
+
+function resetHOBillingFilters() {
+  document.getElementById('hoBillSearch').value = '';
+  document.getElementById('hoBillStatus').value = 'all';
+  hoBillingState.category = 'all';
+  filterHOBillings();
+}
+
+function changeHOBillingPage(page) {
+  hoBillingState.page = page;
+  filterHOBillings(false);
+}
+
+function changeHOBillingPageSize(pageSize) {
+  hoBillingState.pageSize = Number(pageSize);
+  filterHOBillings();
+}
+
+function filterHOBillings(resetPage = true) {
+  const tbody = document.getElementById('hoBillTableBody');
+  if (!tbody) return;
+  if (resetPage) hoBillingState.page = 1;
+  const rows = getResidentBillRows();
+  const outstanding = rows.reduce((total, row) => total + row.summary.remainingBalance, 0);
+  document.getElementById('hoBillingSummary').innerHTML = [
+    ['Outstanding Balance', residentBillMoney(outstanding)],
+    ['Unpaid Bills', rows.filter(row => row.summary.remainingBalance > 0).length],
+    ['Paid Bills', rows.filter(row => row.status === 'paid').length],
+  ].map(([label, value]) => `<div class="billing-summary-card"><span>${label}</span><strong>${value}</strong></div>`).join('');
+  document.getElementById('hoBillingCategoryTabs').innerHTML = Object.entries(BILLING_CATEGORY_LABELS).map(([key, label]) => {
+    const count = rows.filter(row => key === 'all' || getBillingCategory(row.bill) === key).length;
+    return `<button type="button" class="billing-category-tab" aria-pressed="${hoBillingState.category === key}" onclick="selectHOBillingCategory('${key}')">${key === 'all' ? 'All Bills' : label} <span>${count}</span></button>`;
+  }).join('');
+  const query = (document.getElementById('hoBillSearch').value || '').trim().toLowerCase();
+  const status = document.getElementById('hoBillStatus').value;
+  const filtered = rows.filter(row => {
+    const category = getBillingCategory(row.bill);
+    const matchesStatus = status === 'all' || row.status === status || (status === 'overdue' && row.overdue) || (status === 'partially_paid' && row.partial);
+    const searchText = [getBillingDisplayTitle(row.bill), row.bill.description, BILLING_CATEGORY_LABELS[category], row.dueDate, row.summary.originalAmount, row.summary.remainingBalance].join(' ').toLowerCase();
+    return (hoBillingState.category === 'all' || category === hoBillingState.category) && matchesStatus && searchText.includes(query);
+  });
+  const { pageSize } = hoBillingState;
+  hoBillingState.page = Math.max(1, Math.min(hoBillingState.page, Math.ceil(filtered.length / pageSize) || 1));
+  const start = (hoBillingState.page - 1) * pageSize;
+  tbody.innerHTML = filtered.slice(start, start + pageSize).map(row => {
+    const { bill, summary } = row;
+    const actionId = escapeHtml(JSON.stringify(String(bill.id)));
+    const approved = row.related.filter(p => p.status === 'approved').at(-1);
+    const description = String(bill.description || '').replace(/\s+/g, ' ').trim();
+    let action = `<button type="button" class="btn btn-secondary btn-sm" onclick="viewHOBillingDetail(${actionId})">View Details</button>`;
+    if (row.payable) action = `<button type="button" class="btn btn-primary btn-sm" onclick="openPayNowModal(${actionId})">Pay Now</button>`;
+    else if (row.status === 'paid' && approved) action = `<button type="button" class="btn btn-secondary btn-sm" onclick="openResidentPaymentDetail(${escapeHtml(JSON.stringify(String(approved.id)))}, true)">Receipt</button>`;
+    return `<tr>
+      <td data-label="Billing"><button type="button" class="resident-bill-title" onclick="viewHOBillingDetail(${actionId})" aria-label="View Details: ${escapeHtml(getBillingDisplayTitle(bill))}">${escapeHtml(getBillingDisplayTitle(bill))}</button>
+        <span class="billing-row-note">${escapeHtml(BILLING_CATEGORY_LABELS[getBillingCategory(bill)])} · ${row.dueDate ? 'Due ' + escapeHtml(row.dueDate) : 'No due date'}</span>
+        ${description ? `<span class="billing-row-note resident-bill-description">${escapeHtml(description.length > 85 ? description.slice(0, 82) + '…' : description)}</span>` : ''}</td>
+      <td data-label="Amount" class="amount-due">${residentBillMoney(summary.originalAmount)}</td>
+      <td data-label="Balance"><div class="resident-bill-balance"><strong>${residentBillMoney(summary.remainingBalance)}</strong>${summary.totalPaid > 0 ? `<span class="billing-row-note">${residentBillMoney(summary.totalPaid)} paid</span>` : ''}</div></td>
+      <td data-label="Status"><div class="billing-row-status">${residentBillStatusHtml(row)}</div></td>
+      <td data-label="Action"><div class="td-actions">${action}</div></td>
+    </tr>`;
+  }).join('') || `<tr><td colspan="5"><div class="no-results">${rows.length ? 'No bills match these filters. Try another category or reset the filters.' : 'No bills assigned yet.'}</div></td></tr>`;
+  if (typeof renderPaginationComponent === 'function') renderPaginationComponent({
+    containerId: 'hoBillingPagination', currentPage: hoBillingState.page, pageSize, totalItems: filtered.length,
+    pageSizeOptions: [5, 10, 20, 50], onPageChangeFn: 'changeHOBillingPage', onPageSizeChangeFn: 'changeHOBillingPageSize', itemLabel: 'bills',
+  });
+}
+
+function viewHOBillingDetail(billingId) {
+  // Resolve only from the current resident's records, including direct calls.
+  const row = getResidentBillRows().find(item => item.bill.id === billingId);
+  if (!row) { showToast('error', 'Access Denied', 'This bill is not available for your account.'); return; }
+  const { bill, summary } = row;
+  const buttons = [{ label: 'Close', cls: 'btn-secondary', action: closeModal }];
+  if (row.payable) buttons.push({ label: 'Pay Now', cls: 'btn-primary', action: () => openPayNowModal(bill.id) });
+  const latest = summary.pendingPayment || row.related.at(-1);
+  if (latest) buttons.push({ label: 'Payment History', cls: 'btn-secondary', action: () => openResidentPaymentDetail(latest.id, true) });
+  openModal('Billing Details', `<div class="resident-bill-detail">
+    <h3>${escapeHtml(getBillingDisplayTitle(bill))}</h3>
+    <p class="billing-row-note">${escapeHtml(BILLING_CATEGORY_LABELS[getBillingCategory(bill)])} · ${row.dueDate ? 'Due ' + escapeHtml(row.dueDate) : 'No due date'}</p>
+    <div class="billing-row-status">${residentBillStatusHtml(row)}</div>
+    <p class="resident-bill-full-description">${escapeHtml(bill.description || 'No additional description.')}</p>
+    <dl><div><dt>Original Amount</dt><dd>${residentBillMoney(summary.originalAmount)}</dd></div><div><dt>Approved Payments</dt><dd>${residentBillMoney(summary.totalPaid)}</dd></div><div><dt>Remaining Balance</dt><dd>${residentBillMoney(summary.remainingBalance)}</dd></div></dl>
+    ${summary.pendingPayment ? '<p class="resident-bill-pending-note">Your payment is awaiting verification. The balance updates after approval. Open Payment History to view your proof and submission details.</p>' : ''}
+  </div>`, buttons);
 }
 
 function openPayNowModal(billingIdOrOpts) {
@@ -2729,6 +2786,11 @@ function openPayNowModal(billingIdOrOpts) {
     return;
   }
 
+  if (billingId && (!bill || !getCurrentHomeownerId() || !getAssignedHomeownerIds(bill).includes(getCurrentHomeownerId())
+      || bill.archived_at || bill.status === 'inactive' || bill.balance_reset_at)) {
+    showToast('error', 'Access Denied', 'This bill is not available for payment on your account.');
+    return;
+  }
   const paymentSummary = getResidentPaymentSummary(bill, month, amount);
   if (paymentSummary.pendingPayment) {
     showToast('warning', 'Payment Pending', 'A payment for this billing is already pending admin verification.');
