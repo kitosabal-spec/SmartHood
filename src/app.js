@@ -37,7 +37,7 @@ const { createAuthSecurityRepository } = require('./services/authSecurityStore')
 const { createLoginSecurityAlerts } = require('./services/loginSecurityAlerts');
 const { roundMoney, billingBalance } = require('./services/financialService');
 const { resolveBillingDeadline } = require('./utils/billingDeadline');
-const { prepareBillingCategory } = require('./utils/billingCategory');
+const { prepareBillingCategory, inferBillingCategory } = require('./utils/billingCategory');
 const { createLoginRateLimits, loginIdentifier } = require('./middleware/loginRateLimit');
 const { normalizeEmail, isValidEmail } = require('./utils/email');
 const { createAdminEmailService, AdminEmailError } = require('./services/adminEmailService');
@@ -914,11 +914,21 @@ async function presentComplaintWithResponses(complaintId, requester) {
 
 async function getPaymentHistory(homeownerId = null) {
   const rows = await all(`SELECT p.*, b.title AS historical_billing_title,
-      b.amount AS historical_billing_amount, b.balance_reset_at AS billing_balance_reset_at
+      b.amount AS historical_billing_amount, b.balance_reset_at AS billing_balance_reset_at,
+      b.billing_category, b.billing_type AS linked_billing_type, b.monthly_dues_month AS linked_billing_month,
+      b.vehicle_registration_id, b.amenity_booking_id,
+      b.archived_at AS billing_archived_at, b.status AS billing_status
     FROM payments p LEFT JOIN billings b ON b.id = p.billingId
     WHERE p.archived_at IS NULL${homeownerId ? ' AND p.homeownerId = ?' : ''}`,
   homeownerId ? [homeownerId] : []);
-  return rows.map(row => deserializeRow('payments', row));
+  return rows.map(row => {
+    const { linked_billing_type, linked_billing_month, vehicle_registration_id, amenity_booking_id, ...payment } = row;
+    payment.billing_category = !row.billingId && row.monthly_dues_month ? 'monthly_dues' : inferBillingCategory({
+      billing_category: row.billing_category, billing_type: linked_billing_type,
+      monthly_dues_month: linked_billing_month, vehicle_registration_id, amenity_booking_id,
+    });
+    return deserializeRow('payments', payment);
+  });
 }
 
 async function syncBillingAssignments(billingId, homeownerIds) {

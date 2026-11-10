@@ -133,7 +133,10 @@ function auditDatabase() {
     if (q.startsWith('SELECT p.*, b.title AS historical_billing_title')) {
       return [structuredClone(tables.payments.filter(p => !p.archived_at && (!values.length || p.homeownerId === values[0])).map(p => {
         const b = tables.billings.find(b => b.id === p.billingId);
-        return { ...p, historical_billing_title: b?.title, historical_billing_amount: b?.amount, billing_balance_reset_at: b?.balance_reset_at };
+        return { ...p, historical_billing_title: b?.title, historical_billing_amount: b?.amount, billing_balance_reset_at: b?.balance_reset_at,
+          billing_category: b?.billing_category, linked_billing_type: b?.billing_type, linked_billing_month: b?.monthly_dues_month,
+          vehicle_registration_id: b?.vehicle_registration_id, amenity_booking_id: b?.amenity_booking_id,
+          billing_archived_at: b?.archived_at, billing_status: b?.status };
       }))];
     }
     const select = q.replace(/ ORDER BY id DESC$/, '').match(/^SELECT (.+?) FROM (\w+)(?: WHERE (.*))?$/);

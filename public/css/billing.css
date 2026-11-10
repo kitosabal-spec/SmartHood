@@ -1,3 +1,95 @@
+/* Payment management reuses billing theme tokens without changing billing screens. */
+.payment-management { container-type: inline-size; }
+.payment-management .page-header { margin-bottom: 16px; }
+.payment-management .billing-summary-card { padding: 12px 16px; }
+.payment-management .billing-category-tabs { flex-wrap: wrap; overflow: visible; }
+.payment-management .section-card-header { padding: 6px 16px 12px; }
+.payment-management .filters-row { width: 100%; gap: 8px; flex-wrap: wrap; }
+.payment-management .search-box { flex: 1 1 240px; min-width: 0; max-width: none; }
+.payment-management .filter-select { min-width: 0; max-width: 100%; }
+.payment-management .date-input-group { flex-wrap: wrap; gap: 6px; }
+.payment-results { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 16px; }
+.payment-results > div { display: grid; gap: 3px; }
+.payment-results strong { color: var(--text); font-size: .84rem; }
+.payment-results span, .payment-results small { color: var(--text-3); font-size: .73rem; }
+.payment-management .admin-payment-table { width: 100%; min-width: 0; table-layout: fixed; }
+.payment-management .admin-payment-table th, .payment-management .admin-payment-table td { padding: 11px 12px; white-space: normal; overflow-wrap: anywhere; font-size: .8rem; vertical-align: middle; }
+.payment-management .admin-payment-table th { font-size: .7rem; }
+.payment-management .admin-payment-table th:first-child { width: 34%; }
+.payment-management .admin-payment-table th:nth-child(2) { width: 13%; }
+.payment-management .admin-payment-table th:nth-child(3) { width: 10%; }
+.payment-management .admin-payment-table th:nth-child(4) { width: 16%; }
+.payment-management .admin-payment-table th:nth-child(5) { width: 17%; }
+.payment-management .admin-payment-table th:last-child { width: 10%; }
+.payment-management .admin-payment-table .badge { white-space: normal; }
+.payment-management .admin-payment-table code { color: var(--text-2); font-size: .76rem; }
+.payment-management .admin-payment-table .amount-paid { font-variant-numeric: tabular-nums; }
+.payment-management .no-results { padding: 28px 16px; }
+.payment-pagination, .payment-pagination > div, .payment-pagination label { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.payment-pagination { justify-content: space-between; padding: 12px 16px; border-top: 1px solid var(--border); color: var(--text-2); font-size: .75rem; }
+.payment-pagination .filter-select { padding: 6px; }
+.modal.admin-payment-modal { width: min(760px, 95vw); max-width: 760px; max-height: 90dvh; }
+.admin-payment-modal .modal-body { overflow-y: auto; min-height: 0; }
+.admin-payment-detail { display: grid; gap: 14px; overflow-wrap: anywhere; }
+.admin-payment-detail-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.admin-payment-detail-heading > div { display: grid; gap: 4px; }
+.admin-payment-detail-heading strong { font-size: 1.65rem; color: var(--teal-700); }
+.admin-payment-detail-heading span, .admin-payment-totals span { font-size: .77rem; color: var(--text-2); }
+.admin-payment-totals { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; padding: 12px; background: var(--surface-2); border-radius: var(--radius); }
+.admin-payment-totals > div { display: grid; gap: 5px; }
+.admin-payment-totals strong { color: var(--text); font-size: .92rem; }
+.admin-payment-note { margin: 0; font-size: .78rem; color: var(--text-3); }
+.admin-payment-detail section { border-top: 1px solid var(--border); padding-top: 14px; }
+.admin-payment-detail h4 { margin: 0 0 10px; color: var(--text); font-size: .88rem; }
+.admin-payment-detail dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 20px; margin: 0; }
+.admin-payment-detail dt { color: var(--text-3); font-size: .76rem; margin-bottom: 4px; }
+.admin-payment-detail dd { margin: 0; color: var(--text); font-size: .86rem; }
+.admin-payment-proof { display: grid; gap: 8px; justify-items: start; color: var(--teal-700); font-size: .8rem; }
+.admin-payment-proof img { max-height: 240px; max-width: 100%; object-fit: contain; border: 1px solid var(--border); border-radius: var(--radius); }
+[data-theme="dark"] .admin-payment-detail-heading strong,
+[data-theme="dark"] .admin-payment-proof { color: var(--teal-300); }
+[data-theme="dark"] .admin-payment-detail dt,
+[data-theme="dark"] .admin-payment-note { color: var(--text-2); }
+@media (max-width: 760px) {
+  .payment-management .admin-payment-table, .payment-management .admin-payment-table tbody,
+  .payment-management .admin-payment-table tr { display: block; width: 100%; }
+  .payment-management .admin-payment-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .payment-management .admin-payment-table tr { padding: 10px 14px !important; border-bottom: 1px solid var(--border); }
+  .payment-management .admin-payment-table td { display: flex !important; justify-content: space-between; align-items: center; gap: 10px; width: 100%; padding: 5px 0 !important; border: 0; text-align: right; }
+  .payment-management .admin-payment-table td::before { content: attr(data-label); color: var(--text-3); font-weight: 600; font-size: .73rem; text-align: left; flex-shrink: 0; }
+  .payment-management .admin-payment-table td:first-child { display: block !important; text-align: left !important; }
+  .payment-management .admin-payment-table td:first-child::before { display: none; }
+  .payment-management .admin-payment-table td > * { min-width: 0; }
+  .payment-results { flex-wrap: wrap; gap: 6px; }
+}
+@media (max-width: 480px) {
+  .payment-management .billing-summary-card { padding: 10px 8px; }
+  .payment-management .billing-summary-card small { font-size: .61rem; }
+  .payment-management .billing-category-tabs { padding: 10px; }
+  .payment-management .billing-category-tab { font-size: .72rem; padding: 7px 9px; }
+  .payment-management .section-card-header { padding: 4px 10px 10px; }
+  .payment-management .search-box { flex-basis: 100%; }
+  .payment-management .filters-row > select { flex: 1 1 40%; }
+  .payment-pagination { padding: 10px; }
+  .payment-pagination > div { gap: 6px; }
+  .payment-pagination .btn { padding: 6px 8px; }
+  .admin-payment-detail dl { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .admin-payment-totals { gap: 6px; padding: 10px; }
+  .admin-payment-totals strong { font-size: .8rem; }
+}
+/* Also adapt when the desktop sidebar leaves a narrow content column. */
+@container (max-width: 760px) {
+  .payment-management .admin-payment-table, .payment-management .admin-payment-table tbody,
+  .payment-management .admin-payment-table tr { display: block; width: 100%; }
+  .payment-management .admin-payment-table thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .payment-management .admin-payment-table tr { padding: 10px 14px !important; border-bottom: 1px solid var(--border); }
+  .payment-management .admin-payment-table td { display: flex !important; justify-content: space-between; align-items: center; gap: 10px; width: 100%; padding: 5px 0 !important; border: 0; text-align: right; }
+  .payment-management .admin-payment-table td::before { content: attr(data-label); color: var(--text-3); font-weight: 600; font-size: .73rem; text-align: left; flex-shrink: 0; }
+  .payment-management .admin-payment-table td:first-child { display: block !important; text-align: left !important; }
+  .payment-management .admin-payment-table td:first-child::before { display: none; }
+  .payment-management .admin-payment-table td > * { min-width: 0; }
+}
+
 /* Resident billing layout is scoped to preserve administrator screens. */
 .resident-billing .page-header { margin-bottom: 16px; }
 .resident-billing .billing-summary-card { padding: 12px 16px; }

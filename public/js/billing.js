@@ -1159,15 +1159,85 @@ async function executeAutoGenerateMonthlyDues() {
 
 // SECTION 9: PAYMENTS & GCASH INTEGRATION
 
+let currentPaymentCategory = 'all';
+let paymentPaginationState = { page: 1, pageSize: 10 };
+const PAYMENT_CATEGORY_LABELS = { ...BILLING_CATEGORY_LABELS, all: 'All Payments' };
+const paymentReviewsInFlight = new Set();
+
+function getPaymentCategory(payment) {
+  const billing = db.getOne('billings', payment.billingId);
+  if (billing) return getBillingCategory(billing);
+  if (!payment.billingId && payment.monthly_dues_month) return 'monthly_dues';
+  // The history API includes the category even when the linked bill is archived.
+  return Object.hasOwn(BILLING_CATEGORY_LABELS, payment.billing_category) && payment.billing_category !== 'all'
+    ? payment.billing_category : 'other_charges';
+}
+
+function getPaymentTitle(payment) {
+  const bill = getPaymentBilling(payment);
+  return bill?.title || (payment.monthly_dues_month
+    ? `Monthly Association Dues — ${formatBillingMonth(payment.monthly_dues_month)}` : 'Unlinked payment');
+}
+
+function paymentStatusHtml(payment) {
+  const status = payment.voided_at ? 'voided' : payment.status;
+  const labels = { pending: 'Pending Verification', approved: 'Approved', rejected: 'Rejected', voided: 'Voided' };
+  const colors = { pending: 'yellow', approved: 'green', rejected: 'red', voided: 'gray' };
+  return `<span class="badge badge-${colors[status] || 'gray'}">${escapeHtml(labels[status] || status || 'Unknown')}</span>`;
+}
+
+function canReviewPendingPayment(payment) {
+  if (!payment || payment.status !== 'pending' || payment.archived_at || payment.voided_at) return false;
+  const bill = db.getOne('billings', payment.billingId);
+  return !payment.billing_balance_reset_at && !payment.billing_archived_at && payment.billing_status !== 'inactive'
+    && !bill?.balance_reset_at && !bill?.archived_at && bill?.status !== 'inactive';
+}
+
+function selectPaymentCategory(category) {
+  if (!Object.hasOwn(PAYMENT_CATEGORY_LABELS, category)) return;
+  currentPaymentCategory = category;
+  filterPayments();
+  document.querySelector?.('#paymentCategoryTabs [aria-pressed="true"]')?.focus();
+}
+
+function changePaymentPage(page) {
+  paymentPaginationState.page = Math.max(1, Number(page) || 1);
+  filterPayments(false);
+}
+
+function changePaymentPageSize(size) {
+  paymentPaginationState.pageSize = [10, 25, 50].includes(Number(size)) ? Number(size) : 10;
+  filterPayments();
+}
+
+function renderPaymentOverview(matching, filtered) {
+  const tabs = document.getElementById('paymentCategoryTabs');
+  if (tabs) tabs.innerHTML = Object.entries(PAYMENT_CATEGORY_LABELS).map(([key, label]) => {
+    const count = key === 'all' ? matching.length : matching.filter(p => getPaymentCategory(p) === key).length;
+    return `<button type="button" class="billing-category-tab" aria-pressed="${currentPaymentCategory === key}" onclick="selectPaymentCategory('${key}')">${label} <span>${count}</span></button>`;
+  }).join('');
+  const summary = document.getElementById('paymentSummary');
+  if (summary) summary.innerHTML = [
+    ['Total Payments', filtered.length],
+    ['Pending Review', filtered.filter(p => p.status === 'pending' && !p.voided_at).length],
+    ['Approved', filtered.filter(p => p.status === 'approved' && !p.voided_at).length],
+  ].map(([label, count]) => `<div class="billing-summary-card"><span>${label}</span><strong>${count}</strong><small>Matching records</small></div>`).join('');
+  const heading = document.getElementById('paymentResults');
+  if (heading) heading.innerHTML = `<strong>${PAYMENT_CATEGORY_LABELS[currentPaymentCategory]}</strong><span>${filtered.length} matching payment${filtered.length === 1 ? '' : 's'}</span>`;
+}
+
 function renderPayments() {
   if (!canViewPayments()) { showToast('error', 'Access Denied', 'You do not have access to payment records.'); return; }
   const managePayments = canManagePayments();
+  currentPaymentCategory = 'all';
+  paymentPaginationState.page = 1;
   const area = document.getElementById('contentArea');
   area.innerHTML = `
+  <div class="payment-management">
   <div class="page-header">
     <div class="page-header-left">
       <h2>${managePayments ? 'Payment Management' : 'Payment Records'}</h2>
-      <p>${managePayments ? 'Review, verify, and approve resident GCash payment submissions.' : 'View payment records.'}</p>
+      <p>Manage payments by billing category and verification status.</p>
     </div>
     ${managePayments ? `
       <div class="page-header-actions">
@@ -1175,27 +1245,34 @@ function renderPayments() {
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:-2px"><use href="#ico-plus"/></svg>
           Create Payment
         </button>
-        <button class="btn btn-primary" onclick="openPaymentSettingsModal()">
+        <button class="btn btn-secondary" onclick="openPaymentSettingsModal()">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:-2px"><use href="#ico-settings"/></svg>
           Payment Settings
         </button>
       </div>
     ` : ''}
   </div>
+  <div id="paymentSummary" class="billing-summary" aria-label="Payment summary"></div>
   <div class="section-card">
+    <div id="paymentCategoryTabs" class="billing-category-tabs" role="group" aria-label="Payment categories"></div>
     <div class="section-card-header">
       <div class="filters-row" style="align-items:center;">
         <div class="search-box">
           <span class="search-icon"><svg width="15" height="15"><use href="#ico-search"/></svg></span>
-          <input id="paySearch" type="text" placeholder="Search by resident name or reference number..." oninput="filterPayments()"/>
+          <input id="paySearch" type="search" aria-label="Search payments" placeholder="Search resident, reference or billing…" oninput="filterPayments()"/>
         </div>
-        <select class="filter-select" id="payFilter" onchange="filterPayments()">
+        <select class="filter-select" id="payFilter" aria-label="Payment status" onchange="filterPayments()">
           <option value="">All Statuses</option>
           <option value="pending">Pending Verification</option>
           <option value="approved">Approved</option>
           <option value="rejected">Rejected</option>
         </select>
-        <select class="filter-select" id="payDateFilter" onchange="onPaymentDateFilterChange()">
+        <select class="filter-select" id="paySourceFilter" aria-label="Payment source" onchange="filterPayments()">
+          <option value="">All Sources</option>
+          <option value="resident_submission">Resident Submission</option>
+          <option value="manual_admin">Manual Payment</option>
+        </select>
+        <select class="filter-select" id="payDateFilter" aria-label="Payment date" onchange="onPaymentDateFilterChange()">
           <option value="all">All Dates</option>
           <option value="today">Today</option>
           <option value="week">This Week</option>
@@ -1217,83 +1294,77 @@ function renderPayments() {
         </button>
       </div>
     </div>
+    <div class="payment-results"><div id="paymentResults" aria-live="polite"></div><small>Dates match payment or submission date.</small></div>
     <div class="section-card-body no-pad">
       <div class="table-wrapper">
-        <table class="data-table">
+        <table class="data-table admin-payment-table">
           <thead>
             <tr>
-              <th>Resident</th>
-              <th>Block/Lot</th>
-              <th>Billing Period</th>
+              <th>Resident / Billing Details</th>
               <th>Amount</th>
               <th>Method</th>
-              <th>Reference #</th>
-              <th>Payment Date</th>
+              <th>Reference Number</th>
               <th>Status</th>
-              <th>Submitted Date</th>
               <th>Action</th>
             </tr>
           </thead>
           <tbody id="payTableBody"></tbody>
         </table>
       </div>
+      <div id="paymentPagination" class="payment-pagination"></div>
     </div>
-  </div>`;
+  </div></div>`;
 
-  document.getElementById('paySearch').addEventListener('input', filterPayments);
-  renderPaymentTable();
+  filterPayments();
 }
 
 function renderPaymentTable(filtered = null) {
-  const payments = filtered !== null ? filtered : db.get('payments');
+  const payments = [...(filtered !== null ? filtered : db.get('payments') || [])]
+    .sort((a, b) => String(b.submittedAt || b.created_at || '').localeCompare(String(a.submittedAt || a.created_at || ''))
+      || String(b.id).localeCompare(String(a.id)));
   const tbody = document.getElementById('payTableBody');
   if (!tbody) return;
+  const { pageSize } = paymentPaginationState;
+  const pageCount = Math.max(1, Math.ceil(payments.length / pageSize));
+  paymentPaginationState.page = Math.min(Math.max(1, paymentPaginationState.page), pageCount);
+  const page = paymentPaginationState.page;
+  const start = (page - 1) * pageSize;
+  const pagination = document.getElementById('paymentPagination');
+  if (pagination) pagination.innerHTML = `
+    <span>${payments.length ? start + 1 : 0}–${Math.min(start + pageSize, payments.length)} of ${payments.length} payments</span>
+    <div><label>Rows <select class="filter-select" aria-label="Payments per page" onchange="changePaymentPageSize(this.value)">
+      ${[10, 25, 50].map(size => `<option value="${size}" ${size === pageSize ? 'selected' : ''}>${size}</option>`).join('')}
+    </select></label>
+    <button class="btn btn-secondary btn-sm" aria-label="Previous payment page" ${page === 1 ? 'disabled' : ''} onclick="changePaymentPage(${page - 1})">Previous</button>
+    <span>Page ${page} of ${pageCount}</span>
+    <button class="btn btn-secondary btn-sm" aria-label="Next payment page" ${page === pageCount ? 'disabled' : ''} onclick="changePaymentPage(${page + 1})">Next</button></div>`;
   if (!payments.length) {
-    tbody.innerHTML = `<tr><td colspan="10"><div class="no-results"><svg style="width:2rem;height:2rem;color:var(--text-3)"><use href="#ico-credit"/></svg>No payments found.</div></td></tr>`;
+    tbody.innerHTML = '<tr><td colspan="6"><div class="no-results">No payments found. Try changing your filters.</div></td></tr>';
     return;
   }
 
-  tbody.innerHTML = [...payments]
-    .sort((a, b) => (b.submittedAt || '').localeCompare(a.submittedAt || '') || (b.id || '').localeCompare(a.id || ''))
+  tbody.innerHTML = payments.slice(start, start + pageSize)
     .map(p => {
       const ho = getHomeownerById(p.homeownerId);
-      const bill = getPaymentBilling(p);
-      let billTitleDisplay = bill ? bill.title : '';
-      if (!billTitleDisplay && p.monthly_dues_month) {
-        billTitleDisplay = `Monthly Dues - ${formatBillingMonth(p.monthly_dues_month)}`;
-      }
-      if (!billTitleDisplay) billTitleDisplay = 'N/A';
+      const billTitleDisplay = getPaymentTitle(p);
       const isAdvance = Boolean(!p.billingId && p.monthly_dues_month);
-      const blockLot = [ho?.block, ho?.lot].filter(Boolean).join(' ') || '—';
       const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-      const methodBadge = `<span class="badge ${p.payment_method === 'Cash' ? 'badge-cash' : 'badge-gcash'}">${escapeHtml(p.payment_method || 'GCash')}</span>`;
-      const statusBadge = p.status === 'pending'
-        ? '<span class="badge badge-yellow">Pending</span>'
-        : (p.status === 'approved' ? '<span class="badge badge-green">Approved</span>' : '<span class="badge badge-red">Rejected</span>');
-
       return `<tr>
-        <td><strong>${escapeHtml(ho ? ho.name : 'Unknown')}</strong></td>
-        <td>${escapeHtml(blockLot)}</td>
-        <td style="max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis" title="${escapeHtml(billTitleDisplay)}">
-          ${escapeHtml(billTitleDisplay)}${isAdvance ? ' <span class="badge badge-teal" style="font-size:0.68rem;padding:1px 6px">Advance</span>' : ''}
+        <td data-label="Resident / Billing Details"><div><strong>${escapeHtml(ho?.name || 'Unknown')}</strong>
+          <span class="billing-row-note">${escapeHtml(billTitleDisplay)}${isAdvance ? ' · Advance' : ''}</span></div>
         </td>
-        <td class="amount-paid">${formattedAmount}</td>
-        <td>${methodBadge}</td>
-        <td><code style="font-size:0.84rem;font-weight:700;color:var(--text)">${escapeHtml(p.refNum || '—')}</code></td>
-        <td>${escapeHtml(paymentCalendarDate(p.payment_date || p.submittedAt))}</td>
-        <td>${statusBadge}</td>
-        <td>${escapeHtml(paymentCalendarDate(p.submittedAt))}</td>
-        <td>
-          <div class="td-actions">
-            <button class="btn btn-secondary btn-sm" onclick="viewPaymentDetail('${p.id}')">Review</button>
-            ${canManagePayments() && p.status === 'pending' && !bill?.balance_reset_at ? `
-              <button class="btn btn-success btn-sm btn-icon" onclick="confirmApprovePayment('${p.id}')" title="Approve Payment">&#10003;</button>
-              <button class="btn btn-danger btn-sm btn-icon" onclick="openRejectPaymentModal('${p.id}')" title="Reject Payment">&#10007;</button>
-            ` : ''}
-          </div>
+        <td data-label="Amount" class="amount-paid">${formattedAmount}</td>
+        <td data-label="Method">${escapeHtml(p.payment_method || 'GCash')}</td>
+        <td data-label="Reference Number"><code>${escapeHtml(p.refNum || '—')}</code></td>
+        <td data-label="Status">${paymentStatusHtml(p)}</td>
+        <td data-label="Action">
+          <button type="button" class="btn btn-secondary btn-sm" data-review-payment="${escapeHtml(p.id)}" aria-label="Review payment: ${escapeHtml(ho?.name || 'Unknown')}, ${escapeHtml(billTitleDisplay)}">Review</button>
         </td>
       </tr>`;
     }).join('');
+  tbody.querySelectorAll('[data-review-payment]').forEach(button => {
+    button.addEventListener('click', () => viewPaymentDetail(button.dataset.reviewPayment));
+  });
 }
 
 function getPaymentRecordDates(payment) {
@@ -1350,6 +1421,9 @@ function onPaymentDateFilterChange() {
 if (typeof window !== 'undefined') window.onPaymentDateFilterChange = onPaymentDateFilterChange;
 
 function resetPaymentFilters() {
+  currentPaymentCategory = 'all';
+  const sourceFilter = document.getElementById('paySourceFilter');
+  if (sourceFilter) sourceFilter.value = '';
   const searchInput = document.getElementById('paySearch');
   const statusFilter = document.getElementById('payFilter');
   const dateFilter = document.getElementById('payDateFilter');
@@ -1372,7 +1446,8 @@ function resetPaymentFilters() {
 }
 if (typeof window !== 'undefined') window.resetPaymentFilters = resetPaymentFilters;
 
-function filterPayments() {
+function filterPayments(resetPage = true) {
+  if (resetPage !== false) paymentPaginationState.page = 1;
   const q = (document.getElementById('paySearch')?.value || '').toLowerCase().trim();
   const status = document.getElementById('payFilter')?.value || '';
   const datePreset = (document.getElementById('payDateFilter')?.value || 'all').toLowerCase();
@@ -1412,24 +1487,27 @@ function filterPayments() {
       const tmp = rangeStart;
       rangeStart = rangeEnd;
       rangeEnd = tmp;
+      rangeStart.setHours(0, 0, 0, 0);
+      rangeEnd.setHours(23, 59, 59, 999);
     }
   }
 
-  let payments = db.get('payments') || [];
+  const source = document.getElementById('paySourceFilter')?.value || '';
+  let payments = (db.get('payments') || []).filter(p => !p.archived_at);
+  if (source) payments = payments.filter(p => (p.payment_source || 'resident_submission') === source);
   if (status) payments = payments.filter(p => p.status === status);
   if (q) {
     const users = getHomeowners();
-    const billings = db.get('billings') || [];
     payments = payments.filter(p => {
       const ho = users.find(u => u.id === p.homeownerId);
-      const bill = getPaymentBilling(p);
       const blockLot = [ho?.block, ho?.lot].filter(Boolean).join(' ');
       const amountStr = String(p.amount || '');
       return (
         (ho && (ho.name || '').toLowerCase().includes(q)) ||
         (blockLot && blockLot.toLowerCase().includes(q)) ||
         (p.refNum && p.refNum.toLowerCase().includes(q)) ||
-        (bill && (bill.title || '').toLowerCase().includes(q)) ||
+        getPaymentTitle(p).toLowerCase().includes(q) ||
+        PAYMENT_CATEGORY_LABELS[getPaymentCategory(p)].toLowerCase().includes(q) ||
         (p.monthly_dues_month && p.monthly_dues_month.toLowerCase().includes(q)) ||
         (p.payment_method && p.payment_method.toLowerCase().includes(q)) ||
         amountStr.includes(q)
@@ -1449,7 +1527,9 @@ function filterPayments() {
     });
   }
 
-  renderPaymentTable(payments);
+  const filtered = currentPaymentCategory === 'all' ? payments : payments.filter(p => getPaymentCategory(p) === currentPaymentCategory);
+  renderPaymentOverview(payments, filtered);
+  renderPaymentTable(filtered);
 }
 if (typeof window !== 'undefined') window.filterPayments = filterPayments;
 
@@ -2000,9 +2080,57 @@ function getPaymentBilling(payment) {
   } : null);
 }
 
+function renderAdminPaymentDetail(p) {
+  if (!canViewPayments()) return;
+  const ho = getHomeownerById(p.homeownerId);
+  const bill = getPaymentBilling(p);
+  const summary = bill ? getBillingPaymentSummary(bill, p.homeownerId, db.get('payments')) : null;
+  const manual = p.payment_source === 'manual_admin';
+  const recordedBy = db.getOne('users', p.recorded_by);
+  const verifiedBy = db.getOne('users', p.verified_by);
+  const money = value => '₱' + Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const field = (label, value) => `<div><dt>${label}</dt><dd>${escapeHtml(value || '—')}</dd></div>`;
+  const buttons = [{ label: 'Close', cls: 'btn-secondary', action: closeModal }];
+  if (canManagePayments() && canReviewPendingPayment(p)) {
+    buttons.push({ label: 'Reject Payment', cls: 'btn-danger', action: () => openRejectPaymentModal(p.id) });
+    buttons.push({ label: 'Approve Payment', cls: 'btn-primary', action: () => confirmApprovePayment(p.id) });
+  }
+  openModal('Payment Details', `<div class="admin-payment-detail">
+    <div class="admin-payment-detail-heading"><div><span>Payment amount</span><strong>${money(p.amount)}</strong></div>${paymentStatusHtml(p)}</div>
+    ${summary ? `<div class="admin-payment-totals">
+      <div><span>Original amount</span><strong>${money(summary.originalAmount)}</strong></div>
+      <div><span>Approved total</span><strong>${money(summary.totalPaid)}</strong></div>
+      <div><span>Remaining balance</span><strong>${money(summary.remainingBalance)}</strong></div>
+    </div><p class="admin-payment-note">Only approved payments reduce the balance.</p>` : ''}
+    <section><h4>Resident &amp; billing</h4><dl>
+      ${field('Homeowner', ho?.name || 'Unknown')}${field('Block / Lot', [ho?.block, ho?.lot].filter(Boolean).join(' / '))}
+      ${field('Contact number', ho?.contact)}${field('Billing category', PAYMENT_CATEGORY_LABELS[getPaymentCategory(p)])}
+      ${field('Billing title', getPaymentTitle(p))}${field('Due date', bill?.dueDate ? paymentCalendarDate(bill.dueDate) : 'No due date')}
+      ${!p.billingId && p.monthly_dues_month ? field('Advance monthly dues', formatBillingMonth(p.monthly_dues_month)) : ''}
+    </dl></section>
+    <section><h4>Payment information</h4><dl>
+      ${field('Method', p.payment_method || 'GCash')}${field('Reference number', p.refNum)}
+      ${field('Payment date', paymentCalendarDate(p.payment_date || p.submittedAt))}${field('Submission date', paymentCalendarDate(p.submittedAt))}
+      ${field('Payment source', manual ? 'Manual Payment' : 'Resident Submission')}
+      ${manual ? field('Recorded by', recordedBy?.name || 'Administrator') + field('Recorded on', paymentCalendarDate(p.created_at || p.submittedAt)) : ''}
+      ${p.verified_at ? field('Verified by', verifiedBy?.name || 'Administrator') + field('Verified on', paymentCalendarDate(p.verified_at)) : ''}
+      ${p.remarks && p.status !== 'rejected' ? field('Notes', p.remarks) : ''}
+    </dl></section>
+    ${p.status === 'rejected' ? `<div class="rejection-reason-callout"><strong>Rejection reason</strong><p>${escapeHtml(p.rejection_reason || p.remarks || 'No reason recorded')}</p></div>` : ''}
+    ${p.voided_at || p.status === 'voided' ? `<div class="rejection-reason-callout"><strong>Voided payment</strong><p>${escapeHtml(p.void_reason || 'This payment no longer counts toward the balance.')}</p></div>` : ''}
+    ${p.status === 'pending' && !canReviewPendingPayment(p) ? '<p class="admin-payment-note">This historical payment cannot be reviewed because its payment or billing record is closed.</p>' : ''}
+    <section><h4>Uploaded payment proof</h4>${p.receipt ? `
+      <a class="admin-payment-proof" href="${escapeHtml(p.receipt)}" target="_blank" rel="noopener">
+        <img src="${escapeHtml(p.receipt)}" alt="Uploaded payment proof"/><span>Open full-size proof ↗</span>
+      </a>` : `<p class="admin-payment-note">${manual ? 'Recorded by the HOA office. No uploaded proof.' : 'No payment proof attached.'}</p>`}
+    </section>
+  </div>`, buttons, 'admin-payment-modal');
+}
+
 function viewPaymentDetail(id, resident = false, grouped = false) {
   const p = db.getOne('payments', id);
   if (!p) { showToast('error', 'Error', 'Payment record not found.'); return; }
+  if (!resident) { renderAdminPaymentDetail(p); return; }
   if (resident && p.homeownerId !== getCurrentHomeownerId()) {
     showToast('error', 'Access Denied', 'This payment does not belong to your account.');
     return;
@@ -2137,21 +2265,22 @@ function openReceiptLightbox(imgUrl) {
 function confirmApprovePayment(id) {
   if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only administrators can approve payments.'); return; }
   const p = db.getOne('payments', id);
-  if (!p) return;
+  if (!canReviewPendingPayment(p)) { showToast('error', 'Payment Unavailable', 'Only eligible pending payments can be reviewed.'); return; }
   const ho = getHomeownerById(p.homeownerId);
   const bill = db.getOne('billings', p.billingId);
   const summary = bill ? getBillingPaymentSummary(bill, p.homeownerId, db.get('payments')) : null;
   const formattedAmount = '₱' + Number(p.amount || 0).toLocaleString();
 
   openConfirm(
-    'Approve GCash Payment',
-    `Are you sure you want to approve the payment of <strong>${formattedAmount}</strong> from <strong>${escapeHtml(ho ? ho.name : 'Unknown')}</strong> for <strong>${escapeHtml(bill ? bill.title : 'N/A')}</strong>?<br><br><span style="font-size:0.82rem;color:var(--text-3)">This will update the approved total${summary ? ` from ₱${summary.totalPaid.toLocaleString()} to ₱${(summary.totalPaid + Number(p.amount || 0)).toLocaleString()} and leave ₱${Math.max(0, summary.remainingBalance - Number(p.amount || 0)).toLocaleString()} remaining` : ''}.</span>`,
+    'Approve Payment',
+    `Are you sure you want to approve the payment of <strong>${formattedAmount}</strong> from <strong>${escapeHtml(ho ? ho.name : 'Unknown')}</strong> for <strong>${escapeHtml(getPaymentTitle(p))}</strong>?<br><br><span style="font-size:0.82rem;color:var(--text-3)">This will update the approved total${summary ? ` from ₱${summary.totalPaid.toLocaleString()} to ₱${(summary.totalPaid + Number(p.amount || 0)).toLocaleString()} and leave ₱${Math.max(0, summary.remainingBalance - Number(p.amount || 0)).toLocaleString()} remaining` : ''}.</span>`,
     () => executeApprovePayment(id)
   );
 }
 
 async function executeApprovePayment(id) {
-  if (!canManagePayments()) return;
+  if (!canManagePayments() || paymentReviewsInFlight.has(id) || !canReviewPendingPayment(db.getOne('payments', id))) return;
+  paymentReviewsInFlight.add(id);
   showLoading();
   try {
     await api.approvePayment(id);
@@ -2160,17 +2289,19 @@ async function executeApprovePayment(id) {
     hideLoading();
     closeModal();
     showToast('success', 'Payment Approved', 'The payment was approved and the resident has been notified.');
-    renderPayments();
+    filterPayments(false);
   } catch (error) {
     hideLoading();
     showToast('error', 'Approval Failed', error.message || 'Could not approve payment.');
+  } finally {
+    paymentReviewsInFlight.delete(id);
   }
 }
 
 function openRejectPaymentModal(id) {
   if (!canManagePayments()) { showToast('error', 'Access Denied', 'Only administrators can reject payments.'); return; }
   const p = db.getOne('payments', id);
-  if (!p) return;
+  if (!canReviewPendingPayment(p)) { showToast('error', 'Payment Unavailable', 'Only eligible pending payments can be reviewed.'); return; }
   const ho = getHomeownerById(p.homeownerId);
   const bill = db.getOne('billings', p.billingId);
 
@@ -2184,14 +2315,14 @@ function openRejectPaymentModal(id) {
     'Other',
   ];
 
-  openModal('Reject GCash Payment', `
+  openModal('Reject Payment', `
     <div class="payment-flow-modal">
       <p style="color:var(--text-2);margin:0;font-size:0.88rem">
-        Rejecting payment from <strong>${escapeHtml(ho ? ho.name : 'Unknown')}</strong> for <strong>${escapeHtml(bill ? bill.title : 'N/A')}</strong> (Ref: <code>${escapeHtml(p.refNum)}</code>).
+        Rejecting payment from <strong>${escapeHtml(ho ? ho.name : 'Unknown')}</strong> for <strong>${escapeHtml(getPaymentTitle(p))}</strong> (Ref: <code>${escapeHtml(p.refNum)}</code>).
       </p>
 
       <div class="form-group" style="margin-bottom:12px">
-        <label>Reason for Rejection *</label>
+        <label for="reject_reason_select">Reason for Rejection *</label>
         <select id="reject_reason_select" class="filter-select" style="width:100%" onchange="handleRejectReasonChange()">
           <option value="">-- Select a reason --</option>
           ${predefinedReasons.map(r => `<option value="${r}">${r}</option>`).join('')}
@@ -2204,7 +2335,7 @@ function openRejectPaymentModal(id) {
       </div>
     </div>
   `, [
-    { label: 'Cancel', cls: 'btn-secondary', action: closeModal },
+    { label: 'Cancel', cls: 'btn-secondary', action: () => viewPaymentDetail(id) },
     { label: 'Reject Payment', cls: 'btn-danger', action: () => executeRejectPayment(id) },
   ]);
 }
@@ -2225,7 +2356,7 @@ function handleRejectReasonChange() {
 }
 
 async function executeRejectPayment(id) {
-  if (!canManagePayments()) return;
+  if (!canManagePayments() || paymentReviewsInFlight.has(id) || !canReviewPendingPayment(db.getOne('payments', id))) return;
   const sel = document.getElementById('reject_reason_select')?.value || '';
   const notes = (document.getElementById('reject_custom_notes')?.value || '').trim();
 
@@ -2246,6 +2377,7 @@ async function executeRejectPayment(id) {
     finalReason = `${sel}: ${notes}`;
   }
 
+  paymentReviewsInFlight.add(id);
   showLoading();
   try {
     await api.rejectPayment(id, finalReason);
@@ -2254,10 +2386,12 @@ async function executeRejectPayment(id) {
     hideLoading();
     closeModal();
     showToast('warning', 'Payment Rejected', 'The payment was marked as rejected and the resident was notified.');
-    renderPayments();
+    filterPayments(false);
   } catch (error) {
     hideLoading();
     showToast('error', 'Rejection Failed', error.message || 'Could not reject payment.');
+  } finally {
+    paymentReviewsInFlight.delete(id);
   }
 }
 

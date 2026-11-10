@@ -99,7 +99,7 @@ test('frontend helpers and rendered officer pages expose reads and detail modals
   const tables = {billings:[bill],payments:[payment],homeowners:[{id:'h',name:'Resident'}],users:[]};
   const context = {
     currentUser:{role:'hoa_officer',status:'active',permissions:['billing','payments']}, ADMIN_ONLY_MODULES:['users','settings'],
-    document:{getElementById:id => elements[id] ||= {innerHTML:'',value:'',addEventListener(){},classList:{add(){},remove(){}},style:{}}},
+    document:{getElementById:id => elements[id] ||= {innerHTML:'',value:'',addEventListener(){},querySelectorAll:()=>[],classList:{add(){},remove(){}},style:{}}},
     db:{get:key=>tables[key] || [],getOne:(key,id)=>(tables[key] || []).find(r=>r.id===id)},
     getHomeowners:()=>tables.homeowners, getHomeownerById:()=>tables.homeowners[0],getHomeownerRecords:()=>tables.homeowners,
     getBillingCollectionStatus:()=>"unpaid", badgeHtml:String, getBillingPaymentSummary:()=>({originalAmount:100,totalPaid:0,remainingBalance:100,status:"unpaid"}), escapeHtml:String,formatDate:String,formatDateTime:String,getLocalDateValue:()=> '2026-10-22',
