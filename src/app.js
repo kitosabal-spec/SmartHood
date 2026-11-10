@@ -1601,7 +1601,6 @@ async function checkTableAccess(req, res, table, action = 'read') {
   const requester = await getRequester(req);
   if (!requester) {
     if (action === 'read' && (table === 'announcements' || table === 'lostFound' || table === 'board_of_directors')) return true;
-    if (action === 'create' && table === 'lostFound') return true;
     res.status(401).json({ error: 'Login required.' });
     return null;
   }
@@ -1695,10 +1694,10 @@ async function checkTableAccess(req, res, table, action = 'read') {
     return null;
   }
 
-  // 9. Lost & Found: Read and posting are accessible; managing/deleting requires lostfound permission
+  // 9. Lost & Found: Posting requires resident or lostfound access.
   if (table === 'lostFound') {
     if (action === 'read') return requester;
-    if (action === 'create') return requester;
+    if (action === 'create' && userHasPermission(requester, 'resident')) return requester;
     if (userHasPermission(requester, 'lostfound')) return requester;
     res.status(403).json({ error: 'Access Denied: You do not have permission to manage lost & found items.' });
     return null;
@@ -4821,7 +4820,13 @@ app.post('/api/complaints/upload', asyncHandler(async (req, res) => {
 
 // ── LOST & FOUND MEDIA UPLOAD API ──
 
-const handleLostFoundUpload = (req, res) => {
+const handleLostFoundUpload = async (req, res, next) => {
+  // Authorize before Multer parses or writes any uploaded files.
+  try {
+    if (!await checkTableAccess(req, res, 'lostFound', 'create')) return;
+  } catch (error) {
+    return next(error);
+  }
   lostFoundUpload.any()(req, res, auditedUpload(req, res, async (uploadErr) => {
     if (uploadErr) {
       const message = uploadErr.code === 'LIMIT_FILE_SIZE'
@@ -5328,7 +5333,7 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
   }
   if (table === 'amenityBookings' || table === 'appSettings') await amenityService.lock();
   // A create permission must not turn a chosen ID into an unlogged/unauthorized
-  // overwrite (in particular, public lost-and-found submissions).
+  // overwrite (in particular, resident lost-and-found submissions).
   if (req.body.id && await get(`SELECT id FROM ${tableName(table)} WHERE id = ?${table === 'amenityBookings' ? ' FOR UPDATE' : ''}`, [req.body.id])) {
     return res.status(409).json({ error: 'A record with this ID already exists.' });
   }
@@ -5388,20 +5393,12 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
   }
 
   if (table === 'lostFound') {
-    const isManager = allowed && typeof allowed === 'object' && (allowed.role === 'admin' || userHasPermission(allowed, 'lostfound'));
-    if (!isManager) {
-      req.body.status = 'Pending';
-      if (allowed && typeof allowed === 'object') {
-        req.body.homeownerId = requesterHomeownerId(allowed);
-      }
-    }
-    if (!req.body.status) {
-      req.body.status = 'Pending';
-    }
+    req.body.homeownerId = requesterHomeownerId(allowed);
+    req.body.status = 'Pending';
+    req.body.remarks = '';
+    req.body.claimedAt = '';
     const nowIso = new Date().toISOString();
-    if (!req.body.createdAt) {
-      req.body.createdAt = nowIso;
-    }
+    req.body.createdAt = nowIso;
     req.body.updatedAt = nowIso;
   }
 
@@ -5447,7 +5444,7 @@ app.post('/api/:table', auditedHandler(async (req, res) => {
   }
 
   const body = stripProfilePhotoField(table, req.body);
-  await saveRecord(table, body);
+  await saveRecord(table, body, { insertOnly: table === 'lostFound' });
   if (complaintFiles) {
     for (const filename of complaintFiles.newFilenames) claimStagedPrivateUpload('complaints', filename, allowed);
   }

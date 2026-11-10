@@ -214,7 +214,7 @@ test('announcement, board, lost-and-found, QR, profile and staged complaint uplo
   assert.ok(isObjectKey(f.pool.tables.payment_settings[0].qr_code_path,'payment-qrcodes'));
   assert.equal((await f.request('POST','/api/users/resident-1/photo',proof('photo'),'resident-1')).status,200);
   assert.ok(isObjectKey(f.pool.tables.homeowners[0].profile_photo,'profile-photos'));
-  result = await f.request('POST','/api/lostfound/upload',proof('media'),null);
+  result = await f.request('POST','/api/lostfound/upload',proof('media'),'resident-1');
   assert.equal(result.status,200,JSON.stringify(f.errors));
   assert.match(result.body.url,/^\/uploads\/lostfound\//);
   result = await f.request('POST','/api/complaints/upload',proof('media'),'resident-1');

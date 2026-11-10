@@ -219,7 +219,32 @@ function renderPublicLostFound() {
   }).join('');
 }
 
+function canSubmitLostFoundReport() {
+  return userHasModulePermission('resident') || userHasModulePermission('lostfound');
+}
+
+function requestLostFoundReport(reportType) {
+  const selectedType = reportType === 'Found' ? 'Found' : 'Lost';
+  if (!currentUser) {
+    openLoginModal();
+    pendingLostFoundReportType = selectedType;
+    return;
+  }
+  resumeLostFoundReport(selectedType);
+}
+
+function resumeLostFoundReport(reportType) {
+  const targetView = canAccessView('ho-lostfound') ? 'ho-lostfound' : 'lostfound';
+  initApp(targetView);
+  openLostFoundReportModal(reportType);
+}
+
 function openLostFoundReportModal(reportType) {
+  if (!currentUser) return requestLostFoundReport(reportType);
+  if (!canSubmitLostFoundReport()) {
+    showToast('error', 'Access Denied', 'Your account does not have permission to submit Lost & Found reports.');
+    return;
+  }
   const today = typeof getLocalDateValue === 'function' ? getLocalDateValue() : new Date().toISOString().slice(0, 10);
   const selectedType = reportType === 'Found' ? 'Found' : 'Lost';
   const actionLabel = selectedType === 'Found' ? 'Report Found Item' : 'Report Lost Item';
@@ -333,6 +358,10 @@ function openLostFoundReportModal(reportType) {
 }
 
 async function submitLostFoundReport() {
+  if (!currentUser || !canSubmitLostFoundReport()) {
+    showToast('error', 'Login Required', 'Sign in with an authorized account to submit a Lost & Found report.');
+    return;
+  }
   const reportType = document.getElementById('lf_reportType')?.value || 'Lost';
   const itemType = (document.getElementById('lf_itemType')?.value || '').trim();
   const itemName = (document.getElementById('lf_itemName')?.value || '').trim();

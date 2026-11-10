@@ -10,6 +10,7 @@ let currentRole = 'admin';
 let currentView = 'dashboard';
 let notifications = [];
 let pendingPostLoginView = null;
+let pendingLostFoundReportType = null;
 let pendingPaymentSubmission = null;
 let notificationRefreshTimer = null;
 let notificationRequest = null;
@@ -633,9 +634,11 @@ async function handleLogin() {
     currentRole = currentUser.role || user.role;
     hideLoading();
 
+    const reportType = pendingLostFoundReportType;
     closeLoginModal();
     document.getElementById('landingPage').classList.add('hidden');
-    initApp();
+    if (reportType) resumeLostFoundReport(reportType);
+    else initApp();
   } catch (error) {
     hideLoading();
     showLoginError(loginFailureMessage(error));
@@ -4646,6 +4649,7 @@ window.addEventListener('touchmove', () => { isManualPubScrolling = false; }, { 
 
 
 function openLoginModal(role) {
+  pendingLostFoundReportType = null;
   currentRole = role || null;
   activePasswordResetToken = null;
   setAuthPanel('login');
@@ -4672,6 +4676,7 @@ function openAmenityBookingLogin() {
 }
 
 function closeLoginModal() {
+  pendingLostFoundReportType = null;
   const lm = document.getElementById('loginModal');
   if (lm) lm.classList.add('hidden');
   const lp = document.getElementById('loginPass');
@@ -4842,6 +4847,7 @@ async function performLogout() {
   dataSessionGeneration++;
   currentUser = null;
   currentRole = null;
+  pendingLostFoundReportType = null;
   // Retain only the same community content exposed by /api/public-data.
   dbCache = {
     announcements: db.get('announcements'),
